@@ -7,22 +7,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* ===========================
-           GLOBAL BACKGROUND
-           =========================== */
         body {
             margin: 0;
             padding: 0;
             font-family: "Poppins", sans-serif;
-
             background-image: url("/static/bg_fx_4k.png");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-color: #05070b;
-
-            /* reserve space so fixed footer doesn't cover content */
             padding-bottom: 90px;
         }
 
@@ -34,9 +28,6 @@
             z-index: -1;
         }
 
-        /* ===========================
-           A2 ELITE WATERMARK
-           =========================== */
         .watermark {
             position: fixed;
             right: 32px;
@@ -49,23 +40,13 @@
             pointer-events: none;
             z-index: 999;
             font-family: "Poppins", sans-serif;
-
-            background: linear-gradient(
-                to right,
-                rgba(255,255,255,0.18),
-                rgba(255,255,255,0.28),
-                rgba(255,255,255,0.18)
-            );
+            background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-
             text-shadow: 0 0 12px rgba(255,255,255,0.08);
             filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
         }
 
-        /* ===========================
-           TOPBAR (LIVE MARKET CLOCK)
-           =========================== */
         .topbar {
             width: 100%;
             padding: 12px 25px;
@@ -92,20 +73,15 @@
         .open { background: #00d46a22; color: #00d46a; }
         .closed { background: #ff444422; color: #ff7777; }
 
-        /* ===========================
-           GLASS-MORPHISM PANEL
-           =========================== */
         .container {
             max-width: 1300px;
             margin: 50px auto;
             padding: 40px;
             border-radius: 18px;
-
             background: rgba(18,20,28,0.35);
             backdrop-filter: blur(18px);
             border: 1px solid rgba(255,255,255,0.05);
             box-shadow: 0 8px 35px rgba(0,0,0,0.5);
-
             display: flex;
             gap: 40px;
         }
@@ -175,7 +151,6 @@
             background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
         }
 
-        /* OUTPUT BOX */
         .output-box {
             background: rgba(0,0,0,0.45);
             border-radius: 12px;
@@ -194,39 +169,19 @@
             margin-bottom: 10px;
         }
 
-        /* ===========================
-           TRADE DECISION BADGES
-           =========================== */
         .decision {
             padding: 12px;
             font-size: 20px;
             font-weight: 700;
             border-radius: 12px;
             text-align: center;
-            margin-bottom: 14px;
+            margin: 12px 0 16px;
         }
 
-        .take {
-            color: #00ff9c;
-            background: rgba(0,255,140,0.20);
-            border: 1px solid #00ff9c44;
-        }
+        .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
+        .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
+        .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
 
-        .neutral {
-            color: #ffd700;
-            background: rgba(255,215,0,0.20);
-            border: 1px solid #ffd70055;
-        }
-
-        .avoid {
-            color: #ff5050;
-            background: rgba(255,80,80,0.20);
-            border: 1px solid #ff505055;
-        }
-
-        /* ===========================
-           CONFIDENCE BAR
-           =========================== */
         .confidence {
             margin-bottom: 18px;
             padding: 12px 12px;
@@ -254,10 +209,7 @@
             opacity: 0.9;
         }
 
-        .confidence-top .value {
-            font-weight: 700;
-            color: #ffffff;
-        }
+        .confidence-top .value { font-weight: 700; color: #ffffff; }
 
         .confidence-track {
             height: 10px;
@@ -276,9 +228,6 @@
             transition: width 450ms ease;
         }
 
-        /* ===========================
-           CONSENT CHECKBOX (TERMS/PRIVACY)
-           =========================== */
         .consent-row {
             display: flex;
             align-items: flex-start;
@@ -318,29 +267,22 @@
             display: none;
         }
 
-        /* ===========================
-           FX DISCLAIMER + LEGAL LINKS
-           =========================== */
         .fx-disclaimer {
             position: fixed;
             left: 0;
             right: 0;
             bottom: 0;
             z-index: 2147483647;
-
             background: rgba(10, 15, 20, 0.92);
             backdrop-filter: blur(10px);
             border-top: 1px solid rgba(255, 255, 255, 0.10);
-
             padding: 12px 16px;
             font-size: 12px;
             color: #cbd5e1;
             text-align: center;
         }
 
-        .fx-disclaimer strong {
-            color: #fbbf24;
-        }
+        .fx-disclaimer strong { color: #fbbf24; }
 
         .fx-legal {
             margin-top: 8px;
@@ -358,17 +300,9 @@
             font-weight: 700;
         }
 
-        .fx-legal a:hover {
-            text-decoration: underline;
-        }
+        .fx-legal a:hover { text-decoration: underline; }
+        .fx-legal .sep { color: rgba(255,255,255,0.25); }
 
-        .fx-legal .sep {
-            color: rgba(255,255,255,0.25);
-        }
-
-        /* ===========================
-           LEGAL MODAL (ONE PAGE)
-           =========================== */
         .legal-backdrop {
             display: none;
             position: fixed;
@@ -385,12 +319,10 @@
             top: 50%;
             transform: translate(-50%, -50%);
             z-index: 2147483647;
-
             max-width: 920px;
             width: 92%;
             max-height: 80vh;
             overflow: auto;
-
             border-radius: 18px;
             background: rgba(18,20,28,0.92);
             border: 1px solid rgba(255,255,255,0.08);
@@ -407,11 +339,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.08);
         }
 
-        .legal-modal-title {
-            font-weight: 800;
-            color: #fff;
-            letter-spacing: 0.2px;
-        }
+        .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
 
         .legal-close {
             cursor: pointer;
@@ -423,9 +351,7 @@
             font-weight: 800;
         }
 
-        .legal-close:hover {
-            background: rgba(255,255,255,0.12);
-        }
+        .legal-close:hover { background: rgba(255,255,255,0.12); }
 
         .legal-modal-content {
             padding: 18px;
@@ -439,15 +365,7 @@
             font-size: 15px;
         }
 
-        .legal-modal-content p,
-        .legal-modal-content li {
-            color: #cbd5e1;
-        }
-
-        .legal-modal-content ul {
-            padding-left: 18px;
-            margin: 10px 0;
-        }
+        .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
 
         .legal-callout {
             border: 1px solid rgba(251,191,36,0.22);
@@ -459,22 +377,40 @@
 
         .legal-callout strong { color: #fbbf24; }
 
+        /* Small section styling for JSON render */
+        .fx-section-title {
+            margin: 14px 0 6px;
+            font-weight: 800;
+            color: #ffffff;
+            font-size: 13px;
+            letter-spacing: 0.2px;
+        }
+
+        .fx-kv {
+            margin: 8px 0;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .fx-ul {
+            margin: 8px 0 0;
+            padding-left: 18px;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
         @media(max-width: 900px){
-            .container {
-                flex-direction: column;
-                margin: 20px;
-                padding: 25px;
-            }
+            .container { flex-direction: column; margin: 20px; padding: 25px; }
         }
     </style>
 </head>
 
 <body>
-
 <div class="bg-overlay"></div>
 <div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
 
-<!-- TOPBAR -->
 <div class="topbar">
     <div id="clock">Loading time...</div>
     <div class="sessions">
@@ -484,10 +420,8 @@
     </div>
 </div>
 
-<!-- MAIN UI -->
 <div class="container">
 
-    <!-- LEFT PANEL -->
     <div class="section">
         <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
         <p style="color:#cfd3d8; margin-bottom:25px;">
@@ -515,7 +449,6 @@
         <label>Your signal</label>
         <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
-        <!-- CONSENT CHECKBOX (must accept before enabling Analyze) -->
         <div class="consent-row">
             <input type="checkbox" id="acceptLegal" />
             <div class="consent-text">
@@ -525,21 +458,19 @@
             </div>
         </div>
 
-        <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze</button>
+        <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
     </div>
 
-    <!-- RIGHT PANEL -->
     <div class="section">
         <div class="title-small">AI Trade Decision & Analysis</div>
-        <div id="result" class="output-box">Awaiting Analysis...</div>
+        <div id="result" class="output-box">Awaiting analysis...</div>
 
         <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
         <div id="history" class="output-box" style="min-height:120px;"></div>
     </div>
 
-</div> <!-- END CONTAINER -->
+</div>
 
-<!-- DISCLAIMER + LEGAL (ONE PAGE LINKS OPEN MODAL) -->
 <footer class="fx-disclaimer">
   <p style="margin:0;">
     <strong>Disclaimer:</strong>
@@ -556,7 +487,6 @@
   </div>
 </footer>
 
-<!-- LEGAL MODAL (ONE PAGE) -->
 <div id="legalBackdrop" class="legal-backdrop"></div>
 <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
   <div class="legal-modal-header">
@@ -566,7 +496,6 @@
   <div id="legalContent" class="legal-modal-content"></div>
 </div>
 
-<!-- RISK ACK MODAL (ONE-TIME) -->
 <div id="riskBackdrop" class="legal-backdrop"></div>
 <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
   <div class="legal-modal-header">
@@ -602,86 +531,22 @@
 </div>
 
 <script>
-/* ===========================
-   LIVE UTC CLOCK + SESSIONS
-   =========================== */
 function updateClock() {
     const now = new Date();
-    document.getElementById("clock").innerText =
-        now.toUTCString().replace("GMT", "UTC");
-
+    document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
     const hour = now.getUTCHours();
-
-    function setStatus(id, open) {
-        document.getElementById(id).className = open ? "open" : "closed";
-    }
-
-    // Session times (UTC)
+    function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
     setStatus("london", hour >= 7 && hour < 16);
     setStatus("newyork", hour >= 12 && hour < 21);
     setStatus("tokyo", hour >= 0 && hour < 9);
 }
-
 updateClock();
 setInterval(updateClock, 1000);
 
-/* ===========================
-   CONSENT (Terms & Privacy) GATING
-   =========================== */
-function setAnalyzeEnabled(enabled) {
-    const btn = document.getElementById("analyzeBtn");
-    const hint = document.getElementById("consentHint");
-    btn.disabled = !enabled;
-    hint.style.display = enabled ? "none" : "block";
-}
-
-function initConsentGate() {
-    const cb = document.getElementById("acceptLegal");
-    if (!cb) return;
-
-    // If user already acknowledged risk + accepted legal before, keep it checked
-    // (Optional: comment out next 3 lines if you do NOT want to remember this.)
-    try {
-        const saved = localStorage.getItem("fxco_accept_legal_v1");
-        if (saved === "1") cb.checked = true;
-    } catch {}
-
-    setAnalyzeEnabled(cb.checked);
-
-    cb.addEventListener("change", () => {
-        setAnalyzeEnabled(cb.checked);
-        try {
-            localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0");
-        } catch {}
-    });
-}
-
-/* ===========================
-   CONFIDENCE HELPERS
-   =========================== */
-function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, n));
-}
-
-function parseConfidenceFromText(text) {
-    if (!text || typeof text !== "string") return null;
-    const m = text.match(/CONFIDENCE\s*[:\-]\s*(\d{1,3})\s*%?/i);
-    if (!m) return null;
-    const val = parseInt(m[1], 10);
-    if (Number.isNaN(val)) return null;
-    return clamp(val, 0, 100);
-}
-
-function inferConfidenceFromDecision(text) {
-    const t = (text || "").toUpperCase();
-    if (t.includes("TRADE DECISION: TAKE TRADE")) return 78;
-    if (t.includes("TRADE DECISION: NEUTRAL")) return 55;
-    if (t.includes("TRADE DECISION: AVOID TRADE")) return 35;
-    return 50;
-}
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
 function renderConfidenceBar(percent) {
-    const p = clamp(Number(percent || 0), 0, 100);
+    const p = clamp(Number(percent ?? 0), 0, 100);
     return `
       <div class="confidence" aria-label="AI confidence score">
         <div class="confidence-top">
@@ -695,9 +560,90 @@ function renderConfidenceBar(percent) {
     `;
 }
 
-/* ===========================
-   LEGAL MODAL (ONE PAGE)
-   =========================== */
+function renderDecisionBadge(decision) {
+    const d = (decision || "NEUTRAL").toUpperCase();
+    if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
+    if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
+    return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
+}
+
+function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[m]));
+}
+
+function renderAnalysisFromJSON(a) {
+    const bias = a.bias || "Unclear";
+    const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
+    const strength = (typeof a.strength === "number") ? a.strength : "";
+    const clarity = (typeof a.clarity === "number") ? a.clarity : "";
+    const sc = a.signal_check || {};
+    const mc = a.market_context || {};
+
+    const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
+
+    return `
+      ${renderConfidenceBar(confidence)}
+      <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
+        ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
+        ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
+      </div>
+
+      <div class="fx-section-title">Signal Check</div>
+      <div class="fx-kv">
+        • <b>Direction:</b> ${esc(sc.direction)}<br/>
+        • <b>Entry:</b> ${esc(sc.entry)}<br/>
+        • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
+        • <b>Targets:</b> ${esc(sc.targets)}<br/>
+        • <b>Approx RR:</b> ${esc(sc.rr)}
+      </div>
+
+      <div class="fx-section-title">Market Context</div>
+      <div class="fx-kv">
+        • <b>Structure:</b> ${esc(mc.structure)}<br/>
+        • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
+        • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
+        • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
+      </div>
+
+      ${renderDecisionBadge(a.decision)}
+
+      ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
+
+      ${guidance.length ? `
+        <div class="fx-section-title">Guidance</div>
+        <ul class="fx-ul">
+          ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
+        </ul>
+      ` : ""}
+    `;
+}
+
+function setAnalyzeEnabled(enabled) {
+    const btn = document.getElementById("analyzeBtn");
+    const hint = document.getElementById("consentHint");
+    btn.disabled = !enabled;
+    hint.style.display = enabled ? "none" : "block";
+}
+
+function initConsentGate() {
+    const cb = document.getElementById("acceptLegal");
+    if (!cb) return;
+
+    try {
+        const saved = localStorage.getItem("fxco_accept_legal_v1");
+        if (saved === "1") cb.checked = true;
+    } catch {}
+
+    setAnalyzeEnabled(cb.checked);
+
+    cb.addEventListener("change", () => {
+        setAnalyzeEnabled(cb.checked);
+        try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
+    });
+}
+
 function openLegal(which) {
     const backdrop = document.getElementById("legalBackdrop");
     const modal = document.getElementById("legalModal");
@@ -789,54 +735,33 @@ function closeLegal() {
     document.getElementById("legalBackdrop").style.display = "none";
     document.getElementById("legalModal").style.display = "none";
 }
-
 document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
-document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeLegal();
-});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLegal(); });
 
-/* ===========================
-   RISK ACK MODAL (ONE-TIME)
-   =========================== */
 function showRiskModalIfNeeded() {
     try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
         if (seen === "1") return;
-
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
     } catch {
-        // if localStorage blocked, still show
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
     }
 }
-
 function acknowledgeRisk() {
     try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
     document.getElementById("riskBackdrop").style.display = "none";
     document.getElementById("riskModal").style.display = "none";
     document.body.style.overflow = "";
 }
+document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-// Force acknowledgement: clicking backdrop does nothing
-document.getElementById("riskBackdrop").addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-});
-
-/* ===========================
-   AI ANALYSIS + DECISION BADGE
-   =========================== */
 function analyze() {
-    // Hard block if user didn't accept Terms/Privacy
     const accepted = document.getElementById("acceptLegal")?.checked;
-    if (!accepted) {
-        setAnalyzeEnabled(false);
-        return;
-    }
+    if (!accepted) { setAnalyzeEnabled(false); return; }
 
     const formData = new FormData();
     formData.append("pair_type", document.getElementById("pairType").value);
@@ -844,78 +769,53 @@ function analyze() {
     formData.append("signal_input", document.getElementById("signal").value);
 
     const file = document.getElementById("chart").files[0];
-    if (file) {
-        formData.append("chart_image", file);
-    }
+    if (file) formData.append("chart_image", file);
 
-    fetch("/analyze", {
-        method: "POST",
-        body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.error) {
+    document.getElementById("result").innerHTML = "Analyzing…";
+
+    fetch("/analyze", { method: "POST", body: formData })
+        .then(async (res) => {
+            const ct = res.headers.get("content-type") || "";
+            if (!res.ok) {
+                if (ct.includes("application/json")) {
+                    const j = await res.json();
+                    throw new Error(j.error || "Request failed.");
+                }
+                const t = await res.text();
+                throw new Error(t || "Request failed.");
+            }
+            if (!ct.includes("application/json")) {
+                const t = await res.text();
+                throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+            }
+            return res.json();
+        })
+        .then((data) => {
+            // ✅ New path: strict JSON
+            if (data && data.analysis) {
+                const html = renderAnalysisFromJSON(data.analysis);
+                document.getElementById("result").innerHTML = html;
+
+                const historyBox = document.getElementById("history");
+                historyBox.innerHTML =
+                    `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                        ${html}
+                     </div>` + historyBox.innerHTML;
+                return;
+            }
+
+            // Fallback path: old text-only
+            const text = (data && data.result) ? String(data.result) : "No result returned.";
+            document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
+        })
+        .catch((err) => {
             document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>Error:</b> " + data.error;
-            return;
-        }
-
-        const raw = (data.result || "").toString();
-
-        // Best source: backend numeric field "confidence" (0–100)
-        // Fallbacks: parse "CONFIDENCE: 78%" inside text, else infer from decision
-        let confidence =
-            (typeof data.confidence === "number" ? clamp(data.confidence, 0, 100) : null);
-
-        if (confidence === null) {
-            const parsed = parseConfidenceFromText(raw);
-            confidence = (parsed === null) ? inferConfidenceFromDecision(raw) : parsed;
-        }
-
-        let text = raw;
-
-        /* ===========================
-            TRADE DECISION BADGE
-        =========================== */
-        text = text
-            .replace(/TRADE DECISION:\s*TAKE TRADE/i,
-                "<div class='decision take'>TAKE TRADE 👍</div>")
-            .replace(/TRADE DECISION:\s*NEUTRAL/i,
-                "<div class='decision neutral'>NEUTRAL ⚠️</div>")
-            .replace(/TRADE DECISION:\s*AVOID TRADE/i,
-                "<div class='decision avoid'>AVOID TRADE 🚫</div>");
-
-        /* ===========================
-            KEYWORD HIGHLIGHTING
-        =========================== */
-        text = text
-            .replace(/(Long|Short|Neutral)/gi, "<b>$1</b>")
-            .replace(/SL[: ]?\d+(\.\d+)?/gi, "<b style='color:#ff6b6b'>$&</b>")
-            .replace(/TP\d?[: ]?\d+(\.\d+)?/gi, "<b style='color:#7dffab'>$&</b>")
-            .replace(/RR[: ]?\d+(\.\d+)?/gi, "<b style='color:#ffd86b'>$&</b>")
-            .replace(/BIAS[: ]/gi, "<b>BIAS:</b> ");
-
-        const outHtml = renderConfidenceBar(confidence) + text;
-        document.getElementById("result").innerHTML = outHtml;
-
-        const historyBox = document.getElementById("history");
-        historyBox.innerHTML =
-            `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                ${outHtml}
-             </div>` + historyBox.innerHTML;
-    })
-    .catch(err => {
-        document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> " + err;
-    });
+                "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+        });
 }
 
-/* ===========================
-   INIT
-   =========================== */
 initConsentGate();
 showRiskModalIfNeeded();
 </script>
-
 </body>
 </html>
