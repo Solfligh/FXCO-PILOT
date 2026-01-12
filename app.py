@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify, send_from_directory
 import base64
-from openai import OpenAI
+import json
+import os
 import time
 import threading
 from werkzeug.exceptions import HTTPException
-import json
+from openai import OpenAI
 
 app = Flask(__name__)
 
@@ -13,6 +14,7 @@ app = Flask(__name__)
 # --------------------------
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB total request
 
+# Initialize OpenAI client using environment variable OPENAI_API_KEY
 client = OpenAI()
 
 # --------------------------
@@ -25,7 +27,7 @@ _rate_lock = threading.Lock()
 _rate_hits = {}  # ip -> list[timestamps]
 
 
-def _get_client_ip() -> str:
+def get_client_ip() -> str:
     xff = request.headers.get("X-Forwarded-For", "")
     if xff:
         ip = xff.split(",")[0].strip()
@@ -34,7 +36,7 @@ def _get_client_ip() -> str:
     return request.remote_addr or "unknown"
 
 
-def _rate_limited(ip: str) -> bool:
+def rate_limited(ip: str) -> bool:
     now = time.time()
     cutoff = now - RATE_LIMIT_WINDOW_SECONDS
     with _rate_lock:
@@ -53,17 +55,23 @@ def _rate_limited(ip: str) -> bool:
 # --------------------------
 @app.errorhandler(413)
 def payload_too_large(_err):
-    return jsonify({"error": "Upload too large. Please upload a smaller image (max ~2MB total request)."}), 413
+    return jsonify({
+        "error": "Upload too large. Please upload a smaller image (max ~2MB total request)."
+    }), 413
 
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(err: HTTPException):
-    return jsonify({"error": err.description or "Request failed."}), err.code or 500
+    return jsonify({
+        "error": err.description or "Request failed."
+    }), err.code or 500
 
 
 @app.errorhandler(Exception)
 def handle_unexpected_exception(err: Exception):
-    return jsonify({"error": f"Server error: {str(err)}"}), 500
+    return jsonify({
+        "error": f"Server error: {str(err)}"
+    }), 500
 
 
 # --------------------------
@@ -79,7 +87,7 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
-def _clamp_int(v, default=0, minv=0, maxv=100):
+def clamp_int(v, default=0, minv=0, maxv=100) -> int:
     try:
         n = int(v)
         return max(minv, min(maxv, n))
@@ -87,7 +95,7 @@ def _clamp_int(v, default=0, minv=0, maxv=100):
         return default
 
 
-def _normalize_analysis(obj: dict) -> dict:
+def normalize_analysis(obj: dict) -> dict:
     if not isinstance(obj, dict):
         obj = {}
 
@@ -107,9 +115,9 @@ def _normalize_analysis(obj: dict) -> dict:
 
     return {
         "bias": bias,
-        "confidence": _clamp_int(obj.get("confidence"), default=0),
-        "strength": _clamp_int(obj.get("strength"), default=0),
-        "clarity": _clamp_int(obj.get("clarity"), default=0),
+        "confidence": clamp_int(obj.get("confidence"), default=0),
+        "strength": clamp_int(obj.get("strength"), default=0),
+        "clarity": clamp_int(obj.get("clarity"), default=0),
         "signal_check": {
             "direction": str(sc.get("direction", "") or ""),
             "entry": str(sc.get("entry", "") or ""),
@@ -129,6 +137,9 @@ def _normalize_analysis(obj: dict) -> dict:
     }
 
 
+# --------------------------
+# Tool schema (forces structured output)
+# --------------------------
 TRADE_ANALYSIS_TOOL = {
     "type": "function",
     "function": {
@@ -169,19 +180,26 @@ TRADE_ANALYSIS_TOOL = {
                 "verdict": {"type": "string"},
                 "guidance": {"type": "array", "items": {"type": "string"}, "maxItems": 6}
             },
-            "required": ["bias", "confidence", "strength", "clarity", "signal_check", "market_context", "decision", "verdict", "guidance"]
+            "required": [
+                "bias", "confidence", "strength", "clarity",
+                "signal_check", "market_context",
+                "decision", "verdict", "guidance"
+            ]
         }
     }
 }
 
 
+# --------------------------
+# FX CO-PILOT — STRICT STRUCTURED ANALYZER (TOOLS)
+# --------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
-
-    
-    ip = _get_client_ip()
-    if _rate_limited(ip):
-        return jsonify({"error": f"Too many requests. Please wait and try again (limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW_SECONDS}s)."}), 429
+    ip = get_client_ip()
+    if rate_limited(ip):
+        return jsonify({
+            "error": f"Too many requests. Please wait and try again (limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW_SECONDS}s)."
+        }), 429
 
     pair_type = request.form.get("pair_type", "").strip()
     timeframe = request.form.get("timeframe", "").strip()
@@ -249,23 +267,23 @@ def analyze():
         analysis_obj = None
 
     if not isinstance(analysis_obj, dict):
-        # IMPORTANT: return a JSON error, not plain text
         return jsonify({
             "error": "AI did not return structured output. Please retry.",
             "debug_tool_args": tool_args_raw,
             "debug_msg_content": (msg.content or "")
         }), 502
 
-    analysis = _normalize_analysis(analysis_obj)
+    analysis = normalize_analysis(analysis_obj)
 
-    # ✅ ALWAYS return analysis so frontend uses renderAnalysisFromJSON
-  
-return jsonify({
+    return jsonify({
         "analysis": analysis,
         "confidence": analysis.get("confidence", 0),
         "mode": "tool_structured"
     })
 
 
+# --------------------------
+# Run local server
+# --------------------------
 if __name__ == "__main__":
     app.run(debug=True)
