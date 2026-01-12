@@ -21,7 +21,9 @@
             background-repeat: no-repeat;
             background-attachment: fixed;
             background-color: #05070b;
-            padding-bottom: 90px; 
+
+            /* reserve space so fixed footer never covers content */
+            padding-bottom: 96px;
         }
 
         .bg-overlay {
@@ -262,32 +264,32 @@
             height: 100%;
             width: 0%;
             border-radius: 999px;
-            background: linear-gradient(90deg, #00d46a, #fbbf24, #ff5050);
+            background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
             transition: width 450ms ease;
         }
 
         /* ===========================
-           FX DISCLAIMER + LEGAL LINKS
+           FX DISCLAIMER (fixed, always visible)
            =========================== */
-        .fx-disclaimer{
-  position: fixed !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  z-index: 2147483647 !important;
+        .fx-disclaimer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 2147483647;
 
-  background: rgba(10, 15, 20, 0.92) !important;
-  backdrop-filter: blur(10px) !important;
-  border-top: 1px solid rgba(255,255,255,0.10) !important;
+            background: rgba(10, 15, 20, 0.92);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.10);
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #cbd5e1;
+            text-align: center;
+        }
 
-  padding: 12px 16px !important;
-  font-size: 12px !important;
-  color: #cbd5e1 !important;
-  text-align: center !important;
-}
-
-.fx-disclaimer strong{ color:#fbbf24 !important; }
-
+        .fx-disclaimer strong {
+            color: #fbbf24;
+        }
 
         .fx-legal {
             margin-top: 8px;
@@ -296,13 +298,13 @@
             align-items: center;
             justify-content: center;
             flex-wrap: wrap;
-            opacity: 0.9;
+            opacity: 0.95;
         }
 
         .fx-legal a {
-            color: #93c5fd; /* blue-300 */
+            color: #93c5fd;
             text-decoration: none;
-            font-weight: 600;
+            font-weight: 700;
         }
 
         .fx-legal a:hover {
@@ -311,6 +313,99 @@
 
         .fx-legal .sep {
             color: rgba(255,255,255,0.25);
+        }
+
+        /* ===========================
+           LEGAL MODAL (one-page)
+           =========================== */
+        .legal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2147483646;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
+        }
+
+        .legal-modal {
+            display: none;
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2147483647;
+
+            width: 92%;
+            max-width: 900px;
+            max-height: 80vh;
+            overflow: auto;
+
+            border-radius: 18px;
+            background: rgba(18,20,28,0.92);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 12px 50px rgba(0,0,0,0.75);
+            color: #cbd5e1;
+        }
+
+        .legal-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            position: sticky;
+            top: 0;
+            background: rgba(18,20,28,0.96);
+            backdrop-filter: blur(12px);
+        }
+
+        .legal-title {
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: 0.3px;
+        }
+
+        .legal-close {
+            cursor: pointer;
+            border: none;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-weight: 800;
+        }
+
+        .legal-close:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        .legal-body {
+            padding: 18px;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .legal-body h3 {
+            margin: 16px 0 8px;
+            color: #fff;
+            font-size: 14px;
+        }
+
+        .legal-body ul {
+            padding-left: 18px;
+        }
+
+        .legal-pill {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            background: rgba(147,197,253,0.12);
+            border: 1px solid rgba(147,197,253,0.18);
+            color: #cfe4ff;
+            margin-left: 8px;
+            font-weight: 700;
         }
 
         @media(max-width: 900px){
@@ -369,13 +464,13 @@
         <label>Your signal</label>
         <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
-        <button class="btn" onclick="analyze()">Analyze</button>
+        <button class="btn" onclick="analyze()">Analyze with AI</button>
     </div>
 
     <!-- RIGHT PANEL -->
     <div class="section">
         <div class="title-small">AI Trade Decision & Analysis</div>
-        <div id="result" class="output-box">Awaiting Analysis...</div>
+        <div id="result" class="output-box">Awaiting analysis...</div>
 
         <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
         <div id="history" class="output-box" style="min-height:120px;"></div>
@@ -383,6 +478,33 @@
 
 </div> <!-- END CONTAINER -->
 
+<!-- DISCLAIMER + LEGAL LINKS (ONE PAGE) -->
+<footer class="fx-disclaimer">
+  <p style="margin:0;">
+    <strong>Disclaimer:</strong>
+    FXCO-PILOT provides AI-assisted market analysis for
+    <strong>educational and informational purposes only</strong>.
+    It does <strong>not</strong> constitute financial, investment,
+    or trading advice. Trading involves risk. Always do your own research.
+  </p>
+
+  <div class="fx-legal" aria-label="Legal links">
+    <a href="#" onclick="openLegal('terms'); return false;">Terms</a>
+    <span class="sep">•</span>
+    <a href="#" onclick="openLegal('privacy'); return false;">Privacy</a>
+  </div>
+</footer>
+
+<!-- LEGAL MODALS -->
+<div id="legalBackdrop" class="legal-backdrop"></div>
+
+<div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
+  <div class="legal-modal-header">
+    <div id="legalTitle" class="legal-title">Legal</div>
+    <button class="legal-close" onclick="closeLegal()">Close</button>
+  </div>
+  <div id="legalContent" class="legal-body"></div>
+</div>
 
 <script>
 /* ===========================
@@ -407,7 +529,6 @@ function updateClock() {
 
 updateClock();
 setInterval(updateClock, 1000);
-
 
 /* ===========================
    CONFIDENCE HELPERS
@@ -449,7 +570,105 @@ function renderConfidenceBar(percent) {
 }
 
 /* ===========================
-   AI ANALYSIS + DECISION BADGE
+   LEGAL MODAL (ONE PAGE)
+   =========================== */
+function openLegal(which){
+  const backdrop = document.getElementById("legalBackdrop");
+  const modal = document.getElementById("legalModal");
+  const title = document.getElementById("legalTitle");
+  const content = document.getElementById("legalContent");
+
+  const today = new Date().toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" });
+
+  const termsHtml = `
+    <p><b>Terms of Service</b> (Last updated: ${today})</p>
+
+    <h3>1) No Financial Advice</h3>
+    <p><b>FXCO-PILOT is for educational and informational purposes only.</b> It does not provide financial, investment, or trading advice. Trading involves risk and you may lose money. You are solely responsible for your trading decisions and outcomes.</p>
+
+    <h3>2) AI Limitations</h3>
+    <p>AI outputs are probabilistic and may be inaccurate, incomplete, or unsuitable for your situation. Any confidence score is an estimate, not a guarantee.</p>
+
+    <h3>3) Acceptable Use</h3>
+    <ul>
+      <li>Do not abuse, disrupt, hack, or attempt to bypass security.</li>
+      <li>Do not upload unlawful content or content that violates others’ rights.</li>
+      <li>We may limit or suspend access if misuse is detected.</li>
+    </ul>
+
+    <h3>4) Availability</h3>
+    <p>We may modify, pause, or discontinue the Service at any time. We do not guarantee uninterrupted availability.</p>
+
+    <h3>5) Disclaimer of Warranties</h3>
+    <p>The Service is provided “as is” and “as available,” without warranties of any kind.</p>
+
+    <h3>6) Limitation of Liability</h3>
+    <p>To the maximum extent permitted by law, we are not liable for trading losses, lost profits, or indirect damages arising from your use of the Service.</p>
+
+    <h3>7) Changes</h3>
+    <p>We may update these terms from time to time. Continued use after changes means you accept the updated Terms.</p>
+  `;
+
+  const privacyHtml = `
+    <p><b>Privacy Policy</b> <span class="legal-pill">Minimal Data</span> (Last updated: ${today})</p>
+
+    <h3>1) What We Collect</h3>
+    <ul>
+      <li><b>Inputs you provide:</b> signals you paste and optional chart uploads (processed to generate analysis).</li>
+      <li><b>Basic technical data:</b> IP address, user-agent, timestamps for security and reliability (host dependent).</li>
+      <li><b>Optional analytics:</b> only if enabled (e.g., GA4 page views).</li>
+    </ul>
+
+    <h3>2) How We Use Data</h3>
+    <ul>
+      <li>To generate analysis output and improve reliability.</li>
+      <li>To prevent abuse, spam, and attacks.</li>
+      <li>To understand general usage trends if analytics are enabled.</li>
+    </ul>
+
+    <h3>3) Sharing</h3>
+    <p>We do not sell your personal information. We may share data only when necessary to operate the Service or if required by law.</p>
+
+    <h3>4) Retention</h3>
+    <p>Retention depends on your hosting configuration. Some setups may store logs for security and debugging for a limited period. The “Previous Analyses” panel shown on this page is stored in your current browser session unless your backend persists it.</p>
+
+    <h3>5) Your Choices</h3>
+    <ul>
+      <li>You can avoid uploading charts and use text-only signals.</li>
+      <li>You can stop using the Service at any time.</li>
+      <li>You can control analytics/cookies through browser settings (if used).</li>
+    </ul>
+  `;
+
+  if(which === "terms"){
+    title.textContent = "Terms of Service";
+    content.innerHTML = termsHtml;
+  } else {
+    title.textContent = "Privacy Policy";
+    content.innerHTML = privacyHtml;
+  }
+
+  backdrop.style.display = "block";
+  modal.style.display = "block";
+
+  // basic escape key
+  document.addEventListener("keydown", onLegalEsc);
+}
+
+function closeLegal(){
+  document.getElementById("legalBackdrop").style.display = "none";
+  document.getElementById("legalModal").style.display = "none";
+  document.removeEventListener("keydown", onLegalEsc);
+}
+
+function onLegalEsc(e){
+  if(e.key === "Escape") closeLegal();
+}
+
+document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
+
+/* ===========================
+   AI ANALYSIS + DECISION BADGE + CONFIDENCE
    =========================== */
 function analyze() {
     const formData = new FormData();
@@ -461,6 +680,9 @@ function analyze() {
     if (file) {
         formData.append("chart_image", file);
     }
+
+    // UI feedback
+    document.getElementById("result").innerHTML = "Analyzing...";
 
     fetch("/analyze", {
         method: "POST",
@@ -474,12 +696,13 @@ function analyze() {
             return;
         }
 
-        let raw = data.result || "";
+        const raw = (data.result || "");
 
-        // Confidence priority: explicit field -> parse from text -> infer
+        // B) Best: backend returns { confidence: 0-100 }
         let confidence =
             (typeof data.confidence === "number" ? clamp(data.confidence, 0, 100) : null);
 
+        // fallback: parse "CONFIDENCE: 78%" from text
         if (confidence === null) {
             const parsed = parseConfidenceFromText(raw);
             confidence = (parsed === null) ? inferConfidenceFromDecision(raw) : parsed;
@@ -508,10 +731,11 @@ function analyze() {
             .replace(/RR[: ]?\d+(\.\d+)?/gi, "<b style='color:#ffd86b'>$&</b>")
             .replace(/BIAS[: ]/gi, "<b>BIAS:</b> ");
 
-        /* ===========================
-            DISPLAY RESULT (prepend confidence bar)
-        =========================== */
         const outHtml = renderConfidenceBar(confidence) + text;
+
+        /* ===========================
+            DISPLAY RESULT
+        =========================== */
         document.getElementById("result").innerHTML = outHtml;
 
         /* ===========================
@@ -529,23 +753,6 @@ function analyze() {
     });
 }
 </script>
-
-<!-- DISCLAIMER + LEGAL -->
-<footer class="fx-disclaimer">
-  <p>
-    <strong>Disclaimer:</strong>
-    FXCO-PILOT provides AI-assisted market analysis for
-    <strong>educational and informational purposes only</strong>.
-    It does <strong>not</strong> constitute financial, investment,
-    or trading advice. Trading involves risk. Always do your own research.
-  </p>
-
-  <div class="fx-legal" aria-label="Legal links">
-    <a href="/terms.html">Terms</a>
-    <span class="sep">•</span>
-    <a href="/privacy.html">Privacy</a>
-  </div>
-</footer>
 
 </body>
 </html>
