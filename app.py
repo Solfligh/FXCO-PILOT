@@ -261,14 +261,11 @@ def analyze():
     # ✅ ALWAYS return analysis so frontend uses renderAnalysisFromJSON
   
 return jsonify({
-    "analysis": analysis,
-    "confidence": analysis.get("confidence", 0),
-    "mode": "tool_structured",
-    "debug": {
-        "has_tool_calls": bool(msg.tool_calls) if msg else False,
-        "tool_args_preview": tool_args_raw[:160] if tool_args_raw else None
-    }
-})
+        "analysis": analysis,
+        "confidence": analysis.get("confidence", 0),
+        "mode": "tool_structured"
+    })
+
 
 if __name__ == "__main__":
     app.run(debug=True)
