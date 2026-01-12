@@ -1,23 +1,19 @@
 from flask import Flask, request, jsonify, send_from_directory
 import base64
 from openai import OpenAI
-import re
 import time
 import threading
 from werkzeug.exceptions import HTTPException
+import json
 
 app = Flask(__name__)
 
 # --------------------------
 # HARD LIMITS (UPLOAD / REQUEST SIZE)
 # --------------------------
-# Total request size limit (includes fields + file).
-# If you upload big charts, increase this (e.g. 4 * 1024 * 1024).
-app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2MB total request
 
-# Initialize OpenAI client using environment variable OPENAI_API_KEY
 client = OpenAI()
-
 
 # --------------------------
 # SIMPLE IN-MEMORY RATE LIMITER (PER IP)
@@ -75,9 +71,6 @@ def payload_too_large(_err):
 
 @app.errorhandler(HTTPException)
 def handle_http_exception(err: HTTPException):
-    """
-    Ensures 404/405/etc return JSON instead of HTML.
-    """
     return jsonify({
         "error": err.description or "Request failed."
     }), err.code or 500
@@ -85,9 +78,6 @@ def handle_http_exception(err: HTTPException):
 
 @app.errorhandler(Exception)
 def handle_unexpected_exception(err: Exception):
-    """
-    Ensures ANY unexpected error returns JSON (prevents HTML debug page breaking fetch JSON).
-    """
     return jsonify({
         "error": f"Server error: {str(err)}"
     }), 500
@@ -106,135 +96,215 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
+def _safe_int(v, default=None, minv=0, maxv=100):
+    try:
+        n = int(v)
+        if n < minv:
+            return minv
+        if n > maxv:
+            return maxv
+        return n
+    except Exception:
+        return default
+
+
+def _normalize_analysis(obj: dict) -> dict:
+    """
+    Ensure keys exist + clamp numeric fields.
+    """
+    if not isinstance(obj, dict):
+        obj = {}
+
+    obj.setdefault("bias", "Unclear")
+    obj["confidence"] = _safe_int(obj.get("confidence"), default=None, minv=0, maxv=100)
+    obj["strength"] = _safe_int(obj.get("strength"), default=None, minv=0, maxv=100)
+    obj["clarity"] = _safe_int(obj.get("clarity"), default=None, minv=0, maxv=100)
+
+    obj.setdefault("decision", "NEUTRAL")
+    obj.setdefault("verdict", "")
+    obj.setdefault("guidance", [])
+
+    if not isinstance(obj.get("guidance"), list):
+        obj["guidance"] = []
+
+    obj.setdefault("signal_check", {})
+    if not isinstance(obj["signal_check"], dict):
+        obj["signal_check"] = {}
+
+    obj.setdefault("market_context", {})
+    if not isinstance(obj["market_context"], dict):
+        obj["market_context"] = {}
+
+    return obj
+
+
+def _render_text_from_analysis(a: dict) -> str:
+    """
+    Provide a human-readable fallback string (not required by the new UI, but useful).
+    """
+    bias = a.get("bias") or "Unclear"
+    decision = (a.get("decision") or "NEUTRAL").upper()
+    conf = a.get("confidence")
+    strength = a.get("strength")
+    clarity = a.get("clarity")
+
+    parts = []
+    parts.append(f"BIAS: {bias}")
+    if conf is not None:
+        parts.append(f"CONFIDENCE: {conf}%")
+    if strength is not None:
+        parts.append(f"STRENGTH: {strength}")
+    if clarity is not None:
+        parts.append(f"CLARITY: {clarity}")
+
+    sc = a.get("signal_check") or {}
+    parts.append("\nSIGNAL CHECK:")
+    parts.append(f"- Parsed direction: {sc.get('direction','')}")
+    parts.append(f"- Entry: {sc.get('entry','')}")
+    parts.append(f"- Stop loss: {sc.get('stop_loss','')}")
+    parts.append(f"- Targets: {sc.get('targets','')}")
+    parts.append(f"- Approx RR: {sc.get('rr','')}")
+
+    mc = a.get("market_context") or {}
+    parts.append("\nMARKET CONTEXT:")
+    parts.append(f"- Structure: {mc.get('structure','')}")
+    parts.append(f"- Liquidity: {mc.get('liquidity','')}")
+    parts.append(f"- Momentum: {mc.get('momentum','')}")
+    parts.append(f"- Timeframe alignment: {mc.get('timeframe_alignment','')}")
+
+    parts.append("\nTRADE DECISION:")
+    parts.append(decision)
+
+    if a.get("verdict"):
+        parts.append("\nVERDICT:")
+        parts.append(a["verdict"])
+
+    if a.get("guidance"):
+        parts.append("\nGUIDANCE:")
+        for g in a["guidance"][:6]:
+            parts.append(f"- {str(g)}")
+
+    return "\n".join(parts).strip()
+
+
 # --------------------------
-# FX CO-PILOT — PRO ANALYZER
+# FX CO-PILOT — STRICT JSON ANALYZER
 # --------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    try:
-        # Rate-limit early
-        ip = _get_client_ip()
-        if _rate_limited(ip):
-            return jsonify({
-                "error": f"Too many requests. Please wait and try again (limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW_SECONDS}s)."
-            }), 429
-
-        pair_type = request.form.get("pair_type", "").strip()
-        timeframe = request.form.get("timeframe", "").strip()
-        signal_text = request.form.get("signal_input", "").strip()
-
-        file = request.files.get("chart_image")
-
-        if not signal_text and not (file and file.filename):
-            return jsonify({"error": "Please paste a signal or upload a chart image."}), 400
-
-        # Optional image -> base64
-        img_base64 = None
-        if file and file.filename:
-            img_bytes = file.read()
-            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-
-        base_prompt = f"""
-You are FX CO-PILOT — an institutional-grade trade validation engine operating in PRO MODE.
-
-User Context:
-- Pair type: {pair_type}
-- Timeframe mode: {timeframe}
-- Raw signal (may be unstructured):
-\"\"\"{signal_text}\"\"\"
-
-Your Tasks:
-1. Parse the full signal:
-   - Instrument
-   - Direction (Long / Short / Neutral / Unclear)
-   - Entry or entry zone
-   - Stop loss
-   - Take profit levels
-   - RR estimation
-
-2. Analyze market logic:
-   - Structure (HH, LL, CHoCH, BOS)
-   - Liquidity zones (equal highs/lows, sweep zones)
-   - Momentum & volatility
-   - Timeframe alignment
-
-3. If a chart screenshot is provided, use it to refine:
-   - Trend
-   - Liquidity grabs
-   - Break-of-structure
-   - High-probability zones
-
-4. Produce a final decision:
-   TAKE TRADE / NEUTRAL / AVOID TRADE
-
-5. Output Format (follow exactly):
-
-BIAS: <Long | Short | Neutral | Unclear>
-CONFIDENCE: <0-100%>
-STRENGTH: <0-100>
-CLARITY: <0-100>
-
-SIGNAL CHECK:
-- Parsed direction: ...
-- Entry: ...
-- Stop loss: ...
-- Targets: ...
-- Approx RR: ...
-
-MARKET CONTEXT:
-- Structure:
-- Liquidity:
-- Momentum:
-- Timeframe alignment:
-
-TRADE DECISION:
-<One of: TAKE TRADE / NEUTRAL / AVOID TRADE>
-
-VERDICT:
-<1 sentence summary>
-
-GUIDANCE:
-- Tip 1
-- Tip 2
-- Tip 3
-"""
-
-        messages = [
-            {"role": "system", "content": "You are FX Co-Pilot, an expert AI trade validator operating in institutional PRO MODE."},
-            {"role": "user", "content": base_prompt},
-        ]
-
-        if img_base64:
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure, liquidity, trend, and probability."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-                ]
-            })
-
-        completion = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=messages,
-            temperature=0.2
-        )
-
-        answer = completion.choices[0].message.content or ""
-
-        confidence = None
-        match = re.search(r"CONFIDENCE\s*:\s*(\d{1,3})\s*%?", answer, re.IGNORECASE)
-        if match:
-            confidence = int(match.group(1))
-            confidence = max(0, min(confidence, 100))
-
+    ip = _get_client_ip()
+    if _rate_limited(ip):
         return jsonify({
-            "result": answer,
-            "confidence": confidence
+            "error": f"Too many requests. Please wait and try again (limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW_SECONDS}s)."
+        }), 429
+
+    pair_type = request.form.get("pair_type", "").strip()
+    timeframe = request.form.get("timeframe", "").strip()
+    signal_text = request.form.get("signal_input", "").strip()
+
+    file = request.files.get("chart_image")
+
+    if not signal_text and not (file and file.filename):
+        return jsonify({"error": "Please paste a signal or upload a chart image."}), 400
+
+    img_base64 = None
+    if file and file.filename:
+        img_bytes = file.read()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    # STRICT JSON schema instructions (keep simple, but explicit)
+    system = (
+        "You are FX CO-PILOT — an institutional-grade trade validation engine.\n"
+        "Return ONLY valid JSON. No markdown. No extra text.\n"
+        "All numeric scores are integers 0-100.\n"
+        "decision must be exactly one of: TAKE TRADE, NEUTRAL, AVOID TRADE."
+    )
+
+    user_prompt = {
+        "pair_type": pair_type,
+        "timeframe_mode": timeframe,
+        "raw_signal": signal_text
+    }
+
+    # Required output format (JSON object)
+    required_format = {
+        "bias": "Long | Short | Neutral | Unclear",
+        "confidence": 0,
+        "strength": 0,
+        "clarity": 0,
+        "signal_check": {
+            "direction": "",
+            "entry": "",
+            "stop_loss": "",
+            "targets": "",
+            "rr": ""
+        },
+        "market_context": {
+            "structure": "",
+            "liquidity": "",
+            "momentum": "",
+            "timeframe_alignment": ""
+        },
+        "decision": "TAKE TRADE | NEUTRAL | AVOID TRADE",
+        "verdict": "",
+        "guidance": ["", "", ""]
+    }
+
+    messages = [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": (
+                "Analyze the user's signal and return a JSON object matching this structure.\n"
+                f"USER_CONTEXT={json.dumps(user_prompt, ensure_ascii=False)}\n"
+                f"REQUIRED_FORMAT={json.dumps(required_format, ensure_ascii=False)}\n"
+                "Rules:\n"
+                "- If some fields are missing, keep them as empty strings.\n"
+                "- Always include all top-level keys.\n"
+                "- decision must be one of: TAKE TRADE, NEUTRAL, AVOID TRADE.\n"
+                "- confidence/strength/clarity must be integers 0-100.\n"
+            )
+        }
+    ]
+
+    if img_base64:
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Chart screenshot provided. Use it to refine structure/liquidity/trend/probability."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
+            ]
         })
 
-    except Exception as e:
-        # Belt + suspenders: ensure /analyze ALWAYS returns JSON
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
+    # Call model with STRICT JSON output
+    completion = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=messages,
+        temperature=0.2,
+        response_format={"type": "json_object"}
+    )
+
+    raw_json = completion.choices[0].message.content or "{}"
+
+    # Parse JSON safely
+    try:
+        parsed = json.loads(raw_json)
+    except Exception:
+        # As a fallback, still return the raw content (frontend can show it)
+        return jsonify({
+            "result": raw_json,
+            "analysis": None,
+            "confidence": None
+        })
+
+    analysis = _normalize_analysis(parsed)
+    result_text = _render_text_from_analysis(analysis)
+
+    return jsonify({
+        "analysis": analysis,
+        "confidence": analysis.get("confidence"),
+        "result": result_text  # friendly fallback for older UI
+    })
 
 
 if __name__ == "__main__":
