@@ -49,18 +49,11 @@ def _rate_limited(ip: str) -> bool:
         hits.append(now)
         _rate_hits[ip] = hits
 
-        # small cleanup
-        if len(_rate_hits) > 5000:
-            stale_cutoff = now - (RATE_LIMIT_WINDOW_SECONDS * 5)
-            for k in list(_rate_hits.keys()):
-                if not _rate_hits[k] or _rate_hits[k][-1] < stale_cutoff:
-                    _rate_hits.pop(k, None)
-
     return False
 
 
 # --------------------------
-# JSON ERROR HANDLING (CRITICAL)
+# JSON ERROR HANDLING
 # --------------------------
 @app.errorhandler(413)
 def payload_too_large(_err):
@@ -96,35 +89,31 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
-def _safe_int(v, default=None, minv=0, maxv=100):
+def _clamp_int(v, default=None, minv=0, maxv=100):
     try:
         n = int(v)
-        if n < minv:
-            return minv
-        if n > maxv:
-            return maxv
-        return n
+        return max(minv, min(maxv, n))
     except Exception:
         return default
 
 
 def _normalize_analysis(obj: dict) -> dict:
-    """
-    Ensure keys exist + clamp numeric fields.
-    """
     if not isinstance(obj, dict):
         obj = {}
 
     obj.setdefault("bias", "Unclear")
-    obj["confidence"] = _safe_int(obj.get("confidence"), default=None, minv=0, maxv=100)
-    obj["strength"] = _safe_int(obj.get("strength"), default=None, minv=0, maxv=100)
-    obj["clarity"] = _safe_int(obj.get("clarity"), default=None, minv=0, maxv=100)
+    obj["confidence"] = _clamp_int(obj.get("confidence"), default=None)
+    obj["strength"] = _clamp_int(obj.get("strength"), default=None)
+    obj["clarity"] = _clamp_int(obj.get("clarity"), default=None)
 
-    obj.setdefault("decision", "NEUTRAL")
+    decision = (obj.get("decision") or "NEUTRAL").upper()
+    if decision not in ["TAKE TRADE", "NEUTRAL", "AVOID TRADE"]:
+        decision = "NEUTRAL"
+    obj["decision"] = decision
+
     obj.setdefault("verdict", "")
     obj.setdefault("guidance", [])
-
-    if not isinstance(obj.get("guidance"), list):
+    if not isinstance(obj["guidance"], list):
         obj["guidance"] = []
 
     obj.setdefault("signal_check", {})
@@ -135,60 +124,74 @@ def _normalize_analysis(obj: dict) -> dict:
     if not isinstance(obj["market_context"], dict):
         obj["market_context"] = {}
 
+    # Ensure expected keys exist (safe defaults)
+    sc = obj["signal_check"]
+    sc.setdefault("direction", "")
+    sc.setdefault("entry", "")
+    sc.setdefault("stop_loss", "")
+    sc.setdefault("targets", "")
+    sc.setdefault("rr", "")
+
+    mc = obj["market_context"]
+    mc.setdefault("structure", "")
+    mc.setdefault("liquidity", "")
+    mc.setdefault("momentum", "")
+    mc.setdefault("timeframe_alignment", "")
+
     return obj
 
 
-def _render_text_from_analysis(a: dict) -> str:
-    """
-    Provide a human-readable fallback string (not required by the new UI, but useful).
-    """
-    bias = a.get("bias") or "Unclear"
-    decision = (a.get("decision") or "NEUTRAL").upper()
-    conf = a.get("confidence")
-    strength = a.get("strength")
-    clarity = a.get("clarity")
-
-    parts = []
-    parts.append(f"BIAS: {bias}")
-    if conf is not None:
-        parts.append(f"CONFIDENCE: {conf}%")
-    if strength is not None:
-        parts.append(f"STRENGTH: {strength}")
-    if clarity is not None:
-        parts.append(f"CLARITY: {clarity}")
-
-    sc = a.get("signal_check") or {}
-    parts.append("\nSIGNAL CHECK:")
-    parts.append(f"- Parsed direction: {sc.get('direction','')}")
-    parts.append(f"- Entry: {sc.get('entry','')}")
-    parts.append(f"- Stop loss: {sc.get('stop_loss','')}")
-    parts.append(f"- Targets: {sc.get('targets','')}")
-    parts.append(f"- Approx RR: {sc.get('rr','')}")
-
-    mc = a.get("market_context") or {}
-    parts.append("\nMARKET CONTEXT:")
-    parts.append(f"- Structure: {mc.get('structure','')}")
-    parts.append(f"- Liquidity: {mc.get('liquidity','')}")
-    parts.append(f"- Momentum: {mc.get('momentum','')}")
-    parts.append(f"- Timeframe alignment: {mc.get('timeframe_alignment','')}")
-
-    parts.append("\nTRADE DECISION:")
-    parts.append(decision)
-
-    if a.get("verdict"):
-        parts.append("\nVERDICT:")
-        parts.append(a["verdict"])
-
-    if a.get("guidance"):
-        parts.append("\nGUIDANCE:")
-        for g in a["guidance"][:6]:
-            parts.append(f"- {str(g)}")
-
-    return "\n".join(parts).strip()
+# --------------------------
+# Tool schema (forces structured output)
+# --------------------------
+TRADE_ANALYSIS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "trade_analysis",
+        "description": "Return a structured trade analysis object.",
+        "parameters": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "bias": {"type": "string", "enum": ["Long", "Short", "Neutral", "Unclear"]},
+                "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+                "strength": {"type": "integer", "minimum": 0, "maximum": 100},
+                "clarity": {"type": "integer", "minimum": 0, "maximum": 100},
+                "signal_check": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "direction": {"type": "string"},
+                        "entry": {"type": "string"},
+                        "stop_loss": {"type": "string"},
+                        "targets": {"type": "string"},
+                        "rr": {"type": "string"}
+                    },
+                    "required": ["direction", "entry", "stop_loss", "targets", "rr"]
+                },
+                "market_context": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "structure": {"type": "string"},
+                        "liquidity": {"type": "string"},
+                        "momentum": {"type": "string"},
+                        "timeframe_alignment": {"type": "string"}
+                    },
+                    "required": ["structure", "liquidity", "momentum", "timeframe_alignment"]
+                },
+                "decision": {"type": "string", "enum": ["TAKE TRADE", "NEUTRAL", "AVOID TRADE"]},
+                "verdict": {"type": "string"},
+                "guidance": {"type": "array", "items": {"type": "string"}, "minItems": 0, "maxItems": 6}
+            },
+            "required": ["bias", "confidence", "strength", "clarity", "signal_check", "market_context", "decision", "verdict", "guidance"]
+        }
+    }
+}
 
 
 # --------------------------
-# FX CO-PILOT — STRICT JSON ANALYZER
+# FX CO-PILOT — STRICT STRUCTURED ANALYZER (TOOLS)
 # --------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -203,7 +206,6 @@ def analyze():
     signal_text = request.form.get("signal_input", "").strip()
 
     file = request.files.get("chart_image")
-
     if not signal_text and not (file and file.filename):
         return jsonify({"error": "Please paste a signal or upload a chart image."}), 400
 
@@ -212,59 +214,25 @@ def analyze():
         img_bytes = file.read()
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
-    # STRICT JSON schema instructions (keep simple, but explicit)
     system = (
         "You are FX CO-PILOT — an institutional-grade trade validation engine.\n"
-        "Return ONLY valid JSON. No markdown. No extra text.\n"
-        "All numeric scores are integers 0-100.\n"
-        "decision must be exactly one of: TAKE TRADE, NEUTRAL, AVOID TRADE."
+        "You MUST call the tool `trade_analysis` with your structured result.\n"
+        "All scores must be integers 0-100.\n"
+        "decision must be exactly one of: TAKE TRADE, NEUTRAL, AVOID TRADE.\n"
+        "Keep fields concise and actionable."
     )
 
-    user_prompt = {
-        "pair_type": pair_type,
-        "timeframe_mode": timeframe,
-        "raw_signal": signal_text
-    }
-
-    # Required output format (JSON object)
-    required_format = {
-        "bias": "Long | Short | Neutral | Unclear",
-        "confidence": 0,
-        "strength": 0,
-        "clarity": 0,
-        "signal_check": {
-            "direction": "",
-            "entry": "",
-            "stop_loss": "",
-            "targets": "",
-            "rr": ""
-        },
-        "market_context": {
-            "structure": "",
-            "liquidity": "",
-            "momentum": "",
-            "timeframe_alignment": ""
-        },
-        "decision": "TAKE TRADE | NEUTRAL | AVOID TRADE",
-        "verdict": "",
-        "guidance": ["", "", ""]
-    }
+    user_text = (
+        f"Pair type: {pair_type}\n"
+        f"Timeframe mode: {timeframe}\n"
+        f"Raw signal:\n{signal_text}\n\n"
+        "Analyze structure, liquidity, momentum, alignment. If chart is missing, state assumptions.\n"
+        "Return the structured result via the tool call."
+    )
 
     messages = [
         {"role": "system", "content": system},
-        {
-            "role": "user",
-            "content": (
-                "Analyze the user's signal and return a JSON object matching this structure.\n"
-                f"USER_CONTEXT={json.dumps(user_prompt, ensure_ascii=False)}\n"
-                f"REQUIRED_FORMAT={json.dumps(required_format, ensure_ascii=False)}\n"
-                "Rules:\n"
-                "- If some fields are missing, keep them as empty strings.\n"
-                "- Always include all top-level keys.\n"
-                "- decision must be one of: TAKE TRADE, NEUTRAL, AVOID TRADE.\n"
-                "- confidence/strength/clarity must be integers 0-100.\n"
-            )
-        }
+        {"role": "user", "content": user_text},
     ]
 
     if img_base64:
@@ -276,37 +244,44 @@ def analyze():
             ]
         })
 
-    # Call model with STRICT JSON output
+    # Force tool call (this is the key)
     completion = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=messages,
+        tools=[TRADE_ANALYSIS_TOOL],
+        tool_choice={"type": "function", "function": {"name": "trade_analysis"}},
         temperature=0.2,
-        response_format={"type": "json_object"}
     )
 
-    raw_json = completion.choices[0].message.content or "{}"
+    msg = completion.choices[0].message
 
-    # Parse JSON safely
+    # Extract tool args
+    analysis_obj = None
     try:
-        parsed = json.loads(raw_json)
+        if msg.tool_calls and len(msg.tool_calls) > 0:
+            tc = msg.tool_calls[0]
+            args = tc.function.arguments  # JSON string
+            analysis_obj = json.loads(args)
     except Exception:
-        # As a fallback, still return the raw content (frontend can show it)
+        analysis_obj = None
+
+    if not analysis_obj:
+        # Worst-case fallback (still return something JSON to frontend)
         return jsonify({
-            "result": raw_json,
             "analysis": None,
-            "confidence": None
+            "confidence": None,
+            "result": (msg.content or "").strip() or "No structured result returned."
         })
 
-    analysis = _normalize_analysis(parsed)
-    result_text = _render_text_from_analysis(analysis)
+    analysis = _normalize_analysis(analysis_obj)
 
     return jsonify({
         "analysis": analysis,
         "confidence": analysis.get("confidence"),
-        "result": result_text  # friendly fallback for older UI
+        # Keep a small human-readable fallback too (optional)
+        "result": f"BIAS: {analysis.get('bias')} | CONFIDENCE: {analysis.get('confidence')}% | DECISION: {analysis.get('decision')}"
     })
 
 
 if __name__ == "__main__":
-    # In production: debug=False
     app.run(debug=True)
