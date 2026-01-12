@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FX Co-Pilot – AI Trade Validator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ===========================
+           GLOBAL BACKGROUND
+           =========================== */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Poppins", sans-serif;
+
+            background-image: url("/static/bg_fx_4k.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-color: #05070b;
+        }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        /* ===========================
+           A2 ELITE WATERMARK
+           =========================== */
+        .watermark {
+            position: fixed;
+            right: 32px;
+            bottom: 32px;
+            font-size: 15px;
+            font-weight: 300;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            user-select: none;
+            pointer-events: none;
+            z-index: 999;
+            font-family: "Poppins", sans-serif;
+
+            background: linear-gradient(
+                to right,
+                rgba(255,255,255,0.18),
+                rgba(255,255,255,0.28),
+                rgba(255,255,255,0.18)
+            );
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+
+            text-shadow: 0 0 12px rgba(255,255,255,0.08);
+            filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
+        }
+
+        /* ===========================
+           TOPBAR (LIVE MARKET CLOCK)
+           =========================== */
+        .topbar {
+            width: 100%;
+            padding: 12px 25px;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #dce1e7;
+            font-size: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 900;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+        }
+
+        .sessions span {
+            margin-right: 20px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .open { background: #00d46a22; color: #00d46a; }
+        .closed { background: #ff444422; color: #ff7777; }
+
+        /* ===========================
+           GLASS-MORPHISM PANEL
+           =========================== */
+        .container {
+            max-width: 1300px;
+            margin: 50px auto;
+            padding: 40px;
+            border-radius: 18px;
+
+            background: rgba(18,20,28,0.35);
+            backdrop-filter: blur(18px);
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 8px 35px rgba(0,0,0,0.5);
+
+            display: flex;
+            gap: 40px;
+        }
+
+        h1 {
+            font-size: 38px;
+            color: #ffffff;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .badge {
+            background: #00d46a;
+            padding: 4px 10px;
+            font-weight: 600;
+            color: black;
+            font-size: 12px;
+            border-radius: 8px;
+        }
+
+        .section { flex: 1; }
+
+        label {
+            color: #cfd3d8;
+            margin-bottom: 6px;
+            font-size: 14px;
+            display: block;
+        }
+
+        select, textarea, input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border: none;
+            background: #0b0d14cc;
+            backdrop-filter: blur(6px);
+            color: #cfd3d8;
+            font-size: 14px;
+        }
+
+        textarea { height: 110px; resize: none; }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border-radius: 10px;
+            border: none;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(90deg, #00d46a, #0ebb53);
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 20px rgba(0,255,140,0.4);
+        }
+
+        /* OUTPUT BOX */
+        .output-box {
+            background: rgba(0,0,0,0.45);
+            border-radius: 12px;
+            padding: 20px;
+            color: #dce1e7;
+            min-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.05);
+            backdrop-filter: blur(8px);
+        }
+
+        .title-small {
+            color: #cfd3d8;
+            opacity: 0.8;
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+
+        /* ===========================
+           TRADE DECISION BADGES
+           =========================== */
+        .decision {
+            padding: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .take {
+            color: #00ff9c;
+            background: rgba(0,255,140,0.20);
+            border: 1px solid #00ff9c44;
+        }
+
+        .neutral {
+            color: #ffd700;
+            background: rgba(255,215,0,0.20);
+            border: 1px solid #ffd70055;
+        }
+
+        .avoid {
+            color: #ff5050;
+            background: rgba(255,80,80,0.20);
+            border: 1px solid #ff505055;
+        }
+
+        @media(max-width: 900px){
+            .container {
+                flex-direction: column;
+                margin: 20px;
+                padding: 25px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="bg-overlay"></div>
+<div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
+
+<!-- TOPBAR -->
+<div class="topbar">
+    <div id="clock">Loading time...</div>
+    <div class="sessions">
+        <span id="london" class="closed">London</span>
+        <span id="newyork" class="closed">New York</span>
+        <span id="tokyo" class="closed">Tokyo</span>
+    </div>
+</div>
+
+<!-- MAIN UI -->
+<div class="container">
+
+    <!-- LEFT PANEL -->
+    <div class="section">
+        <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
+        <p style="color:#cfd3d8; margin-bottom:25px;">
+            Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
+        </p>
+
+        <label>Pair Type</label>
+        <select id="pairType">
+            <option>Forex</option>
+            <option>Gold</option>
+            <option>Crypto</option>
+            <option>Indices</option>
+        </select>
+
+        <label>Timeframe Mode</label>
+        <select id="timeframe">
+            <option>Scalp</option>
+            <option>Intraday</option>
+            <option>Swing</option>
+        </select>
+
+        <label>Chart (optional)</label>
+        <input type="file" id="chart">
+
+        <label>Your signal</label>
+        <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+
+        <button class="btn" onclick="analyze()">Analyze with AI</button>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="section">
+        <div class="title-small">AI Trade Decision & Analysis</div>
+        <div id="result" class="output-box">Awaiting analysis...</div>
+
+        <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
+        <div id="history" class="output-box" style="min-height:120px;"></div>
+    </div>
+
+</div> <!-- END CONTAINER -->
+ 
+<script>
+/* ===========================
+   LIVE UTC CLOCK + SESSIONS
+   =========================== */
+function updateClock() {
+    const now = new Date();
+    document.getElementById("clock").innerText =
+        now.toUTCString().replace("GMT", "UTC");
+
+    const hour = now.getUTCHours();
+
+    function setStatus(id, open) {
+        document.getElementById(id).className = open ? "open" : "closed";
+    }
+
+    // Session times (UTC)
+    setStatus("london", hour >= 7 && hour < 16);
+    setStatus("newyork", hour >= 12 && hour < 21);
+    setStatus("tokyo", hour >= 0 && hour < 9);
+}
+
+updateClock();
+setInterval(updateClock, 1000);
+
+
+/* ===========================
+   AI ANALYSIS + DECISION BADGE
+   =========================== */
+function analyze() {
+    const formData = new FormData();
+    formData.append("pair_type", document.getElementById("pairType").value);
+    formData.append("timeframe", document.getElementById("timeframe").value);
+    formData.append("signal_input", document.getElementById("signal").value);
+
+    const file = document.getElementById("chart").files[0];
+    if (file) {
+        formData.append("chart_image", file);
+    }
+
+    fetch("/analyze", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.error) {
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>Error:</b> " + data.error;
+            return;
+        }
+
+        let text = data.result;
+
+        /* ===========================
+            TRADE DECISION BADGE
+        =========================== */
+        text = text
+            .replace(/TRADE DECISION:\s*TAKE TRADE/i,
+                "<div class='decision take'>TAKE TRADE 👍</div>")
+            .replace(/TRADE DECISION:\s*NEUTRAL/i,
+                "<div class='decision neutral'>NEUTRAL ⚠️</div>")
+            .replace(/TRADE DECISION:\s*AVOID TRADE/i,
+                "<div class='decision avoid'>AVOID TRADE 🚫</div>");
+
+        /* ===========================
+            KEYWORD HIGHLIGHTING
+        =========================== */
+        text = text
+            .replace(/(Long|Short|Neutral)/gi, "<b>$1</b>")
+            .replace(/SL[: ]?\d+(\.\d+)?/gi, "<b style='color:#ff6b6b'>$&</b>")
+            .replace(/TP\d?[: ]?\d+(\.\d+)?/gi, "<b style='color:#7dffab'>$&</b>")
+            .replace(/RR[: ]?\d+(\.\d+)?/gi, "<b style='color:#ffd86b'>$&</b>")
+            .replace(/BIAS[: ]/gi, "<b>BIAS:</b> ");
+
+        /* ===========================
+            DISPLAY RESULT
+        =========================== */
+        document.getElementById("result").innerHTML = text;
+
+        /* ===========================
+            HISTORY LOG
+        =========================== */
+        const historyBox = document.getElementById("history");
+        historyBox.innerHTML =
+            `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                ${text}
+             </div>` + historyBox.innerHTML;
+    })
+    .catch(err => {
+        document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed:</b> " + err;
+    });
+}
+</script>
+
+</body>
+</html>
