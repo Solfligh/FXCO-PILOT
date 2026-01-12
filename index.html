@@ -22,8 +22,8 @@
             background-attachment: fixed;
             background-color: #05070b;
 
-            /* reserve space so fixed footer never covers content */
-            padding-bottom: 96px;
+            /* reserve space so fixed footer doesn't cover content */
+            padding-bottom: 90px;
         }
 
         .bg-overlay {
@@ -167,6 +167,14 @@
             box-shadow: 0 0 20px rgba(0,255,140,0.4);
         }
 
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+            transform: none;
+            box-shadow: none;
+            background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
+        }
+
         /* OUTPUT BOX */
         .output-box {
             background: rgba(0,0,0,0.45);
@@ -264,12 +272,54 @@
             height: 100%;
             width: 0%;
             border-radius: 999px;
-            background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
+            background: linear-gradient(90deg, #00d46a, #fbbf24, #ff5050);
             transition: width 450ms ease;
         }
 
         /* ===========================
-           FX DISCLAIMER (fixed, always visible)
+           CONSENT CHECKBOX (TERMS/PRIVACY)
+           =========================== */
+        .consent-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: -6px 0 16px;
+            padding: 12px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .consent-row input[type="checkbox"] {
+            margin-top: 3px;
+            width: 18px;
+            height: 18px;
+            accent-color: #00d46a;
+        }
+
+        .consent-text {
+            color: #cbd5e1;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .consent-text a {
+            color: #93c5fd;
+            text-decoration: none;
+            font-weight: 700;
+        }
+
+        .consent-text a:hover { text-decoration: underline; }
+
+        .consent-hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #ffd86b;
+            display: none;
+        }
+
+        /* ===========================
+           FX DISCLAIMER + LEGAL LINKS
            =========================== */
         .fx-disclaimer {
             position: fixed;
@@ -281,6 +331,7 @@
             background: rgba(10, 15, 20, 0.92);
             backdrop-filter: blur(10px);
             border-top: 1px solid rgba(255, 255, 255, 0.10);
+
             padding: 12px 16px;
             font-size: 12px;
             color: #cbd5e1;
@@ -316,7 +367,7 @@
         }
 
         /* ===========================
-           LEGAL MODAL (one-page)
+           LEGAL MODAL (ONE PAGE)
            =========================== */
         .legal-backdrop {
             display: none;
@@ -335,8 +386,8 @@
             transform: translate(-50%, -50%);
             z-index: 2147483647;
 
+            max-width: 920px;
             width: 92%;
-            max-width: 900px;
             max-height: 80vh;
             overflow: auto;
 
@@ -354,16 +405,12 @@
             gap: 12px;
             padding: 16px 18px;
             border-bottom: 1px solid rgba(255,255,255,0.08);
-            position: sticky;
-            top: 0;
-            background: rgba(18,20,28,0.96);
-            backdrop-filter: blur(12px);
         }
 
-        .legal-title {
+        .legal-modal-title {
             font-weight: 800;
             color: #fff;
-            letter-spacing: 0.3px;
+            letter-spacing: 0.2px;
         }
 
         .legal-close {
@@ -380,33 +427,37 @@
             background: rgba(255,255,255,0.12);
         }
 
-        .legal-body {
+        .legal-modal-content {
             padding: 18px;
             font-size: 13px;
-            line-height: 1.7;
+            line-height: 1.75;
         }
 
-        .legal-body h3 {
-            margin: 16px 0 8px;
+        .legal-modal-content h2 {
             color: #fff;
-            font-size: 14px;
+            margin: 18px 0 8px;
+            font-size: 15px;
         }
 
-        .legal-body ul {
+        .legal-modal-content p,
+        .legal-modal-content li {
+            color: #cbd5e1;
+        }
+
+        .legal-modal-content ul {
             padding-left: 18px;
+            margin: 10px 0;
         }
 
-        .legal-pill {
-            display: inline-block;
-            padding: 3px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            background: rgba(147,197,253,0.12);
-            border: 1px solid rgba(147,197,253,0.18);
-            color: #cfe4ff;
-            margin-left: 8px;
-            font-weight: 700;
+        .legal-callout {
+            border: 1px solid rgba(251,191,36,0.22);
+            background: rgba(251,191,36,0.08);
+            padding: 14px;
+            border-radius: 14px;
+            margin: 12px 0;
         }
+
+        .legal-callout strong { color: #fbbf24; }
 
         @media(max-width: 900px){
             .container {
@@ -464,7 +515,17 @@
         <label>Your signal</label>
         <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
-        <button class="btn" onclick="analyze()">Analyze with AI</button>
+        <!-- CONSENT CHECKBOX (must accept before enabling Analyze) -->
+        <div class="consent-row">
+            <input type="checkbox" id="acceptLegal" />
+            <div class="consent-text">
+                I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
+                <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
+                <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
+            </div>
+        </div>
+
+        <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
     </div>
 
     <!-- RIGHT PANEL -->
@@ -478,7 +539,7 @@
 
 </div> <!-- END CONTAINER -->
 
-<!-- DISCLAIMER + LEGAL LINKS (ONE PAGE) -->
+<!-- DISCLAIMER + LEGAL (ONE PAGE LINKS OPEN MODAL) -->
 <footer class="fx-disclaimer">
   <p style="margin:0;">
     <strong>Disclaimer:</strong>
@@ -489,21 +550,55 @@
   </p>
 
   <div class="fx-legal" aria-label="Legal links">
-    <a href="#" onclick="openLegal('terms'); return false;">Terms</a>
+    <a href="#" onclick="openLegal('terms');return false;">Terms</a>
     <span class="sep">•</span>
-    <a href="#" onclick="openLegal('privacy'); return false;">Privacy</a>
+    <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
   </div>
 </footer>
 
-<!-- LEGAL MODALS -->
+<!-- LEGAL MODAL (ONE PAGE) -->
 <div id="legalBackdrop" class="legal-backdrop"></div>
-
 <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
   <div class="legal-modal-header">
-    <div id="legalTitle" class="legal-title">Legal</div>
+    <div id="legalTitle" class="legal-modal-title">Legal</div>
     <button class="legal-close" onclick="closeLegal()">Close</button>
   </div>
-  <div id="legalContent" class="legal-body"></div>
+  <div id="legalContent" class="legal-modal-content"></div>
+</div>
+
+<!-- RISK ACK MODAL (ONE-TIME) -->
+<div id="riskBackdrop" class="legal-backdrop"></div>
+<div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+  <div class="legal-modal-header">
+    <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
+    <button class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
+  </div>
+
+  <div class="legal-modal-content">
+    <div class="legal-callout">
+      <p style="margin:0;">
+        <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
+        You can lose part or all of your capital.
+      </p>
+    </div>
+
+    <h2>FXCO-PILOT is not financial advice</h2>
+    <p>
+      FXCO-PILOT provides AI-assisted analysis for <b>educational and informational purposes only</b>. It does <b>not</b> provide financial, investment, or trading advice.
+      Any trade decision you make is solely your responsibility.
+    </p>
+
+    <h2>Use responsibly</h2>
+    <ul>
+      <li>Always do your own research and confirm with your strategy.</li>
+      <li>Use risk management (position sizing, SL, and limits).</li>
+      <li>Consider professional advice if needed.</li>
+    </ul>
+
+    <p style="margin-top:14px;opacity:0.9;">
+      Click <b>“I Understand”</b> to continue.
+    </p>
+  </div>
 </div>
 
 <script>
@@ -529,6 +624,37 @@ function updateClock() {
 
 updateClock();
 setInterval(updateClock, 1000);
+
+/* ===========================
+   CONSENT (Terms & Privacy) GATING
+   =========================== */
+function setAnalyzeEnabled(enabled) {
+    const btn = document.getElementById("analyzeBtn");
+    const hint = document.getElementById("consentHint");
+    btn.disabled = !enabled;
+    hint.style.display = enabled ? "none" : "block";
+}
+
+function initConsentGate() {
+    const cb = document.getElementById("acceptLegal");
+    if (!cb) return;
+
+    // If user already acknowledged risk + accepted legal before, keep it checked
+    // (Optional: comment out next 3 lines if you do NOT want to remember this.)
+    try {
+        const saved = localStorage.getItem("fxco_accept_legal_v1");
+        if (saved === "1") cb.checked = true;
+    } catch {}
+
+    setAnalyzeEnabled(cb.checked);
+
+    cb.addEventListener("change", () => {
+        setAnalyzeEnabled(cb.checked);
+        try {
+            localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0");
+        } catch {}
+    });
+}
 
 /* ===========================
    CONFIDENCE HELPERS
@@ -572,105 +698,146 @@ function renderConfidenceBar(percent) {
 /* ===========================
    LEGAL MODAL (ONE PAGE)
    =========================== */
-function openLegal(which){
-  const backdrop = document.getElementById("legalBackdrop");
-  const modal = document.getElementById("legalModal");
-  const title = document.getElementById("legalTitle");
-  const content = document.getElementById("legalContent");
+function openLegal(which) {
+    const backdrop = document.getElementById("legalBackdrop");
+    const modal = document.getElementById("legalModal");
+    const title = document.getElementById("legalTitle");
+    const content = document.getElementById("legalContent");
 
-  const today = new Date().toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" });
+    const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
-  const termsHtml = `
-    <p><b>Terms of Service</b> (Last updated: ${today})</p>
+    const termsHtml = `
+      <div class="legal-callout">
+        <p style="margin:0;">
+          <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
+          It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
+        </p>
+      </div>
 
-    <h3>1) No Financial Advice</h3>
-    <p><b>FXCO-PILOT is for educational and informational purposes only.</b> It does not provide financial, investment, or trading advice. Trading involves risk and you may lose money. You are solely responsible for your trading decisions and outcomes.</p>
+      <p><b>Last updated:</b> ${updated}</p>
 
-    <h3>2) AI Limitations</h3>
-    <p>AI outputs are probabilistic and may be inaccurate, incomplete, or unsuitable for your situation. Any confidence score is an estimate, not a guarantee.</p>
+      <h2>1) Acceptance of Terms</h2>
+      <p>By accessing or using FXCO-PILOT (the “Service”), you agree to these Terms. If you do not agree, do not use the Service.</p>
 
-    <h3>3) Acceptable Use</h3>
-    <ul>
-      <li>Do not abuse, disrupt, hack, or attempt to bypass security.</li>
-      <li>Do not upload unlawful content or content that violates others’ rights.</li>
-      <li>We may limit or suspend access if misuse is detected.</li>
-    </ul>
+      <h2>2) No Financial Advice</h2>
+      <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
 
-    <h3>4) Availability</h3>
-    <p>We may modify, pause, or discontinue the Service at any time. We do not guarantee uninterrupted availability.</p>
+      <h2>3) Use of the Service</h2>
+      <ul>
+        <li>Do not attempt to disrupt, exploit, or reverse-engineer the Service.</li>
+        <li>Do not upload unlawful or infringing content.</li>
+        <li>We may limit or suspend access if misuse is detected.</li>
+      </ul>
 
-    <h3>5) Disclaimer of Warranties</h3>
-    <p>The Service is provided “as is” and “as available,” without warranties of any kind.</p>
+      <h2>4) AI Outputs & Limitations</h2>
+      <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee. Past performance is not indicative of future results.</p>
 
-    <h3>6) Limitation of Liability</h3>
-    <p>To the maximum extent permitted by law, we are not liable for trading losses, lost profits, or indirect damages arising from your use of the Service.</p>
+      <h2>5) Disclaimer of Warranties</h2>
+      <p>The Service is provided “as is” and “as available,” without warranties of any kind.</p>
 
-    <h3>7) Changes</h3>
-    <p>We may update these terms from time to time. Continued use after changes means you accept the updated Terms.</p>
-  `;
+      <h2>6) Limitation of Liability</h2>
+      <p>To the maximum extent permitted by law, we are not liable for trading losses, lost profits, or indirect damages arising from use of the Service.</p>
 
-  const privacyHtml = `
-    <p><b>Privacy Policy</b> <span class="legal-pill">Minimal Data</span> (Last updated: ${today})</p>
+      <h2>7) Changes</h2>
+      <p>We may update these Terms from time to time. Continued use after changes means you accept the updated Terms.</p>
+    `;
 
-    <h3>1) What We Collect</h3>
-    <ul>
-      <li><b>Inputs you provide:</b> signals you paste and optional chart uploads (processed to generate analysis).</li>
-      <li><b>Basic technical data:</b> IP address, user-agent, timestamps for security and reliability (host dependent).</li>
-      <li><b>Optional analytics:</b> only if enabled (e.g., GA4 page views).</li>
-    </ul>
+    const privacyHtml = `
+      <p><b>Last updated:</b> ${updated}</p>
 
-    <h3>2) How We Use Data</h3>
-    <ul>
-      <li>To generate analysis output and improve reliability.</li>
-      <li>To prevent abuse, spam, and attacks.</li>
-      <li>To understand general usage trends if analytics are enabled.</li>
-    </ul>
+      <h2>1) What We Collect</h2>
+      <ul>
+        <li><b>Inputs you provide:</b> signals you paste and optional chart uploads, processed to generate analysis.</li>
+        <li><b>Basic technical data:</b> IP address, user-agent, and timestamps may be logged for security and reliability (host dependent).</li>
+        <li><b>Optional analytics:</b> only if enabled by the site owner.</li>
+      </ul>
 
-    <h3>3) Sharing</h3>
-    <p>We do not sell your personal information. We may share data only when necessary to operate the Service or if required by law.</p>
+      <h2>2) How We Use Data</h2>
+      <ul>
+        <li>To provide analysis output and improve reliability.</li>
+        <li>To protect the Service from spam, abuse, and attacks.</li>
+        <li>To understand general usage patterns (only if analytics are enabled).</li>
+      </ul>
 
-    <h3>4) Retention</h3>
-    <p>Retention depends on your hosting configuration. Some setups may store logs for security and debugging for a limited period. The “Previous Analyses” panel shown on this page is stored in your current browser session unless your backend persists it.</p>
+      <h2>3) Sharing</h2>
+      <p>We do not sell personal information. We may share limited data only with service providers needed to operate the Service, or if required by law.</p>
 
-    <h3>5) Your Choices</h3>
-    <ul>
-      <li>You can avoid uploading charts and use text-only signals.</li>
-      <li>You can stop using the Service at any time.</li>
-      <li>You can control analytics/cookies through browser settings (if used).</li>
-    </ul>
-  `;
+      <h2>4) Retention</h2>
+      <p>Retention depends on hosting configuration. “Previous Analyses” shown here is stored in your browser UI unless you have a backend saving it.</p>
 
-  if(which === "terms"){
-    title.textContent = "Terms of Service";
-    content.innerHTML = termsHtml;
-  } else {
-    title.textContent = "Privacy Policy";
-    content.innerHTML = privacyHtml;
-  }
+      <h2>5) Your Choices</h2>
+      <ul>
+        <li>You can avoid uploading charts and use text-only signals.</li>
+        <li>You can stop using the Service at any time.</li>
+        <li>You can control cookies/analytics through browser settings (if used).</li>
+      </ul>
+    `;
 
-  backdrop.style.display = "block";
-  modal.style.display = "block";
+    if (which === "terms") {
+        title.textContent = "Terms of Service";
+        content.innerHTML = termsHtml;
+    } else {
+        title.textContent = "Privacy Policy";
+        content.innerHTML = privacyHtml;
+    }
 
-  // basic escape key
-  document.addEventListener("keydown", onLegalEsc);
+    backdrop.style.display = "block";
+    modal.style.display = "block";
 }
 
-function closeLegal(){
-  document.getElementById("legalBackdrop").style.display = "none";
-  document.getElementById("legalModal").style.display = "none";
-  document.removeEventListener("keydown", onLegalEsc);
-}
-
-function onLegalEsc(e){
-  if(e.key === "Escape") closeLegal();
+function closeLegal() {
+    document.getElementById("legalBackdrop").style.display = "none";
+    document.getElementById("legalModal").style.display = "none";
 }
 
 document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeLegal();
+});
 
 /* ===========================
-   AI ANALYSIS + DECISION BADGE + CONFIDENCE
+   RISK ACK MODAL (ONE-TIME)
+   =========================== */
+function showRiskModalIfNeeded() {
+    try {
+        const seen = localStorage.getItem("fxco_risk_ack_v1");
+        if (seen === "1") return;
+
+        document.getElementById("riskBackdrop").style.display = "block";
+        document.getElementById("riskModal").style.display = "block";
+        document.body.style.overflow = "hidden";
+    } catch {
+        // if localStorage blocked, still show
+        document.getElementById("riskBackdrop").style.display = "block";
+        document.getElementById("riskModal").style.display = "block";
+        document.body.style.overflow = "hidden";
+    }
+}
+
+function acknowledgeRisk() {
+    try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
+    document.getElementById("riskBackdrop").style.display = "none";
+    document.getElementById("riskModal").style.display = "none";
+    document.body.style.overflow = "";
+}
+
+// Force acknowledgement: clicking backdrop does nothing
+document.getElementById("riskBackdrop").addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+});
+
+/* ===========================
+   AI ANALYSIS + DECISION BADGE
    =========================== */
 function analyze() {
+    // Hard block if user didn't accept Terms/Privacy
+    const accepted = document.getElementById("acceptLegal")?.checked;
+    if (!accepted) {
+        setAnalyzeEnabled(false);
+        return;
+    }
+
     const formData = new FormData();
     formData.append("pair_type", document.getElementById("pairType").value);
     formData.append("timeframe", document.getElementById("timeframe").value);
@@ -680,9 +847,6 @@ function analyze() {
     if (file) {
         formData.append("chart_image", file);
     }
-
-    // UI feedback
-    document.getElementById("result").innerHTML = "Analyzing...";
 
     fetch("/analyze", {
         method: "POST",
@@ -696,13 +860,13 @@ function analyze() {
             return;
         }
 
-        const raw = (data.result || "");
+        const raw = (data.result || "").toString();
 
-        // B) Best: backend returns { confidence: 0-100 }
+        // Best source: backend numeric field "confidence" (0–100)
+        // Fallbacks: parse "CONFIDENCE: 78%" inside text, else infer from decision
         let confidence =
             (typeof data.confidence === "number" ? clamp(data.confidence, 0, 100) : null);
 
-        // fallback: parse "CONFIDENCE: 78%" from text
         if (confidence === null) {
             const parsed = parseConfidenceFromText(raw);
             confidence = (parsed === null) ? inferConfidenceFromDecision(raw) : parsed;
@@ -732,15 +896,8 @@ function analyze() {
             .replace(/BIAS[: ]/gi, "<b>BIAS:</b> ");
 
         const outHtml = renderConfidenceBar(confidence) + text;
-
-        /* ===========================
-            DISPLAY RESULT
-        =========================== */
         document.getElementById("result").innerHTML = outHtml;
 
-        /* ===========================
-            HISTORY LOG
-        =========================== */
         const historyBox = document.getElementById("history");
         historyBox.innerHTML =
             `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
@@ -752,6 +909,12 @@ function analyze() {
             "<b style='color:#ff6b6b'>Request failed:</b> " + err;
     });
 }
+
+/* ===========================
+   INIT
+   =========================== */
+initConsentGate();
+showRiskModalIfNeeded();
 </script>
 
 </body>
