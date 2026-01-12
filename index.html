@@ -792,7 +792,7 @@ function analyze() {
         })
         .then((data) => {
             // ✅ New path: strict JSON
-            if (data && data.analysis) {
+            if (data && data.analysis && typeof data.analysis === "object") {
                 const html = renderAnalysisFromJSON(data.analysis);
                 document.getElementById("result").innerHTML = html;
 
