@@ -177,6 +177,8 @@ TRADE_ANALYSIS_TOOL = {
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
+
+    
     ip = _get_client_ip()
     if _rate_limited(ip):
         return jsonify({"error": f"Too many requests. Please wait and try again (limit: {RATE_LIMIT_MAX_REQUESTS} per {RATE_LIMIT_WINDOW_SECONDS}s)."}), 429
@@ -257,13 +259,16 @@ def analyze():
     analysis = _normalize_analysis(analysis_obj)
 
     # ✅ ALWAYS return analysis so frontend uses renderAnalysisFromJSON
-    return jsonify({
-        "analysis": analysis,
-        "confidence": analysis.get("confidence", 0),
-        # Helpful for troubleshooting: shows which path was used
-        "mode": "tool_structured"
-    })
-
+  
+return jsonify({
+    "analysis": analysis,
+    "confidence": analysis.get("confidence", 0),
+    "mode": "tool_structured",
+    "debug": {
+        "has_tool_calls": bool(msg.tool_calls) if msg else False,
+        "tool_args_preview": tool_args_raw[:160] if tool_args_raw else None
+    }
+})
 
 if __name__ == "__main__":
     app.run(debug=True)
