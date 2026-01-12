@@ -2,11 +2,12 @@ from flask import Flask, request, jsonify, send_from_directory
 import base64
 from openai import OpenAI
 import os
+import re
 
 app = Flask(__name__)
 
 # Initialize OpenAI client using environment variable OPENAI_API_KEY
-client = OpenAI()  
+client = OpenAI()
 
 
 # --------------------------
@@ -119,7 +120,7 @@ GUIDANCE:
         }
     ]
 
-    # ---------------- Add image if provided (new correct OpenAI format) ----------------
+    # ---------------- Add image if provided ----------------
     if img_base64:
         messages.append({
             "role": "user",
@@ -145,12 +146,23 @@ GUIDANCE:
             temperature=0.2
         )
 
-        answer = completion.choices[0].message.content
-        return jsonify({"result": answer})
+        answer = completion.choices[0].message.content or ""
+
+        # ---------------- EXTRACT CONFIDENCE ----------------
+        confidence = None
+        match = re.search(r"CONFIDENCE\s*:\s*(\d{1,3})\s*%?", answer, re.IGNORECASE)
+        if match:
+            confidence = int(match.group(1))
+            confidence = max(0, min(confidence, 100))  # clamp safety
+
+        # ---------------- RETURN STRUCTURED RESPONSE ----------------
+        return jsonify({
+            "result": answer,
+            "confidence": confidence
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 
 # --------------------------
