@@ -1,824 +1,819 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FX Co-Pilot – AI Trade Validator</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FX Co-Pilot – AI Trade Validator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: "Poppins", sans-serif;
-      background-image: url("/static/bg_fx_4k.png");
-      background-size: cover;
-      background-position: center;
-      background-repeat: no-repeat;
-      background-attachment: fixed;
-      background-color: #05070b;
-      padding-bottom: 90px;
-    }
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: "Poppins", sans-serif;
+            background-image: url("/static/bg_fx_4k.png");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-color: #05070b;
+            padding-bottom: 90px;
+        }
 
-    .bg-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      pointer-events: none;
-      z-index: -1;
-    }
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            pointer-events: none;
+            z-index: -1;
+        }
 
-    .watermark {
-      position: fixed;
-      right: 32px;
-      bottom: 32px;
-      font-size: 15px;
-      font-weight: 300;
-      text-transform: uppercase;
-      letter-spacing: 10px;
-      user-select: none;
-      pointer-events: none;
-      z-index: 999;
-      font-family: "Poppins", sans-serif;
-      background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 12px rgba(255,255,255,0.08);
-      filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
-    }
+        .watermark {
+            position: fixed;
+            right: 32px;
+            bottom: 32px;
+            font-size: 15px;
+            font-weight: 300;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            user-select: none;
+            pointer-events: none;
+            z-index: 999;
+            font-family: "Poppins", sans-serif;
 
-    .topbar {
-      width: 100%;
-      padding: 12px 25px;
-      background: rgba(0,0,0,0.55);
-      backdrop-filter: blur(8px);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      color: #dce1e7;
-      font-size: 14px;
-      position: sticky;
-      top: 0;
-      z-index: 900;
-      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
-    }
+            background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
 
-    .sessions span {
-      margin-right: 20px;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-weight: 500;
-    }
+            text-shadow: 0 0 12px rgba(255,255,255,0.08);
+            filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
+        }
 
-    .open { background: #00d46a22; color: #00d46a; }
-    .closed { background: #ff444422; color: #ff7777; }
+        .topbar {
+            width: 100%;
+            padding: 12px 25px;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #dce1e7;
+            font-size: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 900;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+        }
 
-    .container {
-      max-width: 1300px;
-      margin: 50px auto;
-      padding: 40px;
-      border-radius: 18px;
-      background: rgba(18,20,28,0.35);
-      backdrop-filter: blur(18px);
-      border: 1px solid rgba(255,255,255,0.05);
-      box-shadow: 0 8px 35px rgba(0,0,0,0.5);
-      display: flex;
-      gap: 40px;
-    }
+        .sessions span {
+            margin-right: 20px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
 
-    h1 {
-      font-size: 38px;
-      color: #ffffff;
-      font-weight: 700;
-      margin-bottom: 5px;
-    }
+        .open { background: #00d46a22; color: #00d46a; }
+        .closed { background: #ff444422; color: #ff7777; }
 
-    .badge {
-      background: #00d46a;
-      padding: 4px 10px;
-      font-weight: 600;
-      color: black;
-      font-size: 12px;
-      border-radius: 8px;
-    }
+        .container {
+            max-width: 1300px;
+            margin: 50px auto;
+            padding: 40px;
+            border-radius: 18px;
 
-    .section { flex: 1; }
+            background: rgba(18,20,28,0.35);
+            backdrop-filter: blur(18px);
+            border: 1px solid rgba(255,255,255,0.05);
+            box-shadow: 0 8px 35px rgba(0,0,0,0.5);
 
-    label {
-      color: #cfd3d8;
-      margin-bottom: 6px;
-      font-size: 14px;
-      display: block;
-    }
+            display: flex;
+            gap: 40px;
+        }
 
-    select, textarea, input[type="file"] {
-      width: 100%;
-      padding: 12px;
-      margin-bottom: 20px;
-      border-radius: 8px;
-      border: none;
-      background: #0b0d14cc;
-      backdrop-filter: blur(6px);
-      color: #cfd3d8;
-      font-size: 14px;
-    }
+        h1 {
+            font-size: 38px;
+            color: #ffffff;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
 
-    textarea { height: 110px; resize: none; }
+        .badge {
+            background: #00d46a;
+            padding: 4px 10px;
+            font-weight: 600;
+            color: black;
+            font-size: 12px;
+            border-radius: 8px;
+        }
 
-    .btn {
-      width: 100%;
-      padding: 15px;
-      border-radius: 10px;
-      border: none;
-      font-size: 18px;
-      font-weight: 600;
-      cursor: pointer;
-      color: #fff;
-      background: linear-gradient(90deg, #00d46a, #0ebb53);
-      transition: 0.2s;
-    }
+        .section { flex: 1; }
 
-    .btn:hover {
-      transform: scale(1.03);
-      box-shadow: 0 0 20px rgba(0,255,140,0.4);
-    }
+        label {
+            color: #cfd3d8;
+            margin-bottom: 6px;
+            font-size: 14px;
+            display: block;
+        }
 
-    .btn:disabled {
-      cursor: not-allowed;
-      opacity: 0.45;
-      transform: none;
-      box-shadow: none;
-      background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
-    }
+        select, textarea, input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border: none;
+            background: #0b0d14cc;
+            backdrop-filter: blur(6px);
+            color: #cfd3d8;
+            font-size: 14px;
+        }
 
-    .output-box {
-      background: rgba(0,0,0,0.45);
-      border-radius: 12px;
-      padding: 20px;
-      color: #dce1e7;
-      min-height: 260px;
-      overflow-y: auto;
-      border: 1px solid rgba(255,255,255,0.05);
-      backdrop-filter: blur(8px);
-    }
+        textarea { height: 110px; resize: none; }
 
-    .title-small {
-      color: #cfd3d8;
-      opacity: 0.8;
-      font-size: 15px;
-      margin-bottom: 10px;
-    }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border-radius: 10px;
+            border: none;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #fff;
+            background: linear-gradient(90deg, #00d46a, #0ebb53);
+            transition: 0.2s;
+        }
 
-    .decision {
-      padding: 12px;
-      font-size: 20px;
-      font-weight: 700;
-      border-radius: 12px;
-      text-align: center;
-      margin: 12px 0 16px;
-    }
+        .btn:hover {
+            transform: scale(1.03);
+            box-shadow: 0 0 20px rgba(0,255,140,0.4);
+        }
 
-    .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
-    .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
-    .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+            transform: none;
+            box-shadow: none;
+            background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
+        }
 
-    .confidence {
-      margin-bottom: 18px;
-      padding: 12px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
+        .output-box {
+            background: rgba(0,0,0,0.45);
+            border-radius: 12px;
+            padding: 20px;
+            color: #dce1e7;
+            min-height: 260px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.05);
+            backdrop-filter: blur(8px);
+        }
 
-    .confidence-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      color: #cbd5e1;
-      font-size: 12px;
-    }
+        .title-small {
+            color: #cfd3d8;
+            opacity: 0.8;
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
 
-    .confidence-top .label {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      opacity: 0.9;
-    }
+        .decision {
+            padding: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            border-radius: 12px;
+            text-align: center;
+            margin: 12px 0 16px;
+        }
 
-    .confidence-top .value { font-weight: 700; color: #ffffff; }
+        .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
+        .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
+        .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
 
-    .confidence-track {
-      height: 10px;
-      width: 100%;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
+        .confidence {
+            margin-bottom: 18px;
+            padding: 12px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
 
-    .confidence-fill {
-      height: 100%;
-      width: 0%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
-      transition: width 450ms ease;
-    }
+        .confidence-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            color: #cbd5e1;
+            font-size: 12px;
+        }
 
-    .consent-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      margin: -6px 0 16px;
-      padding: 12px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
+        .confidence-top .label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            opacity: 0.9;
+        }
 
-    .consent-row input[type="checkbox"] {
-      margin-top: 3px;
-      width: 18px;
-      height: 18px;
-      accent-color: #00d46a;
-    }
+        .confidence-top .value { font-weight: 700; color: #ffffff; }
 
-    .consent-text {
-      color: #cbd5e1;
-      font-size: 12px;
-      line-height: 1.55;
-    }
+        .confidence-track {
+            height: 10px;
+            width: 100%;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.08);
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
 
-    .consent-text a {
-      color: #93c5fd;
-      text-decoration: none;
-      font-weight: 700;
-    }
+        .confidence-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
+            transition: width 450ms ease;
+        }
 
-    .consent-text a:hover { text-decoration: underline; }
+        .consent-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin: -6px 0 16px;
+            padding: 12px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+        }
 
-    .consent-hint {
-      margin-top: 6px;
-      font-size: 12px;
-      color: #ffd86b;
-      display: none;
-    }
+        .consent-row input[type="checkbox"] {
+            margin-top: 3px;
+            width: 18px;
+            height: 18px;
+            accent-color: #00d46a;
+        }
 
-    .fx-disclaimer {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 2147483647;
-      background: rgba(10, 15, 20, 0.92);
-      backdrop-filter: blur(10px);
-      border-top: 1px solid rgba(255, 255, 255, 0.10);
-      padding: 12px 16px;
-      font-size: 12px;
-      color: #cbd5e1;
-      text-align: center;
-    }
+        .consent-text {
+            color: #cbd5e1;
+            font-size: 12px;
+            line-height: 1.55;
+        }
 
-    .fx-disclaimer strong { color: #fbbf24; }
+        .consent-text a {
+            color: #93c5fd;
+            text-decoration: none;
+            font-weight: 700;
+        }
 
-    .fx-legal {
-      margin-top: 8px;
-      display: inline-flex;
-      gap: 10px;
-      align-items: center;
-      justify-content: center;
-      flex-wrap: wrap;
-      opacity: 0.95;
-    }
+        .consent-text a:hover { text-decoration: underline; }
 
-    .fx-legal a {
-      color: #93c5fd;
-      text-decoration: none;
-      font-weight: 700;
-    }
+        .consent-hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #ffd86b;
+            display: none;
+        }
 
-    .fx-legal a:hover { text-decoration: underline; }
-    .fx-legal .sep { color: rgba(255,255,255,0.25); }
+        /* NEW: warnings callout */
+        .warn-callout {
+            border: 1px solid rgba(251,191,36,0.22);
+            background: rgba(251,191,36,0.08);
+            padding: 14px;
+            border-radius: 14px;
+            margin: 12px 0 16px;
+            color: #f8fafc;
+        }
+        .warn-callout strong { color: #fbbf24; }
 
-    .legal-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 2147483646;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(4px);
-    }
+        .fx-disclaimer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 2147483647;
+            background: rgba(10, 15, 20, 0.92);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(255, 255, 255, 0.10);
+            padding: 12px 16px;
+            font-size: 12px;
+            color: #cbd5e1;
+            text-align: center;
+        }
 
-    .legal-modal {
-      display: none;
-      position: fixed;
-      left: 50%;
-      top: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 2147483647;
-      max-width: 920px;
-      width: 92%;
-      max-height: 80vh;
-      overflow: auto;
-      border-radius: 18px;
-      background: rgba(18,20,28,0.92);
-      border: 1px solid rgba(255,255,255,0.08);
-      box-shadow: 0 12px 50px rgba(0,0,0,0.75);
-      color: #cbd5e1;
-    }
+        .fx-disclaimer strong { color: #fbbf24; }
 
-    .legal-modal-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 16px 18px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
+        .fx-legal {
+            margin-top: 8px;
+            display: inline-flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            opacity: 0.95;
+        }
 
-    .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
+        .fx-legal a {
+            color: #93c5fd;
+            text-decoration: none;
+            font-weight: 700;
+        }
 
-    .legal-close {
-      cursor: pointer;
-      border: none;
-      background: rgba(255,255,255,0.08);
-      color: #fff;
-      border-radius: 12px;
-      padding: 8px 12px;
-      font-weight: 800;
-    }
+        .fx-legal a:hover { text-decoration: underline; }
+        .fx-legal .sep { color: rgba(255,255,255,0.25); }
 
-    .legal-close:hover { background: rgba(255,255,255,0.12); }
+        .legal-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2147483646;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(4px);
+        }
 
-    .legal-modal-content {
-      padding: 18px;
-      font-size: 13px;
-      line-height: 1.75;
-    }
+        .legal-modal {
+            display: none;
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2147483647;
+            max-width: 920px;
+            width: 92%;
+            max-height: 80vh;
+            overflow: auto;
+            border-radius: 18px;
+            background: rgba(18,20,28,0.92);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 12px 50px rgba(0,0,0,0.75);
+            color: #cbd5e1;
+        }
 
-    .legal-modal-content h2 {
-      color: #fff;
-      margin: 18px 0 8px;
-      font-size: 15px;
-    }
+        .legal-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
 
-    .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
+        .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
 
-    .legal-callout {
-      border: 1px solid rgba(251,191,36,0.22);
-      background: rgba(251,191,36,0.08);
-      padding: 14px;
-      border-radius: 14px;
-      margin: 12px 0;
-    }
+        .legal-close {
+            cursor: pointer;
+            border: none;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            border-radius: 12px;
+            padding: 8px 12px;
+            font-weight: 800;
+        }
 
-    .legal-callout strong { color: #fbbf24; }
+        .legal-close:hover { background: rgba(255,255,255,0.12); }
 
-    .fx-section-title {
-      margin: 14px 0 6px;
-      font-weight: 800;
-      color: #ffffff;
-      font-size: 13px;
-      letter-spacing: 0.2px;
-    }
+        .legal-modal-content {
+            padding: 18px;
+            font-size: 13px;
+            line-height: 1.75;
+        }
 
-    .fx-kv {
-      margin: 8px 0;
-      color: #cbd5e1;
-      font-size: 13px;
-      line-height: 1.6;
-    }
+        .legal-modal-content h2 {
+            color: #fff;
+            margin: 18px 0 8px;
+            font-size: 15px;
+        }
 
-    .fx-ul {
-      margin: 8px 0 0;
-      padding-left: 18px;
-      color: #cbd5e1;
-      font-size: 13px;
-      line-height: 1.6;
-    }
+        .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
 
-    @media(max-width: 900px){
-      .container { flex-direction: column; margin: 20px; padding: 25px; }
-    }
-  </style>
+        .legal-callout {
+            border: 1px solid rgba(251,191,36,0.22);
+            background: rgba(251,191,36,0.08);
+            padding: 14px;
+            border-radius: 14px;
+            margin: 12px 0;
+        }
+
+        .legal-callout strong { color: #fbbf24; }
+
+        .fx-section-title {
+            margin: 14px 0 6px;
+            font-weight: 800;
+            color: #ffffff;
+            font-size: 13px;
+            letter-spacing: 0.2px;
+        }
+
+        .fx-kv {
+            margin: 8px 0;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .fx-ul {
+            margin: 8px 0 0;
+            padding-left: 18px;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        @media(max-width: 900px){
+            .container { flex-direction: column; margin: 20px; padding: 25px; }
+        }
+    </style>
 </head>
 
 <body>
-  <div class="bg-overlay"></div>
-  <div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
+<div class="bg-overlay"></div>
+<div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
 
-  <div class="topbar">
+<div class="topbar">
     <div id="clock">Loading time...</div>
     <div class="sessions">
-      <span id="london" class="closed">London</span>
-      <span id="newyork" class="closed">New York</span>
-      <span id="tokyo" class="closed">Tokyo</span>
+        <span id="london" class="closed">London</span>
+        <span id="newyork" class="closed">New York</span>
+        <span id="tokyo" class="closed">Tokyo</span>
     </div>
-  </div>
+</div>
 
-  <div class="container">
+<div class="container">
     <div class="section">
-      <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
-      <p style="color:#cfd3d8; margin-bottom:25px;">
-        Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
-      </p>
+        <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
+        <p style="color:#cfd3d8; margin-bottom:25px;">
+            Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
+        </p>
 
-      <label>Pair Type</label>
-      <select id="pairType">
-        <option>Forex</option>
-        <option>Gold</option>
-        <option>Crypto</option>
-        <option>Indices</option>
-      </select>
+        <label>Pair Type</label>
+        <select id="pairType">
+            <option>Forex</option>
+            <option>Gold</option>
+            <option>Crypto</option>
+            <option>Indices</option>
+        </select>
 
-      <label>Timeframe Mode</label>
-      <select id="timeframe">
-        <option>Scalp</option>
-        <option>Intraday</option>
-        <option>Swing</option>
-      </select>
+        <label>Timeframe Mode</label>
+        <select id="timeframe">
+            <option>Scalp</option>
+            <option>Intraday</option>
+            <option>Swing</option>
+        </select>
 
-      <label>Chart (optional)</label>
-      <input type="file" id="chart">
+        <label>Chart (optional)</label>
+        <input type="file" id="chart">
 
-      <label>Your signal</label>
-      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+        <label>Your signal</label>
+        <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
-      <div class="consent-row">
-        <input type="checkbox" id="acceptLegal" />
-        <div class="consent-text">
-          I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
-          <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
-          <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
+        <div class="consent-row">
+            <input type="checkbox" id="acceptLegal" />
+            <div class="consent-text">
+                I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
+                <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
+                <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
+            </div>
         </div>
-      </div>
 
-      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze</button>
+        <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
     </div>
 
     <div class="section">
-      <div class="title-small">AI Trade Decision & Analysis</div>
-      <div id="result" class="output-box">Awaiting analysis...</div>
+        <div class="title-small">AI Trade Decision & Analysis</div>
+        <div id="result" class="output-box">Awaiting analysis...</div>
 
-      <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
-      <div id="history" class="output-box" style="min-height:120px;"></div>
+        <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
+        <div id="history" class="output-box" style="min-height:120px;"></div>
     </div>
+</div>
+
+<footer class="fx-disclaimer">
+  <p style="margin:0;">
+    <strong>Disclaimer:</strong>
+    FXCO-PILOT provides AI-assisted market analysis for
+    <strong>educational and informational purposes only</strong>.
+    It does <strong>not</strong> constitute financial, investment,
+    or trading advice. Trading involves risk. Always do your own research.
+  </p>
+
+  <div class="fx-legal" aria-label="Legal links">
+    <a href="#" onclick="openLegal('terms');return false;">Terms</a>
+    <span class="sep">•</span>
+    <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
+  </div>
+</footer>
+
+<div id="legalBackdrop" class="legal-backdrop"></div>
+<div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
+  <div class="legal-modal-header">
+    <div id="legalTitle" class="legal-modal-title">Legal</div>
+    <button class="legal-close" onclick="closeLegal()">Close</button>
+  </div>
+  <div id="legalContent" class="legal-modal-content"></div>
+</div>
+
+<div id="riskBackdrop" class="legal-backdrop"></div>
+<div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+  <div class="legal-modal-header">
+    <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
+    <button class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
   </div>
 
-  <footer class="fx-disclaimer">
-    <p style="margin:0;">
-      <strong>Disclaimer:</strong>
-      FXCO-PILOT provides AI-assisted market analysis for
-      <strong>educational and informational purposes only</strong>.
-      It does <strong>not</strong> constitute financial, investment,
-      or trading advice. Trading involves risk. Always do your own research.
+  <div class="legal-modal-content">
+    <div class="legal-callout">
+      <p style="margin:0;">
+        <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
+        You can lose part or all of your capital.
+      </p>
+    </div>
+
+    <h2>FXCO-PILOT is not financial advice</h2>
+    <p>
+      FXCO-PILOT provides AI-assisted analysis for <b>educational and informational purposes only</b>. It does <b>not</b> provide financial, investment, or trading advice.
+      Any trade decision you make is solely your responsibility.
     </p>
 
-    <div class="fx-legal" aria-label="Legal links">
-      <a href="#" onclick="openLegal('terms');return false;">Terms</a>
-      <span class="sep">•</span>
-      <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
-    </div>
-  </footer>
+    <h2>Use responsibly</h2>
+    <ul>
+      <li>Always do your own research and confirm with your strategy.</li>
+      <li>Use risk management (position sizing, SL, and limits).</li>
+      <li>Consider professional advice if needed.</li>
+    </ul>
 
-  <div id="legalBackdrop" class="legal-backdrop"></div>
-  <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
-    <div class="legal-modal-header">
-      <div id="legalTitle" class="legal-modal-title">Legal</div>
-      <button class="legal-close" onclick="closeLegal()">Close</button>
-    </div>
-    <div id="legalContent" class="legal-modal-content"></div>
+    <p style="margin-top:14px;opacity:0.9;">
+      Click <b>“I Understand”</b> to continue.
+    </p>
   </div>
+</div>
 
-  <div id="riskBackdrop" class="legal-backdrop"></div>
-  <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
-    <div class="legal-modal-header">
-      <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
-      <button class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
-    </div>
+<script>
+function updateClock() {
+    const now = new Date();
+    document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
+    const hour = now.getUTCHours();
+    function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
+    setStatus("london", hour >= 7 && hour < 16);
+    setStatus("newyork", hour >= 12 && hour < 21);
+    setStatus("tokyo", hour >= 0 && hour < 9);
+}
+updateClock();
+setInterval(updateClock, 1000);
 
-    <div class="legal-modal-content">
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+function renderConfidenceBar(percent) {
+    const p = clamp(Number(percent ?? 0), 0, 100);
+    return `
+      <div class="confidence" aria-label="AI confidence score">
+        <div class="confidence-top">
+          <div class="label">AI Confidence</div>
+          <div class="value">${p}%</div>
+        </div>
+        <div class="confidence-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
+          <div class="confidence-fill" style="width:${p}%"></div>
+        </div>
+      </div>
+    `;
+}
+
+function renderDecisionBadge(decision) {
+    const d = (decision || "NEUTRAL").toUpperCase();
+    if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
+    if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
+    return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
+}
+
+function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, m => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+    }[m]));
+}
+
+function renderWarningsBlock(warnings) {
+    const w = Array.isArray(warnings) ? warnings.filter(Boolean).slice(0, 6) : [];
+    if (!w.length) return "";
+    return `
+      <div class="warn-callout">
+        <strong>Trade Invalidation Warnings:</strong>
+        <ul class="fx-ul" style="margin-top:10px;">
+          ${w.map(x => `<li>${esc(x)}</li>`).join("")}
+        </ul>
+      </div>
+    `;
+}
+
+function renderAnalysisFromJSON(a) {
+    const bias = a.bias || "Unclear";
+    const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
+    const strength = (typeof a.strength === "number") ? a.strength : "";
+    const clarity = (typeof a.clarity === "number") ? a.clarity : "";
+    const sc = a.signal_check || {};
+    const mc = a.market_context || {};
+
+    const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
+    const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 6) : [];
+    const invalidations = a.invalidation_warnings || [];
+
+    return `
+      ${renderConfidenceBar(confidence)}
+
+      <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
+        ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
+        ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
+      </div>
+
+      <div class="fx-section-title">Signal Check</div>
+      <div class="fx-kv">
+        • <b>Direction:</b> ${esc(sc.direction)}<br/>
+        • <b>Entry:</b> ${esc(sc.entry)}<br/>
+        • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
+        • <b>Targets:</b> ${esc(Array.isArray(sc.targets) ? sc.targets.join(", ") : sc.targets)}<br/>
+        • <b>Approx RR:</b> ${esc(sc.rr)}
+      </div>
+
+      <div class="fx-section-title">Market Context</div>
+      <div class="fx-kv">
+        • <b>Structure:</b> ${esc(mc.structure)}<br/>
+        • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
+        • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
+        • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
+      </div>
+
+      ${renderDecisionBadge(a.decision)}
+
+      ${renderWarningsBlock(invalidations)}
+
+      ${why.length ? `
+        <div class="fx-section-title">Why This Trade?</div>
+        <ul class="fx-ul">
+          ${why.map(r => `<li>${esc(r)}</li>`).join("")}
+        </ul>
+      ` : ""}
+
+      ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
+
+      ${guidance.length ? `
+        <div class="fx-section-title">Guidance</div>
+        <ul class="fx-ul">
+          ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
+        </ul>
+      ` : ""}
+    `;
+}
+
+function setAnalyzeEnabled(enabled) {
+    const btn = document.getElementById("analyzeBtn");
+    const hint = document.getElementById("consentHint");
+    btn.disabled = !enabled;
+    hint.style.display = enabled ? "none" : "block";
+}
+
+function initConsentGate() {
+    const cb = document.getElementById("acceptLegal");
+    if (!cb) return;
+
+    try {
+        const saved = localStorage.getItem("fxco_accept_legal_v1");
+        if (saved === "1") cb.checked = true;
+    } catch {}
+
+    setAnalyzeEnabled(cb.checked);
+
+    cb.addEventListener("change", () => {
+        setAnalyzeEnabled(cb.checked);
+        try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
+    });
+}
+
+function openLegal(which) {
+    const backdrop = document.getElementById("legalBackdrop");
+    const modal = document.getElementById("legalModal");
+    const title = document.getElementById("legalTitle");
+    const content = document.getElementById("legalContent");
+
+    const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+    const termsHtml = `
       <div class="legal-callout">
         <p style="margin:0;">
-          <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
-          You can lose part or all of your capital.
+          <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
+          It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
+          <br/><br/>
+          <strong>AI Confidence is not a guarantee.</strong>
         </p>
       </div>
 
-      <h2>FXCO-PILOT is not financial advice</h2>
-      <p>
-        FXCO-PILOT provides AI-assisted analysis for <b>educational and informational purposes only</b>. It does <b>not</b> provide financial, investment, or trading advice.
-        Any trade decision you make is solely your responsibility.
-      </p>
+      <p><b>Last updated:</b> ${updated}</p>
 
-      <h2>Use responsibly</h2>
+      <h2>1) Acceptance of Terms</h2>
+      <p>By accessing or using FXCO-PILOT (the “Service”), you agree to these Terms. If you do not agree, do not use the Service.</p>
+
+      <h2>2) No Financial Advice</h2>
+      <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
+
+      <h2>3) AI Outputs & Limitations</h2>
+      <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee.</p>
+    `;
+
+    const privacyHtml = `
+      <p><b>Last updated:</b> ${updated}</p>
+      <h2>1) What We Collect</h2>
       <ul>
-        <li>Always do your own research and confirm with your strategy.</li>
-        <li>Use risk management (position sizing, SL, and limits).</li>
-        <li>Consider professional advice if needed.</li>
+        <li><b>Inputs you provide:</b> signals you paste and optional chart uploads, processed to generate analysis.</li>
       </ul>
+    `;
 
-      <p style="margin-top:14px;opacity:0.9;">
-        Click <b>“I Understand”</b> to continue.
-      </p>
-    </div>
-  </div>
-
-  <script>
-    function updateClock() {
-      const now = new Date();
-      document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
-      const hour = now.getUTCHours();
-      function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
-      setStatus("london", hour >= 7 && hour < 16);
-      setStatus("newyork", hour >= 12 && hour < 21);
-      setStatus("tokyo", hour >= 0 && hour < 9);
-    }
-    updateClock();
-    setInterval(updateClock, 1000);
-
-    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-
-    function renderConfidenceBar(percent) {
-      const p = clamp(Number(percent ?? 0), 0, 100);
-      return `
-        <div class="confidence" aria-label="AI confidence score">
-          <div class="confidence-top">
-            <div class="label">AI Confidence</div>
-            <div class="value">${p}%</div>
-          </div>
-          <div class="confidence-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
-            <div class="confidence-fill" style="width:${p}%"></div>
-          </div>
-        </div>
-      `;
-    }
-
-    function renderDecisionBadge(decision) {
-      const d = (decision || "NEUTRAL").toUpperCase();
-      if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
-      if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
-      return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
-    }
-
-    function esc(s) {
-      return String(s ?? "").replace(/[&<>"']/g, m => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-      }[m]));
-    }
-
-    function renderAnalysisFromJSON(a) {
-      const bias = a.bias || "Unclear";
-      const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
-      const strength = (typeof a.strength === "number") ? a.strength : "";
-      const clarity = (typeof a.clarity === "number") ? a.clarity : "";
-      const sc = a.signal_check || {};
-      const mc = a.market_context || {};
-      const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
-      const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 6) : [];
-
-      return `
-        ${renderConfidenceBar(confidence)}
-
-        <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
-          ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
-          ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
-        </div>
-
-        <div class="fx-section-title">Signal Check</div>
-        <div class="fx-kv">
-          • <b>Direction:</b> ${esc(sc.direction)}<br/>
-          • <b>Entry:</b> ${esc(sc.entry)}<br/>
-          • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
-          • <b>Targets:</b> ${esc(Array.isArray(sc.targets) ? sc.targets.join(", ") : sc.targets)}<br/>
-          • <b>Approx RR:</b> ${esc(sc.rr)}
-        </div>
-
-        <div class="fx-section-title">Market Context</div>
-        <div class="fx-kv">
-          • <b>Structure:</b> ${esc(mc.structure)}<br/>
-          • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
-          • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
-          • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
-        </div>
-
-        ${renderDecisionBadge(a.decision)}
-
-        ${why.length ? `
-          <div class="fx-section-title">Why This Trade?</div>
-          <ul class="fx-ul">
-            ${why.map(r => `<li>${esc(r)}</li>`).join("")}
-          </ul>
-        ` : ""}
-
-        ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
-
-        ${guidance.length ? `
-          <div class="fx-section-title">Guidance</div>
-          <ul class="fx-ul">
-            ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
-          </ul>
-        ` : ""}
-      `;
-    }
-
-    function setAnalyzeEnabled(enabled) {
-      const btn = document.getElementById("analyzeBtn");
-      const hint = document.getElementById("consentHint");
-      btn.disabled = !enabled;
-      hint.style.display = enabled ? "none" : "block";
-    }
-
-    function initConsentGate() {
-      const cb = document.getElementById("acceptLegal");
-      if (!cb) return;
-
-      try {
-        const saved = localStorage.getItem("fxco_accept_legal_v1");
-        if (saved === "1") cb.checked = true;
-      } catch {}
-
-      setAnalyzeEnabled(cb.checked);
-
-      cb.addEventListener("change", () => {
-        setAnalyzeEnabled(cb.checked);
-        try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
-      });
-    }
-
-    function openLegal(which) {
-      const backdrop = document.getElementById("legalBackdrop");
-      const modal = document.getElementById("legalModal");
-      const title = document.getElementById("legalTitle");
-      const content = document.getElementById("legalContent");
-
-      const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-
-      const termsHtml = `
-        <div class="legal-callout">
-          <p style="margin:0;">
-            <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
-            It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
-          </p>
-        </div>
-
-        <p><b>Last updated:</b> ${updated}</p>
-
-        <h2>1) Acceptance of Terms</h2>
-        <p>By accessing or using FXCO-PILOT (the “Service”), you agree to these Terms. If you do not agree, do not use the Service.</p>
-
-        <h2>2) No Financial Advice</h2>
-        <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
-
-        <h2>3) Use of the Service</h2>
-        <ul>
-          <li>Do not attempt to disrupt, exploit, or reverse-engineer the Service.</li>
-          <li>Do not upload unlawful or infringing content.</li>
-          <li>We may limit or suspend access if misuse is detected.</li>
-        </ul>
-
-        <h2>4) AI Outputs & Limitations</h2>
-        <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee. Past performance is not indicative of future results.</p>
-
-        <h2>5) Disclaimer of Warranties</h2>
-        <p>The Service is provided “as is” and “as available,” without warranties of any kind.</p>
-
-        <h2>6) Limitation of Liability</h2>
-        <p>To the maximum extent permitted by law, we are not liable for trading losses, lost profits, or indirect damages arising from use of the Service.</p>
-
-        <h2>7) Changes</h2>
-        <p>We may update these Terms from time to time. Continued use after changes means you accept the updated Terms.</p>
-      `;
-
-      const privacyHtml = `
-        <p><b>Last updated:</b> ${updated}</p>
-
-        <h2>1) What We Collect</h2>
-        <ul>
-          <li><b>Inputs you provide:</b> signals you paste and optional chart uploads, processed to generate analysis.</li>
-          <li><b>Basic technical data:</b> IP address, user-agent, and timestamps may be logged for security and reliability (host dependent).</li>
-          <li><b>Optional analytics:</b> only if enabled by the site owner.</li>
-        </ul>
-
-        <h2>2) How We Use Data</h2>
-        <ul>
-          <li>To provide analysis output and improve reliability.</li>
-          <li>To protect the Service from spam, abuse, and attacks.</li>
-          <li>To understand general usage patterns (only if analytics are enabled).</li>
-        </ul>
-
-        <h2>3) Sharing</h2>
-        <p>We do not sell personal information. We may share limited data only with service providers needed to operate the Service, or if required by law.</p>
-
-        <h2>4) Retention</h2>
-        <p>“Previous Analyses” shown here are stored in your browser UI unless you have backend persistence.</p>
-
-        <h2>5) Your Choices</h2>
-        <ul>
-          <li>You can avoid uploading charts and use text-only signals.</li>
-          <li>You can stop using the Service at any time.</li>
-          <li>You can control cookies/analytics through browser settings (if used).</li>
-        </ul>
-      `;
-
-      if (which === "terms") {
+    if (which === "terms") {
         title.textContent = "Terms of Service";
         content.innerHTML = termsHtml;
-      } else {
+    } else {
         title.textContent = "Privacy Policy";
         content.innerHTML = privacyHtml;
-      }
-
-      backdrop.style.display = "block";
-      modal.style.display = "block";
     }
 
-    function closeLegal() {
-      document.getElementById("legalBackdrop").style.display = "none";
-      document.getElementById("legalModal").style.display = "none";
-    }
-    document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
-    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLegal(); });
+    backdrop.style.display = "block";
+    modal.style.display = "block";
+}
 
-    function showRiskModalIfNeeded() {
-      try {
+function closeLegal() {
+    document.getElementById("legalBackdrop").style.display = "none";
+    document.getElementById("legalModal").style.display = "none";
+}
+document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLegal(); });
+
+function showRiskModalIfNeeded() {
+    try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
         if (seen === "1") return;
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
-      } catch {
+    } catch {
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
-      }
     }
-    function acknowledgeRisk() {
-      try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
-      document.getElementById("riskBackdrop").style.display = "none";
-      document.getElementById("riskModal").style.display = "none";
-      document.body.style.overflow = "";
-    }
-    document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+}
+function acknowledgeRisk() {
+    try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
+    document.getElementById("riskBackdrop").style.display = "none";
+    document.getElementById("riskModal").style.display = "none";
+    document.body.style.overflow = "";
+}
+document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-    function analyze() {
-      const accepted = document.getElementById("acceptLegal")?.checked;
-      if (!accepted) { setAnalyzeEnabled(false); return; }
+function analyze() {
+    const accepted = document.getElementById("acceptLegal")?.checked;
+    if (!accepted) { setAnalyzeEnabled(false); return; }
 
-      const formData = new FormData();
-      formData.append("pair_type", document.getElementById("pairType").value);
-      formData.append("timeframe", document.getElementById("timeframe").value);
-      formData.append("signal_input", document.getElementById("signal").value);
+    const formData = new FormData();
+    formData.append("pair_type", document.getElementById("pairType").value);
+    formData.append("timeframe", document.getElementById("timeframe").value);
+    formData.append("signal_input", document.getElementById("signal").value);
 
-      const file = document.getElementById("chart").files[0];
-      if (file) formData.append("chart_image", file);
+    const file = document.getElementById("chart").files[0];
+    if (file) formData.append("chart_image", file);
 
-      document.getElementById("result").innerHTML = "Analyzing…";
+    document.getElementById("result").innerHTML = "Analyzing…";
 
-      fetch("/analyze", { method: "POST", body: formData })
+    fetch("/analyze", { method: "POST", body: formData })
         .then(async (res) => {
-          const ct = res.headers.get("content-type") || "";
-          if (!res.ok) {
-            if (ct.includes("application/json")) {
-              const j = await res.json();
-              throw new Error(j.error || "Request failed.");
+            const ct = res.headers.get("content-type") || "";
+            if (!res.ok) {
+                if (ct.includes("application/json")) {
+                    const j = await res.json();
+                    throw new Error(j.error || "Request failed.");
+                }
+                const t = await res.text();
+                throw new Error(t || "Request failed.");
             }
-            const t = await res.text();
-            throw new Error(t || "Request failed.");
-          }
-          if (!ct.includes("application/json")) {
-            const t = await res.text();
-            throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
-          }
-          return res.json();
+            if (!ct.includes("application/json")) {
+                const t = await res.text();
+                throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+            }
+            return res.json();
         })
         .then((data) => {
-          if (data && data.analysis) {
-            const html = renderAnalysisFromJSON(data.analysis);
-            document.getElementById("result").innerHTML = html;
+            if (data && data.analysis) {
+                const html = renderAnalysisFromJSON(data.analysis);
+                document.getElementById("result").innerHTML = html;
 
-            const historyBox = document.getElementById("history");
-            historyBox.innerHTML =
-              `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                ${html}
-              </div>` + historyBox.innerHTML;
-            return;
-          }
+                const historyBox = document.getElementById("history");
+                historyBox.innerHTML =
+                    `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                        ${html}
+                     </div>` + historyBox.innerHTML;
+                return;
+            }
 
-          const text = (data && data.result) ? String(data.result) : "No result returned.";
-          document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
+            const text = (data && data.result) ? String(data.result) : "No result returned.";
+            document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
         })
         .catch((err) => {
-          document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
         });
-    }
+}
 
-    initConsentGate();
-    showRiskModalIfNeeded();
-  </script>
+initConsentGate();
+showRiskModalIfNeeded();
+</script>
 </body>
 </html>
