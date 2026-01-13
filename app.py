@@ -35,6 +35,28 @@ def static_files(path):
 
 
 # ==========================
+# favicon ico route: static
+# ==========================
+from flask import send_from_directory
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    return send_from_directory("static", "favicon.ico")
+
+@app.route("/favicon-32.png")
+def favicon_32():
+    return send_from_directory("static", "favicon-32.png")
+
+@app.route("/favicon-16.png")
+def favicon_16():
+    return send_from_directory("static", "favicon-16.png")
+
+@app.route("/apple-touch-icon.png")
+def apple_touch_icon():
+    return send_from_directory("static", "apple-touch-icon.png")
+
+
+# ==========================
 # Helpers: symbols / parsing
 # ==========================
 def _norm_symbol(s: str) -> str:
