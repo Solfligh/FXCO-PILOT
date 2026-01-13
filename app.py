@@ -1,13 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory
 import base64
-import os
 import json
 import re
 from openai import OpenAI
 
 app = Flask(__name__)
-
-# Initialize OpenAI client using environment variable OPENAI_API_KEY
 client = OpenAI()
 
 
@@ -25,18 +22,6 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
-@app.route("/terms")
-def terms():
-    # Optional: if you later add a terms.html file
-    return send_from_directory(".", "terms.html")
-
-
-@app.route("/privacy")
-def privacy():
-    # Optional: if you later add a privacy.html file
-    return send_from_directory(".", "privacy.html")
-
-
 # --------------------------
 # Helpers
 # --------------------------
@@ -50,8 +35,7 @@ def _to_float(value):
     if not s:
         return None
     s = s.replace(",", "")
-    # extract first float-like number
-    m = re.search(r"-?\d+(\.\d+)?", s)
+    m = re.search(r"-?\d+(?:\.\d+)?", s)
     if not m:
         return None
     try:
@@ -61,12 +45,6 @@ def _to_float(value):
 
 
 def _parse_targets(val):
-    """
-    Accept:
-      - list of numbers/strings
-      - string "2050" or "2050, 2060" or "TP1 2050 TP2 2060"
-    Returns list[float]
-    """
     if val is None:
         return []
     if isinstance(val, list):
@@ -77,8 +55,6 @@ def _parse_targets(val):
                 out.append(fx)
         return out
     s = str(val)
-    nums = re.findall(r"-?\d+(\.\d+)?", s)
-    # re.findall with groups returns tuples sometimes; use regex without groups
     nums = re.findall(r"-?\d+(?:\.\d+)?", s)
     out = []
     for n in nums:
@@ -182,16 +158,13 @@ def compute_confidence(analysis):
 
 def build_trade_reasoning(analysis):
     reasons = []
-
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
 
     if mc.get("structure"):
         reasons.append(f"Market structure supports the setup ({mc.get('structure')}).")
-
     if mc.get("liquidity"):
         reasons.append(f"Entry aligns with liquidity behavior ({mc.get('liquidity')}).")
-
     if mc.get("momentum"):
         reasons.append(f"Momentum favors the direction ({mc.get('momentum')}).")
 
@@ -211,55 +184,109 @@ def build_trade_reasoning(analysis):
     return reasons[:5]
 
 
+def build_invalidation_warnings(analysis):
+    """
+    Heuristic invalidation warnings to prevent false confidence.
+    We generate warnings based on bias/decision vs structure keywords,
+    as well as poor RR / low confidence / missing key fields.
+    """
+    warnings = []
+
+    bias = (analysis.get("bias") or "Unclear").lower()
+    decision = (analysis.get("decision") or "NEUTRAL").upper().strip()
+    conf = analysis.get("confidence") or 0
+
+    mc = analysis.get("market_context", {}) or {}
+    sc = analysis.get("signal_check", {}) or {}
+
+    structure = (mc.get("structure") or "").lower()
+    momentum = (mc.get("momentum") or "").lower()
+
+    # Parse RR safely
+    rr = sc.get("rr")
+    rr_f = None
+    try:
+        rr_f = float(rr) if rr is not None else None
+    except:
+        rr_f = None
+
+    # --- Missing hard requirements
+    if not sc.get("entry") or not sc.get("stop_loss") or not sc.get("targets"):
+        warnings.append("Missing key levels (entry / stop loss / targets). Signal is not executable without them.")
+
+    # --- RR quality warnings
+    if rr_f is not None and rr_f < 1.2:
+        warnings.append(f"Low risk-reward (RR ≈ {rr_f}). Consider improving RR or skipping this setup.")
+
+    # --- Confidence warnings
+    if decision == "TAKE TRADE" and conf < 50:
+        warnings.append(f"Decision is TAKE but confidence is low ({conf}%). Treat as high-risk or wait for confirmation.")
+
+    # --- Structure invalidation vs bias
+    # If bias long but structure says bearish/choch down/bos down/breakdown, warn.
+    bearish_tokens = ["bearish", "choch down", "bos down", "breakdown", "lower low", "lower highs", "downtrend"]
+    bullish_tokens = ["bullish", "choch up", "bos up", "breakout", "higher high", "higher lows", "uptrend"]
+
+    if "long" in bias:
+        if any(t in structure for t in bearish_tokens) or ("choch" in structure and "down" in structure):
+            warnings.append("Structure may be broken against a LONG bias (CHoCH/BOS bearish). Invalidate long if price breaks key swing low / support.")
+        if "bearish" in momentum:
+            warnings.append("Momentum is bearish while bias is LONG. Wait for bullish displacement / confirmation.")
+
+    if "short" in bias:
+        if any(t in structure for t in bullish_tokens) or ("choch" in structure and "up" in structure):
+            warnings.append("Structure may be broken against a SHORT bias (CHoCH/BOS bullish). Invalidate short if price breaks key swing high / resistance.")
+        if "bullish" in momentum:
+            warnings.append("Momentum is bullish while bias is SHORT. Wait for bearish displacement / confirmation.")
+
+    # --- Extra safety: if decision TAKE but structure is empty or unclear
+    if decision == "TAKE TRADE" and (not structure or "unclear" in structure):
+        warnings.append("Structure context is unclear. If price does not confirm BOS/CHoCH as expected, invalidate the trade.")
+
+    # Keep concise
+    return warnings[:6]
+
+
 def normalize_analysis(obj):
-    """
-    Force the analysis into a clean predictable shape the frontend expects.
-    """
     out = {
-        "bias": (obj.get("bias") or obj.get("BIAS") or "Unclear"),
-        "confidence": obj.get("confidence") or obj.get("CONFIDENCE") or 0,
-        "strength": obj.get("strength") or obj.get("STRENGTH") or 0,
-        "clarity": obj.get("clarity") or obj.get("CLARITY") or 0,
-        "signal_check": obj.get("signal_check") or obj.get("SIGNAL CHECK") or {},
-        "market_context": obj.get("market_context") or obj.get("MARKET CONTEXT") or {},
-        "decision": obj.get("decision") or obj.get("TRADE DECISION") or "NEUTRAL",
-        "verdict": obj.get("verdict") or obj.get("VERDICT") or "",
-        "guidance": obj.get("guidance") or obj.get("GUIDANCE") or [],
-        "why_this_trade": obj.get("why_this_trade") or []
+        "bias": (obj.get("bias") or "Unclear"),
+        "confidence": obj.get("confidence") or 0,
+        "strength": obj.get("strength") or 0,
+        "clarity": obj.get("clarity") or 0,
+        "signal_check": obj.get("signal_check") or {},
+        "market_context": obj.get("market_context") or {},
+        "decision": obj.get("decision") or "NEUTRAL",
+        "verdict": obj.get("verdict") or "",
+        "guidance": obj.get("guidance") or [],
+        "why_this_trade": obj.get("why_this_trade") or [],
+        "invalidation_warnings": obj.get("invalidation_warnings") or []
     }
 
-    # Normalize signal_check fields
     sc = out["signal_check"] if isinstance(out["signal_check"], dict) else {}
     mc = out["market_context"] if isinstance(out["market_context"], dict) else {}
 
-    # Map possible alt keys
-    direction = sc.get("direction") or sc.get("parsed_direction") or sc.get("Parsed direction") or sc.get("Parsed direction:")
-    entry = sc.get("entry") or sc.get("Entry")
-    stop_loss = sc.get("stop_loss") or sc.get("sl") or sc.get("Stop loss") or sc.get("Stop Loss")
-    targets = sc.get("targets") or sc.get("tp") or sc.get("Targets")
+    direction = sc.get("direction") or sc.get("parsed_direction") or ""
+    entry = sc.get("entry") or ""
+    stop_loss = sc.get("stop_loss") or sc.get("sl") or ""
+    targets = sc.get("targets") or sc.get("tp") or []
 
     sc_norm = {
-        "direction": direction or "",
-        "entry": entry or "",
-        "stop_loss": stop_loss or "",
-        "targets": targets or []
+        "direction": direction,
+        "entry": entry,
+        "stop_loss": stop_loss,
+        "targets": targets
     }
-
-    # Ensure targets is list
     sc_norm["targets"] = _parse_targets(sc_norm["targets"])
 
-    # Calculate RR
     rr_val = calculate_rr(sc_norm["entry"], sc_norm["stop_loss"], sc_norm["targets"])
     sc_norm["rr"] = rr_val
-
     out["signal_check"] = sc_norm
 
-    # Normalize market context keys
     mc_norm = {
-        "structure": mc.get("structure") or mc.get("Structure") or "",
-        "liquidity": mc.get("liquidity") or mc.get("Liquidity") or "",
-        "momentum": mc.get("momentum") or mc.get("Momentum") or "",
-        "timeframe_alignment": mc.get("timeframe_alignment") or mc.get("Timeframe alignment") or ""
+        "structure": mc.get("structure") or "",
+        "liquidity": mc.get("liquidity") or "",
+        "momentum": mc.get("momentum") or "",
+        "timeframe_alignment": mc.get("timeframe_alignment") or ""
     }
     out["market_context"] = mc_norm
 
@@ -287,12 +314,15 @@ def normalize_analysis(obj):
     # Build explainer
     out["why_this_trade"] = build_trade_reasoning(out)
 
+    # Build invalidation warnings (structure broken, etc)
+    out["invalidation_warnings"] = build_invalidation_warnings(out)
+
     return out
 
 
 # --------------------------
 # FX CO-PILOT — ANALYZER
-# Always returns JSON {analysis: {...}}
+# Returns JSON {analysis: {...}}
 # --------------------------
 
 @app.route("/analyze", methods=["POST"])
@@ -343,10 +373,11 @@ Rules:
 - Do NOT include markdown.
 - Do NOT include extra keys.
 - entry/stop_loss/targets MUST be numeric-like.
+- If uncertain, choose NEUTRAL.
 """
 
     messages = [
-        {"role": "system", "content": "You are FX Co-Pilot, an expert AI trade validator. Output ONLY JSON."},
+        {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON."},
         {"role": "user", "content": base_prompt}
     ]
 
@@ -368,7 +399,6 @@ Rules:
 
         raw = completion.choices[0].message.content or ""
 
-        # Attempt JSON parse (model instructed to return JSON only)
         try:
             analysis_obj = json.loads(raw)
         except Exception:
@@ -391,10 +421,6 @@ Rules:
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
-# --------------------------
-# Run local server
-# --------------------------
 
 if __name__ == "__main__":
     app.run(debug=True)
