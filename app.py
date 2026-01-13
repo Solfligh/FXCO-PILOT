@@ -1,17 +1,29 @@
 from flask import Flask, request, jsonify, send_from_directory
 import base64
-import json
+import os
 import re
+import json
+import requests
+from datetime import datetime
 from openai import OpenAI
 
 app = Flask(__name__)
+
+# ==========================
+# OpenAI client (uses OPENAI_API_KEY from env automatically)
+# ==========================
 client = OpenAI()
+
+# ==========================
+# Twelve Data (Grow) - ENV VAR ONLY
+# ==========================
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+TD_BASE = "https://api.twelvedata.com"
 
 
 # --------------------------
 # Serve Frontend Files
 # --------------------------
-
 @app.route("/")
 def index():
     return send_from_directory(".", "index.html")
@@ -22,19 +34,44 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
-# --------------------------
-# Helpers
-# --------------------------
+# ==========================
+# Helpers: symbols / parsing
+# ==========================
+def _norm_symbol(s: str) -> str:
+    return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
 
-def _to_float(value):
-    if value is None:
+
+def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
+    txt = (signal_text or "").upper()
+
+    m = re.search(r"\b([A-Z]{3,5})\s*/\s*([A-Z]{3,5})\b", txt)
+    if m:
+        return _norm_symbol(m.group(1) + m.group(2))
+
+    m = re.search(r"\b([A-Z]{6})\b", txt)
+    if m:
+        return _norm_symbol(m.group(1))
+
+    m = re.search(r"\b(XAUUSD|XAGUSD|BTCUSD|ETHUSD|SOLUSD|XRPUSD)\b", txt)
+    if m:
+        return _norm_symbol(m.group(1))
+
+    pt = (pair_type or "").lower()
+    if pt == "gold":
+        return "XAUUSD"
+    if pt == "crypto":
+        return "BTCUSD"
+    return "EURUSD"
+
+
+def _to_float(v):
+    if v is None:
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    s = str(value).strip()
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(",", "")
     if not s:
         return None
-    s = s.replace(",", "")
     m = re.search(r"-?\d+(?:\.\d+)?", s)
     if not m:
         return None
@@ -66,276 +103,278 @@ def _parse_targets(val):
 
 
 def calculate_rr(entry, stop, targets):
-    """
-    RR = Reward / Risk
-    Risk = |Entry - Stop|
-    Reward = |Target1 - Entry|
-    """
-    try:
-        entry_f = _to_float(entry)
-        stop_f = _to_float(stop)
-        targets_f = _parse_targets(targets)
-
-        if entry_f is None or stop_f is None or not targets_f:
-            return None
-
-        risk = abs(entry_f - stop_f)
-        reward = abs(targets_f[0] - entry_f)
-
-        if risk <= 0:
-            return None
-
-        return round(reward / risk, 2)
-    except:
+    entry_f = _to_float(entry)
+    stop_f = _to_float(stop)
+    tps = _parse_targets(targets)
+    if entry_f is None or stop_f is None or not tps:
         return None
+    risk = abs(entry_f - stop_f)
+    reward = abs(tps[0] - entry_f)
+    if risk <= 0:
+        return None
+    return round(reward / risk, 2)
 
 
+# ==========================
+# Twelve Data calls
+# ==========================
+def td_price(symbol: str):
+    if not TWELVE_DATA_API_KEY:
+        return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
+    try:
+        r = requests.get(
+            f"{TD_BASE}/price",
+            params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY},
+            timeout=10
+        )
+        data = r.json()
+        if "status" in data and data["status"] == "error":
+            return {"ok": False, "error": data.get("message", "Twelve Data error")}
+        p = float(data["price"])
+        return {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
+    if not TWELVE_DATA_API_KEY:
+        return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
+    try:
+        r = requests.get(
+            f"{TD_BASE}/time_series",
+            params={
+                "symbol": symbol,
+                "interval": interval,
+                "outputsize": limit,
+                "apikey": TWELVE_DATA_API_KEY
+            },
+            timeout=12
+        )
+        data = r.json()
+        if "status" in data and data["status"] == "error":
+            return {"ok": False, "error": data.get("message", "Twelve Data error")}
+        values = data.get("values") or []
+        # values are returned newest-first typically
+        return {"ok": True, "symbol": symbol, "interval": interval, "values": values, "source": "twelvedata"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.route("/quote", methods=["GET"])
+def quote():
+    symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
+    q = td_price(symbol)
+    return jsonify(q)
+
+
+# ==========================
+# Trend / structure detection (simple + safe)
+# ==========================
+def structure_from_candles(values):
+    """
+    values: list of dicts from Twelve Data time_series
+    We'll classify structure as bullish/bearish/unclear and detect "structure broken".
+    Simple heuristic:
+      - bullish if last close > close N and last swing low is higher than earlier swing low
+      - bearish if last close < close N and last swing high is lower than earlier swing high
+      - broken if opposite break happens relative to implied bias levels
+    """
+    if not values or len(values) < 40:
+        return {"structure": "unclear", "broken": False, "details": "Not enough candle data."}
+
+    # Convert to oldest->newest for analysis
+    vals = list(reversed(values))
+
+    try:
+        closes = [float(v["close"]) for v in vals]
+        highs = [float(v["high"]) for v in vals]
+        lows = [float(v["low"]) for v in vals]
+    except Exception:
+        return {"structure": "unclear", "broken": False, "details": "Candle parse error."}
+
+    last = closes[-1]
+    prev = closes[-25]  # ~25 bars back
+    trend = "bullish" if last > prev else "bearish" if last < prev else "unclear"
+
+    # crude swing points
+    recent_low = min(lows[-15:])
+    prior_low = min(lows[-40:-15])
+    recent_high = max(highs[-15:])
+    prior_high = max(highs[-40:-15])
+
+    if trend == "bullish":
+        # bullish structure: higher low + pushing highs
+        if recent_low > prior_low:
+            return {"structure": "bullish", "broken": False, "details": "Higher low detected."}
+        # if trend bullish but recent_low <= prior_low, structure weakening
+        return {"structure": "unclear", "broken": False, "details": "Bullish trend but HL not confirmed."}
+
+    if trend == "bearish":
+        # bearish structure: lower high + pushing lows
+        if recent_high < prior_high:
+            return {"structure": "bearish", "broken": False, "details": "Lower high detected."}
+        return {"structure": "unclear", "broken": False, "details": "Bearish trend but LH not confirmed."}
+
+    return {"structure": "unclear", "broken": False, "details": "Trend unclear."}
+
+
+def decide_block(bias: str, struct: str, live_price: float, entry: float, sl: float):
+    """
+    BLOCK rules (strict):
+      - If SL already hit (based on live price) => BLOCK
+      - If bias long and structure bearish => BLOCK
+      - If bias short and structure bullish => BLOCK
+    """
+    b = (bias or "unclear").lower()
+
+    if sl is not None and live_price is not None:
+        if "long" in b and live_price <= sl:
+            return True, "Live price is at/through Stop Loss. Trade invalidated."
+        if "short" in b and live_price >= sl:
+            return True, "Live price is at/through Stop Loss. Trade invalidated."
+
+    if "long" in b and struct == "bearish":
+        return True, "Structure is bearish while bias is LONG (structure broken)."
+    if "short" in b and struct == "bullish":
+        return True, "Structure is bullish while bias is SHORT (structure broken)."
+
+    return False, ""
+
+
+# ==========================
+# Deterministic confidence / Why / Warnings
+# ==========================
 def compute_confidence(analysis):
-    """
-    Deterministic, explainable score (0-100).
-    Weights:
-      Structure 30
-      RR 25
-      Liquidity 20
-      Momentum 15
-      Completeness 10
-    """
     score = 0
-
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
 
-    # 1) Structure (0–30)
-    structure = (mc.get("structure") or "").lower()
-    if "bos" in structure or "choch" in structure or "break" in structure:
+    struct = (mc.get("structure") or "").lower()
+    if struct in ["bullish", "bearish"]:
         score += 30
-    elif "bullish" in structure or "bearish" in structure:
-        score += 28
-    elif structure:
-        score += 18
+    elif struct:
+        score += 15
 
-    # 2) RR (0–25)
     rr = sc.get("rr")
-    try:
-        rr_f = float(rr)
-        if rr_f >= 2.5:
+    if isinstance(rr, (int, float)):
+        if rr >= 2.5:
             score += 25
-        elif rr_f >= 2.0:
+        elif rr >= 2.0:
             score += 20
-        elif rr_f >= 1.5:
+        elif rr >= 1.5:
             score += 12
-        elif rr_f >= 1.2:
+        elif rr >= 1.2:
             score += 6
-    except:
-        pass
 
-    # 3) Liquidity (0–20)
     liquidity = (mc.get("liquidity") or "").lower()
     if "liquidity" in liquidity or "sweep" in liquidity or "grab" in liquidity or "equal" in liquidity:
         score += 20
-    elif "support" in liquidity or "resistance" in liquidity or "zone" in liquidity:
-        score += 14
     elif liquidity:
         score += 10
 
-    # 4) Momentum (0–15)
     momentum = (mc.get("momentum") or "").lower()
     if "strong" in momentum:
         score += 15
-    elif "bullish" in momentum or "bearish" in momentum:
-        score += 10
     elif momentum:
-        score += 6
+        score += 8
 
-    # 5) Signal completeness (0–10)
     if sc.get("entry") and sc.get("stop_loss") and sc.get("targets"):
         score += 10
     elif sc.get("entry") and sc.get("stop_loss"):
         score += 6
 
-    return min(100, max(0, score))
+    return max(0, min(100, score))
 
 
-def build_trade_reasoning(analysis):
-    reasons = []
+def build_why_this_trade(analysis):
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
 
+    reasons = []
     if mc.get("structure"):
-        reasons.append(f"Market structure supports the setup ({mc.get('structure')}).")
+        reasons.append(f"Structure context: {mc.get('structure')}.")
     if mc.get("liquidity"):
-        reasons.append(f"Entry aligns with liquidity behavior ({mc.get('liquidity')}).")
+        reasons.append(f"Liquidity logic: {mc.get('liquidity')}.")
     if mc.get("momentum"):
-        reasons.append(f"Momentum favors the direction ({mc.get('momentum')}).")
-
+        reasons.append(f"Momentum: {mc.get('momentum')}.")
     rr = sc.get("rr")
-    try:
-        rr_f = float(rr) if rr is not None else None
-        if rr_f is not None and rr_f >= 2.0:
-            reasons.append(f"Risk-reward is favorable (RR ≈ {rr_f}).")
-        elif rr_f is not None:
-            reasons.append(f"Risk-reward is acceptable (RR ≈ {rr_f}).")
-    except:
-        pass
-
+    if rr is not None:
+        reasons.append(f"Risk/Reward (TP1): RR ≈ {rr}.")
     if sc.get("entry") and sc.get("stop_loss"):
-        reasons.append("Defined entry and stop loss reduce execution ambiguity.")
-
+        reasons.append("Defined entry and stop loss reduces ambiguity.")
     return reasons[:5]
 
 
-def build_invalidation_warnings(analysis):
-    """
-    Heuristic invalidation warnings to prevent false confidence.
-    We generate warnings based on bias/decision vs structure keywords,
-    as well as poor RR / low confidence / missing key fields.
-    """
+def build_invalidation_warnings(analysis, live_snapshot=None):
     warnings = []
-
-    bias = (analysis.get("bias") or "Unclear").lower()
-    decision = (analysis.get("decision") or "NEUTRAL").upper().strip()
-    conf = analysis.get("confidence") or 0
-
-    mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
+    bias = (analysis.get("bias") or "unclear").lower()
+    struct = (analysis.get("market_context", {}) or {}).get("structure") or "unclear"
 
-    structure = (mc.get("structure") or "").lower()
-    momentum = (mc.get("momentum") or "").lower()
-
-    # Parse RR safely
-    rr = sc.get("rr")
-    rr_f = None
-    try:
-        rr_f = float(rr) if rr is not None else None
-    except:
-        rr_f = None
-
-    # --- Missing hard requirements
+    # Missing levels
     if not sc.get("entry") or not sc.get("stop_loss") or not sc.get("targets"):
-        warnings.append("Missing key levels (entry / stop loss / targets). Signal is not executable without them.")
+        warnings.append("Missing key levels (entry / SL / targets).")
 
-    # --- RR quality warnings
-    if rr_f is not None and rr_f < 1.2:
-        warnings.append(f"Low risk-reward (RR ≈ {rr_f}). Consider improving RR or skipping this setup.")
+    rr = sc.get("rr")
+    if isinstance(rr, (int, float)) and rr < 1.2:
+        warnings.append(f"Low RR (≈ {rr}). Consider skipping or improving RR.")
 
-    # --- Confidence warnings
-    if decision == "TAKE TRADE" and conf < 50:
-        warnings.append(f"Decision is TAKE but confidence is low ({conf}%). Treat as high-risk or wait for confirmation.")
+    # Live invalidation
+    if live_snapshot and live_snapshot.get("ok"):
+        price = live_snapshot.get("price")
+        sl = _to_float(sc.get("stop_loss"))
+        if sl is not None:
+            if "long" in bias and price <= sl:
+                warnings.append("Live price has hit SL => invalidated.")
+            if "short" in bias and price >= sl:
+                warnings.append("Live price has hit SL => invalidated.")
 
-    # --- Structure invalidation vs bias
-    # If bias long but structure says bearish/choch down/bos down/breakdown, warn.
-    bearish_tokens = ["bearish", "choch down", "bos down", "breakdown", "lower low", "lower highs", "downtrend"]
-    bullish_tokens = ["bullish", "choch up", "bos up", "breakout", "higher high", "higher lows", "uptrend"]
+    # Structure mismatch warning
+    if ("long" in bias and struct == "bearish") or ("short" in bias and struct == "bullish"):
+        warnings.append("Structure is against your bias (structure broken).")
 
-    if "long" in bias:
-        if any(t in structure for t in bearish_tokens) or ("choch" in structure and "down" in structure):
-            warnings.append("Structure may be broken against a LONG bias (CHoCH/BOS bearish). Invalidate long if price breaks key swing low / support.")
-        if "bearish" in momentum:
-            warnings.append("Momentum is bearish while bias is LONG. Wait for bullish displacement / confirmation.")
-
-    if "short" in bias:
-        if any(t in structure for t in bullish_tokens) or ("choch" in structure and "up" in structure):
-            warnings.append("Structure may be broken against a SHORT bias (CHoCH/BOS bullish). Invalidate short if price breaks key swing high / resistance.")
-        if "bullish" in momentum:
-            warnings.append("Momentum is bullish while bias is SHORT. Wait for bearish displacement / confirmation.")
-
-    # --- Extra safety: if decision TAKE but structure is empty or unclear
-    if decision == "TAKE TRADE" and (not structure or "unclear" in structure):
-        warnings.append("Structure context is unclear. If price does not confirm BOS/CHoCH as expected, invalidate the trade.")
-
-    # Keep concise
-    return warnings[:6]
+    return warnings[:8]
 
 
-def normalize_analysis(obj):
-    out = {
-        "bias": (obj.get("bias") or "Unclear"),
-        "confidence": obj.get("confidence") or 0,
-        "strength": obj.get("strength") or 0,
-        "clarity": obj.get("clarity") or 0,
-        "signal_check": obj.get("signal_check") or {},
-        "market_context": obj.get("market_context") or {},
-        "decision": obj.get("decision") or "NEUTRAL",
-        "verdict": obj.get("verdict") or "",
-        "guidance": obj.get("guidance") or [],
-        "why_this_trade": obj.get("why_this_trade") or [],
-        "invalidation_warnings": obj.get("invalidation_warnings") or []
-    }
-
-    sc = out["signal_check"] if isinstance(out["signal_check"], dict) else {}
-    mc = out["market_context"] if isinstance(out["market_context"], dict) else {}
-
-    direction = sc.get("direction") or sc.get("parsed_direction") or ""
-    entry = sc.get("entry") or ""
-    stop_loss = sc.get("stop_loss") or sc.get("sl") or ""
-    targets = sc.get("targets") or sc.get("tp") or []
-
-    sc_norm = {
-        "direction": direction,
-        "entry": entry,
-        "stop_loss": stop_loss,
-        "targets": targets
-    }
-    sc_norm["targets"] = _parse_targets(sc_norm["targets"])
-
-    rr_val = calculate_rr(sc_norm["entry"], sc_norm["stop_loss"], sc_norm["targets"])
-    sc_norm["rr"] = rr_val
-    out["signal_check"] = sc_norm
-
-    mc_norm = {
-        "structure": mc.get("structure") or "",
-        "liquidity": mc.get("liquidity") or "",
-        "momentum": mc.get("momentum") or "",
-        "timeframe_alignment": mc.get("timeframe_alignment") or ""
-    }
-    out["market_context"] = mc_norm
-
-    # Normalize guidance to list[str]
-    g = out.get("guidance")
-    if isinstance(g, str):
-        out["guidance"] = [x.strip("-• \n\r\t") for x in g.split("\n") if x.strip()]
-    elif isinstance(g, list):
-        out["guidance"] = [str(x) for x in g if str(x).strip()]
-    else:
-        out["guidance"] = []
-
-    # Normalize decision
-    d = str(out.get("decision") or "NEUTRAL").upper().strip()
-    if "TAKE" in d:
-        out["decision"] = "TAKE TRADE"
-    elif "AVOID" in d:
-        out["decision"] = "AVOID TRADE"
-    else:
-        out["decision"] = "NEUTRAL"
-
-    # Deterministic confidence overrides AI-provided confidence
-    out["confidence"] = compute_confidence(out)
-
-    # Build explainer
-    out["why_this_trade"] = build_trade_reasoning(out)
-
-    # Build invalidation warnings (structure broken, etc)
-    out["invalidation_warnings"] = build_invalidation_warnings(out)
-
-    return out
-
-
-# --------------------------
-# FX CO-PILOT — ANALYZER
-# Returns JSON {analysis: {...}}
-# --------------------------
-
+# ==========================
+# Main Analyze Endpoint (keeps your existing flow)
+# ==========================
 @app.route("/analyze", methods=["POST"])
 def analyze():
+    # Get text fields
     pair_type = request.form.get("pair_type", "").strip()
     timeframe = request.form.get("timeframe", "").strip()
     signal_text = request.form.get("signal_input", "").strip()
 
+    # Chart image optional
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
         img_bytes = file.read()
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    # Detect symbol
+    symbol = detect_symbol_from_signal(signal_text, pair_type)
+
+    # ==========================
+    # Live data: price + candles
+    # ==========================
+    live_snapshot = td_price(symbol)
+    candles_snapshot = td_candles(symbol, interval="5min", limit=120)
+
+    struct_info = {"structure": "unclear", "broken": False, "details": ""}
+    if candles_snapshot.get("ok") and candles_snapshot.get("values"):
+        struct_info = structure_from_candles(candles_snapshot["values"])
+
+    # ==========================
+    # Ask AI for structured JSON (same UI contract)
+    # ==========================
+    # Provide live info to AI
+    live_context = "Live data unavailable."
+    if live_snapshot.get("ok"):
+        live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
+    else:
+        live_context = f"Live data error: {live_snapshot.get('error', 'unknown')}"
 
     base_prompt = f"""
 You are FX CO-PILOT — an institutional-grade trade validation engine.
@@ -346,7 +385,12 @@ User Context:
 - Raw signal:
 \"\"\"{signal_text}\"\"\"
 
-Return ONLY valid JSON that matches this schema:
+Live Market:
+- Symbol: {symbol}
+- {live_context}
+- 5min Structure (heuristic from candles): {struct_info.get('structure')} ({struct_info.get('details')})
+
+Return ONLY valid JSON that matches this schema (no markdown):
 
 {{
   "bias": "Long|Short|Neutral|Unclear",
@@ -370,9 +414,9 @@ Return ONLY valid JSON that matches this schema:
 }}
 
 Rules:
-- Do NOT include markdown.
-- Do NOT include extra keys.
+- Output MUST be raw JSON only.
 - entry/stop_loss/targets MUST be numeric-like.
+- Use live price and structure notes to avoid late entries.
 - If uncertain, choose NEUTRAL.
 """
 
@@ -381,11 +425,12 @@ Rules:
         {"role": "user", "content": base_prompt}
     ]
 
+    # Add image (if provided)
     if img_base64:
         messages.append({
             "role": "user",
             "content": [
-                {"type": "text", "text": "Here is the chart screenshot. Use it to refine structure/liquidity/trend."},
+                {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure/liquidity/trend."},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
             ]
         })
@@ -404,23 +449,107 @@ Rules:
         except Exception:
             return jsonify({
                 "error": "Model did not return valid JSON.",
-                "debug_preview": raw[:400]
+                "debug_preview": raw[:500],
+                "live_snapshot": live_snapshot
             }), 502
 
         if not isinstance(analysis_obj, dict):
-            return jsonify({"error": "Model JSON was not an object."}), 502
+            return jsonify({
+                "error": "Model JSON was not an object.",
+                "live_snapshot": live_snapshot
+            }), 502
 
-        analysis = normalize_analysis(analysis_obj)
+        # ==========================
+        # Normalize + RR + deterministic confidence
+        # ==========================
+        sc = analysis_obj.get("signal_check") or {}
+        mc = analysis_obj.get("market_context") or {}
+
+        entry = sc.get("entry")
+        sl = sc.get("stop_loss")
+        targets = sc.get("targets")
+
+        rr = calculate_rr(entry, sl, targets)
+
+        # Force structure string to include live/candle signal
+        # (We keep AI's text, but we also append our live heuristic)
+        mc_struct = mc.get("structure") or ""
+        mc["structure"] = (mc_struct + f" | Live(5m): {struct_info.get('structure')}").strip(" |")
+
+        # Build normalized analysis object
+        analysis = {
+            "bias": analysis_obj.get("bias") or "Unclear",
+            "strength": analysis_obj.get("strength") or 0,
+            "clarity": analysis_obj.get("clarity") or 0,
+            "signal_check": {
+                "direction": sc.get("direction") or "Unclear",
+                "entry": _to_float(entry),
+                "stop_loss": _to_float(sl),
+                "targets": _parse_targets(targets),
+                "rr": rr
+            },
+            "market_context": {
+                "structure": mc.get("structure") or "",
+                "liquidity": mc.get("liquidity") or "",
+                "momentum": mc.get("momentum") or "",
+                "timeframe_alignment": mc.get("timeframe_alignment") or ""
+            },
+            "decision": analysis_obj.get("decision") or "NEUTRAL",
+            "verdict": analysis_obj.get("verdict") or "",
+            "guidance": analysis_obj.get("guidance") or [],
+            "live_snapshot": live_snapshot
+        }
+
+        # Normalize decision
+        d = str(analysis.get("decision") or "NEUTRAL").upper()
+        if "TAKE" in d:
+            analysis["decision"] = "TAKE TRADE"
+        elif "AVOID" in d:
+            analysis["decision"] = "AVOID TRADE"
+        else:
+            analysis["decision"] = "NEUTRAL"
+
+        analysis["confidence"] = compute_confidence(analysis)
+        analysis["why_this_trade"] = build_why_this_trade(analysis)
+        analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
+
+        # ==========================
+        # BLOCK trade (strict)
+        # ==========================
+        live_price = live_snapshot.get("price") if live_snapshot.get("ok") else None
+        bias = analysis.get("bias")
+        struct = struct_info.get("structure")  # bullish/bearish/unclear
+        entry_f = analysis["signal_check"].get("entry")
+        sl_f = analysis["signal_check"].get("stop_loss")
+
+        blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
+
+        if blocked:
+            # Force decision
+            analysis["decision"] = "AVOID TRADE"
+            analysis["verdict"] = (analysis.get("verdict") or "").strip()
+            analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
+            analysis["invalidation_warnings"] = [reason] + (analysis.get("invalidation_warnings") or [])
+
+            return jsonify({
+                "blocked": True,
+                "block_reason": reason,
+                "analysis": analysis,
+                "mode": "twelvedata_block"
+            })
 
         return jsonify({
+            "blocked": False,
             "analysis": analysis,
-            "confidence": analysis.get("confidence", 0),
-            "mode": "json_only"
+            "mode": "twelvedata_live"
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+# --------------------------
+# Run local server
+# --------------------------
 if __name__ == "__main__":
     app.run(debug=True)
