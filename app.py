@@ -16,6 +16,11 @@ load_dotenv()
 
 app = Flask(__name__)
 
+@app.get("/health")
+def health():
+    return jsonify({"ok": True})
+
+
 # ==========================
 # OpenAI client (uses OPENAI_API_KEY from env automatically)
 # ==========================
