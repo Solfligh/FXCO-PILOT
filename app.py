@@ -942,6 +942,15 @@ Rules:
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/health")
+def health():
+    return jsonify({
+        "ok": True,
+        "service": "FXCO-PILOT",
+        "status": "running"
+    })
+
+
 # --------------------------
 # Run local server
 # --------------------------
