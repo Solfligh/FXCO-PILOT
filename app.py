@@ -3,15 +3,14 @@ import base64
 import os
 import re
 import json
-import time
-import math
 import requests
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
 
 # ==========================
-# Load env (.env)
+# Load .env (ENV VAR ONLY)
 # ==========================
 load_dotenv()
 
@@ -29,14 +28,14 @@ TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 TD_BASE = "https://api.twelvedata.com"
 
 # ==========================
-# Public-safety: rate limit + cache (simple in-memory)
+# Public safety: simple rate limiting + caching (in-memory)
 # ==========================
-CACHE = {}  # key -> {"ts": float, "data": Any}
+CACHE = {}  # key -> {"ts": float, "data": any}
 CACHE_TTL_SECONDS = 12
 
-RATE = {}   # ip -> {"window_start": float, "count": int}
+RATE = {}  # ip -> {"window_start": float, "count": int}
 RATE_WINDOW_SECONDS = 60
-RATE_MAX_REQUESTS_PER_WINDOW = 80  # safe default for public users (tune later)
+RATE_MAX_REQUESTS_PER_WINDOW = 90  # tune later
 
 
 def _client_ip() -> str:
@@ -95,6 +94,7 @@ def favicon_ico():
     return send_from_directory("static", "favicon.ico")
 
 
+# Optional: if you have these files, this prevents noisy 404s from browsers/devices
 @app.route("/favicon-32.png")
 def favicon_32():
     return send_from_directory("static", "favicon-32.png")
@@ -110,9 +110,17 @@ def apple_touch_icon():
     return send_from_directory("static", "apple-touch-icon.png")
 
 
+# ==========================
+# Health (new)
+# ==========================
 @app.get("/health")
 def health():
-    return jsonify({"ok": True, "service": "FXCO-PILOT", "twelvedata_key_loaded": bool(TWELVE_DATA_API_KEY)})
+    return jsonify({
+        "ok": True,
+        "service": "FXCO-PILOT",
+        "twelvedata_key_loaded": bool(TWELVE_DATA_API_KEY),
+        "time": datetime.utcnow().isoformat() + "Z"
+    })
 
 
 # ==========================
@@ -158,7 +166,7 @@ def _to_float(v):
         return None
     try:
         return float(m.group(0))
-    except Exception:
+    except:
         return None
 
 
@@ -178,7 +186,7 @@ def _parse_targets(val):
     for n in nums:
         try:
             out.append(float(n))
-        except Exception:
+        except:
             pass
     return out
 
@@ -259,7 +267,9 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
             _cache_set(cache_key, out)
             return out
+
         values = data.get("values") or []
+        # values are returned newest-first typically
         out = {"ok": True, "symbol": symbol, "interval": interval, "values": values, "source": "twelvedata"}
         _cache_set(cache_key, out)
         return out
@@ -281,17 +291,65 @@ def quote():
 
 
 # ==========================
+# NEW: API candles endpoint (for live charts)
+# ==========================
+@app.get("/api/candles")
+def api_candles():
+    ip = _client_ip()
+    if not _rate_ok(ip):
+        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
+
+    symbol = request.args.get("symbol", "EURUSD")
+    interval = request.args.get("interval", "5min")
+    limit = request.args.get("limit", 120)
+
+    symbol = _norm_symbol(symbol)
+    try:
+        limit = int(limit)
+    except Exception:
+        limit = 120
+
+    snap = td_candles(symbol, interval=interval, limit=limit)
+    if not snap.get("ok"):
+        return jsonify(snap), 502
+
+    values = snap.get("values") or []
+    candles = []
+    for v in values:
+        candles.append({
+            "datetime": v.get("datetime"),
+            "open": v.get("open"),
+            "high": v.get("high"),
+            "low": v.get("low"),
+            "close": v.get("close"),
+        })
+
+    return jsonify({
+        "ok": True,
+        "symbol": symbol,
+        "interval": interval,
+        "candles": candles,  # newest-first
+        "source": "twelvedata"
+    })
+
+
+# ==========================
 # Trend / structure detection (simple + safe)
 # ==========================
 def structure_from_candles(values):
     """
-    values: list of dicts from Twelve Data time_series (newest-first)
-    We'll classify structure as bullish/bearish/unclear.
+    values: list of dicts from Twelve Data time_series
+    We'll classify structure as bullish/bearish/unclear and detect "structure broken".
+    Simple heuristic:
+      - bullish if last close > close N and last swing low is higher than earlier swing low
+      - bearish if last close < close N and last swing high is lower than earlier swing high
+      - broken if opposite break happens relative to implied bias levels
     """
     if not values or len(values) < 40:
         return {"structure": "unclear", "broken": False, "details": "Not enough candle data."}
 
-    vals = list(reversed(values))  # oldest -> newest
+    # Convert to oldest->newest for analysis
+    vals = list(reversed(values))
 
     try:
         closes = [float(v["close"]) for v in vals]
@@ -301,20 +359,24 @@ def structure_from_candles(values):
         return {"structure": "unclear", "broken": False, "details": "Candle parse error."}
 
     last = closes[-1]
-    prev = closes[-25]
+    prev = closes[-25]  # ~25 bars back
     trend = "bullish" if last > prev else "bearish" if last < prev else "unclear"
 
+    # crude swing points
     recent_low = min(lows[-15:])
     prior_low = min(lows[-40:-15])
     recent_high = max(highs[-15:])
     prior_high = max(highs[-40:-15])
 
     if trend == "bullish":
+        # bullish structure: higher low + pushing highs
         if recent_low > prior_low:
             return {"structure": "bullish", "broken": False, "details": "Higher low detected."}
+        # if trend bullish but recent_low <= prior_low, structure weakening
         return {"structure": "unclear", "broken": False, "details": "Bullish trend but HL not confirmed."}
 
     if trend == "bearish":
+        # bearish structure: lower high + pushing lows
         if recent_high < prior_high:
             return {"structure": "bearish", "broken": False, "details": "Lower high detected."}
         return {"structure": "unclear", "broken": False, "details": "Bearish trend but LH not confirmed."}
@@ -354,7 +416,7 @@ def compute_confidence(analysis):
     sc = analysis.get("signal_check", {}) or {}
 
     struct = (mc.get("structure") or "").lower()
-    if "bullish" in struct or "bearish" in struct:
+    if struct in ["bullish", "bearish"]:
         score += 30
     elif struct:
         score += 15
@@ -371,7 +433,7 @@ def compute_confidence(analysis):
             score += 6
 
     liquidity = (mc.get("liquidity") or "").lower()
-    if any(x in liquidity for x in ["liquidity", "sweep", "grab", "equal"]):
+    if "liquidity" in liquidity or "sweep" in liquidity or "grab" in liquidity or "equal" in liquidity:
         score += 20
     elif liquidity:
         score += 10
@@ -415,6 +477,7 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     bias = (analysis.get("bias") or "unclear").lower()
     struct = (analysis.get("market_context", {}) or {}).get("structure") or "unclear"
 
+    # Missing levels
     if not sc.get("entry") or not sc.get("stop_loss") or not sc.get("targets"):
         warnings.append("Missing key levels (entry / SL / targets).")
 
@@ -422,6 +485,7 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     if isinstance(rr, (int, float)) and rr < 1.2:
         warnings.append(f"Low RR (≈ {rr}). Consider skipping or improving RR.")
 
+    # Live invalidation
     if live_snapshot and live_snapshot.get("ok"):
         price = live_snapshot.get("price")
         sl = _to_float(sc.get("stop_loss"))
@@ -431,14 +495,15 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
             if "short" in bias and price >= sl:
                 warnings.append("Live price has hit SL => invalidated.")
 
-    if ("long" in bias and "bearish" in struct.lower()) or ("short" in bias and "bullish" in struct.lower()):
+    # Structure mismatch warning
+    if ("long" in bias and struct == "bearish") or ("short" in bias and struct == "bullish"):
         warnings.append("Structure is against your bias (structure broken).")
 
     return warnings[:8]
 
 
 # ==========================
-# NEW: Indicators + deterministic signal endpoint
+# NEW: Simple deterministic signal endpoint
 # ==========================
 def _ema(series, period: int):
     if not series or period <= 1:
@@ -457,8 +522,7 @@ def _rsi(series, period: int = 14):
     if len(series) < period + 1:
         return [50.0] * len(series)
 
-    gains = []
-    losses = []
+    gains, losses = [], []
     for i in range(1, len(series)):
         diff = series[i] - series[i - 1]
         gains.append(max(diff, 0.0))
@@ -510,15 +574,12 @@ def _atr(highs, lows, closes, period: int = 14):
     return out
 
 
-def _build_signal_from_candles(values):
-    """
-    values: Twelve Data time_series values (newest-first)
-    Returns a deterministic signal object: direction/entry/sl/tp/rr/confidence/why/warnings/invalidation
-    """
-    ordered = list(reversed(values))  # oldest -> newest
-    closes = [_to_float(v.get("close")) or 0.0 for v in ordered]
-    highs = [_to_float(v.get("high")) or 0.0 for v in ordered]
-    lows = [_to_float(v.get("low")) or 0.0 for v in ordered]
+def _build_signal(values):
+    # values newest-first -> analyze oldest->newest
+    vals = list(reversed(values))
+    closes = [float(v["close"]) for v in vals]
+    highs = [float(v["high"]) for v in vals]
+    lows = [float(v["low"]) for v in vals]
 
     e20 = _ema(closes, 20)
     e50 = _ema(closes, 50)
@@ -529,14 +590,14 @@ def _build_signal_from_candles(values):
     last_e20 = e20[-1]
     last_e50 = e50[-1]
     last_rsi = r[-1]
-    last_atr = a[-1] if a[-1] and a[-1] > 0 else (last_close * 0.001)
+    last_atr = a[-1] if a[-1] > 0 else (last_close * 0.001)
 
     trend_up = last_e20 > last_e50
     trend_down = last_e20 < last_e50
 
     direction = "WAIT"
-    reasons = []
     confidence = 50
+    reasons = []
 
     if trend_up:
         reasons.append("Trend up (EMA20 > EMA50).")
@@ -550,29 +611,29 @@ def _build_signal_from_candles(values):
 
     if trend_up:
         if last_rsi < 45:
-            reasons.append(f"RSI {last_rsi:.1f} is low for an uptrend (pullback entry).")
+            reasons.append(f"RSI {last_rsi:.1f} low in uptrend (pullback entry).")
             confidence += 15
             direction = "BUY"
         elif 45 <= last_rsi <= 65:
-            reasons.append(f"RSI {last_rsi:.1f} supports uptrend continuation.")
+            reasons.append(f"RSI {last_rsi:.1f} supportive in uptrend.")
             confidence += 8
             direction = "BUY"
         else:
-            reasons.append(f"RSI {last_rsi:.1f} is high (pullback risk).")
+            reasons.append(f"RSI {last_rsi:.1f} high (pullback risk).")
             confidence -= 12
             direction = "WAIT"
 
     if trend_down:
         if last_rsi > 55:
-            reasons.append(f"RSI {last_rsi:.1f} is high for a downtrend (pullback entry).")
+            reasons.append(f"RSI {last_rsi:.1f} high in downtrend (pullback entry).")
             confidence += 15
             direction = "SELL"
         elif 35 <= last_rsi <= 55:
-            reasons.append(f"RSI {last_rsi:.1f} supports downtrend continuation.")
+            reasons.append(f"RSI {last_rsi:.1f} supportive in downtrend.")
             confidence += 8
             direction = "SELL"
         else:
-            reasons.append(f"RSI {last_rsi:.1f} is low (bounce risk).")
+            reasons.append(f"RSI {last_rsi:.1f} low (bounce risk).")
             confidence -= 12
             direction = "WAIT"
 
@@ -603,7 +664,7 @@ def _build_signal_from_candles(values):
     warnings = []
     if direction in ("BUY", "SELL") and confidence < 55:
         warnings.append("Low-confidence setup: consider waiting for confirmation.")
-    if entry and last_atr and (last_atr / entry) > 0.01:
+    if last_atr / entry > 0.01:
         warnings.append("High volatility detected (ATR elevated): reduce position size.")
 
     return {
@@ -623,41 +684,6 @@ def _build_signal_from_candles(values):
     }
 
 
-@app.get("/api/candles")
-def api_candles():
-    ip = _client_ip()
-    if not _rate_ok(ip):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
-
-    symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
-    interval = (request.args.get("interval", "") or "5min").strip()
-    limit = int(request.args.get("limit", "") or 120)
-
-    snap = td_candles(symbol, interval=interval, limit=limit)
-    if not snap.get("ok"):
-        return jsonify(snap), 502
-
-    # Return normalized candles list (still newest-first)
-    values = snap.get("values") or []
-    candles = []
-    for v in values:
-        candles.append({
-            "datetime": v.get("datetime"),
-            "open": v.get("open"),
-            "high": v.get("high"),
-            "low": v.get("low"),
-            "close": v.get("close"),
-        })
-
-    return jsonify({
-        "ok": True,
-        "symbol": symbol,
-        "interval": interval,
-        "candles": candles,
-        "source": "twelvedata"
-    })
-
-
 @app.get("/api/signal")
 def api_signal():
     ip = _client_ip()
@@ -674,17 +700,16 @@ def api_signal():
 
     values = snap.get("values") or []
     if len(values) < 60:
-        return jsonify({"ok": False, "error": "Not enough candle data for signal."}), 400
+        return jsonify({"ok": False, "error": "Not enough candle data to compute a signal."}), 400
 
-    signal = _build_signal_from_candles(values)
-    live = td_price(symbol)
+    signal = _build_signal(values)
+    live_snapshot = td_price(symbol)
 
-    # Optional strict block using your existing rule style
-    # If BUY and price already under SL, or SELL and price above SL => block
+    # strict SL hit check (block)
     blocked = False
     reason = ""
-    if live.get("ok") and signal.get("direction") in ("BUY", "SELL") and signal.get("sl") is not None:
-        p = live.get("price")
+    if live_snapshot.get("ok") and signal.get("direction") in ("BUY", "SELL") and signal.get("sl") is not None:
+        p = live_snapshot.get("price")
         if signal["direction"] == "BUY" and p <= signal["sl"]:
             blocked, reason = True, "Live price is at/through Stop Loss. Trade invalidated."
         if signal["direction"] == "SELL" and p >= signal["sl"]:
@@ -693,10 +718,10 @@ def api_signal():
     return jsonify({
         "ok": True,
         "blocked": blocked,
-        "block_reason": reason if blocked else "",
+        "block_reason": reason,
         "symbol": symbol,
         "interval": interval,
-        "live_snapshot": live,
+        "live_snapshot": live_snapshot,
         "signal": signal,
         "disclaimer": "Educational use only. Not financial advice. Trading involves risk."
     })
@@ -739,6 +764,7 @@ def analyze():
     # ==========================
     # Ask AI for structured JSON (same UI contract)
     # ==========================
+    # Provide live info to AI
     live_context = "Live data unavailable."
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
@@ -794,6 +820,7 @@ Rules:
         {"role": "user", "content": base_prompt}
     ]
 
+    # Add image (if provided)
     if img_base64:
         messages.append({
             "role": "user",
@@ -839,9 +866,11 @@ Rules:
 
         rr = calculate_rr(entry, sl, targets)
 
+        # Force structure string to include live/candle signal
         mc_struct = mc.get("structure") or ""
         mc["structure"] = (mc_struct + f" | Live(5m): {struct_info.get('structure')}").strip(" |")
 
+        # Build normalized analysis object
         analysis = {
             "bias": analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
@@ -865,6 +894,7 @@ Rules:
             "live_snapshot": live_snapshot
         }
 
+        # Normalize decision
         d = str(analysis.get("decision") or "NEUTRAL").upper()
         if "TAKE" in d:
             analysis["decision"] = "TAKE TRADE"
@@ -882,13 +912,14 @@ Rules:
         # ==========================
         live_price = live_snapshot.get("price") if live_snapshot.get("ok") else None
         bias = analysis.get("bias")
-        struct = struct_info.get("structure")
+        struct = struct_info.get("structure")  # bullish/bearish/unclear
         entry_f = analysis["signal_check"].get("entry")
         sl_f = analysis["signal_check"].get("stop_loss")
 
         blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
 
         if blocked:
+            # Force decision
             analysis["decision"] = "AVOID TRADE"
             analysis["verdict"] = (analysis.get("verdict") or "").strip()
             analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
@@ -916,5 +947,4 @@ Rules:
 # --------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
-    # Keep 0.0.0.0 since you're already using it (LAN / Render-friendly)
     app.run(host="0.0.0.0", port=port, debug=False)
