@@ -484,7 +484,7 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
-@app.route("/analyze", methods=["POST"])
+@app.route("/api/analyze", methods=["POST"])
 def analyze():
     ip = _client_ip()
     if not _rate_ok(ip):
