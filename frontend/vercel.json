@@ -1,8 +1,12 @@
 {
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://fxco-pilot.onrender.com/$1"
+      "source": "/api/:path*",
+      "destination": "https://fxco-pilot.onrender.com/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
