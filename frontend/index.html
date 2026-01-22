@@ -160,6 +160,15 @@
             background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
         }
 
+        /* NEW: rate limit hint line under button */
+        .rate-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ffd86b;
+            opacity: 0.95;
+            display: none;
+        }
+
         .output-box {
             background: rgba(0,0,0,0.45);
             border-radius: 12px;
@@ -476,6 +485,8 @@
         </div>
 
         <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
+        <!-- NEW: rate limit feedback -->
+        <div id="rateHint" class="rate-hint"></div>
     </div>
 
     <div class="section">
@@ -661,6 +672,67 @@ function renderAnalysisFromJSON(a) {
     `;
 }
 
+/* ==========================
+   NEW: Per-session client id
+   ========================== */
+function getOrCreateClientId() {
+    const key = "fxco_client_id_v1";
+    try {
+        let cid = localStorage.getItem(key);
+        if (!cid) {
+            if (window.crypto && crypto.randomUUID) cid = crypto.randomUUID();
+            else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
+            localStorage.setItem(key, cid);
+        }
+        // keep it short-ish for headers
+        return cid.length > 128 ? cid.slice(0, 128) : cid;
+    } catch {
+        return "unknown";
+    }
+}
+const FXCO_CLIENT_ID = getOrCreateClientId();
+
+/* ==========================
+   NEW: Rate limit UX
+   ========================== */
+let rateTimer = null;
+function setRateHint(msg, show=true) {
+    const el = document.getElementById("rateHint");
+    if (!el) return;
+    if (!show || !msg) {
+        el.style.display = "none";
+        el.innerText = "";
+        return;
+    }
+    el.style.display = "block";
+    el.innerText = msg;
+}
+
+function startRateCooldown(seconds) {
+    const btn = document.getElementById("analyzeBtn");
+    let remaining = Math.max(1, Number(seconds || 1));
+
+    // Respect consent gate too: if not accepted, don't enable on timer end
+    const accepted = document.getElementById("acceptLegal")?.checked;
+
+    btn.disabled = true;
+    setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
+
+    if (rateTimer) clearInterval(rateTimer);
+    rateTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+            clearInterval(rateTimer);
+            rateTimer = null;
+            setRateHint("", false);
+            // restore state based on consent
+            btn.disabled = !accepted;
+            return;
+        }
+        setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
+    }, 1000);
+}
+
 function setAnalyzeEnabled(enabled) {
     const btn = document.getElementById("analyzeBtn");
     const hint = document.getElementById("consentHint");
@@ -680,7 +752,12 @@ function initConsentGate() {
     setAnalyzeEnabled(cb.checked);
 
     cb.addEventListener("change", () => {
-        setAnalyzeEnabled(cb.checked);
+        // If a rate cooldown is running, keep disabled until timer ends
+        if (rateTimer) {
+            setAnalyzeEnabled(false);
+        } else {
+            setAnalyzeEnabled(cb.checked);
+        }
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
     });
 }
@@ -763,57 +840,148 @@ function acknowledgeRisk() {
 }
 document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-function analyze() {
+async function analyze() {
     const accepted = document.getElementById("acceptLegal")?.checked;
     if (!accepted) { setAnalyzeEnabled(false); return; }
 
+    // If cooldown is active, ignore clicks
+    if (rateTimer) return;
+
+    setRateHint("", false);
+
+    const pairTypeEl = document.getElementById("pairType");
+    const timeframeEl = document.getElementById("timeframe");
+    const signalEl = document.getElementById("signal");
+
+    const pairType = (pairTypeEl?.value || "").trim();
+    const timeframe = (timeframeEl?.value || "").trim();
+    const signal = (signalEl?.value || "").trim();
+
+    // Client-side guard: prevents easy 400s
+    if (!pairType || !timeframe || !signal) {
+        document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
+        return;
+    }
+
     const formData = new FormData();
-    formData.append("pair_type", document.getElementById("pairType").value);
-    formData.append("timeframe", document.getElementById("timeframe").value);
-    formData.append("signal_input", document.getElementById("signal").value);
+    formData.append("pair_type", pairType);
+    formData.append("timeframe", timeframe);
+    formData.append("signal_input", signal);
 
     const file = document.getElementById("chart").files[0];
     if (file) formData.append("chart_image", file);
 
+    const btn = document.getElementById("analyzeBtn");
+    btn.disabled = true;
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    fetch("/api/analyze", { method: "POST", body: formData })
-        .then(async (res) => {
-            const ct = res.headers.get("content-type") || "";
-            if (!res.ok) {
-                if (ct.includes("application/json")) {
-                    const j = await res.json();
-                    throw new Error(j.error || "Request failed.");
-                }
-                const t = await res.text();
-                throw new Error(t || "Request failed.");
+    try {
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            body: formData,
+            headers: {
+                // NEW: session-based client id for per-client throttling
+                "X-FXCO-Client": FXCO_CLIENT_ID
             }
-            if (!ct.includes("application/json")) {
-                const t = await res.text();
-                throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
-            }
-            return res.json();
-        })
-        .then((data) => {
-            if (data && data.analysis) {
-                const html = renderAnalysisFromJSON(data.analysis);
-                document.getElementById("result").innerHTML = html;
-
-                const historyBox = document.getElementById("history");
-                historyBox.innerHTML =
-                    `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                        ${html}
-                     </div>` + historyBox.innerHTML;
-                return;
-            }
-
-            const text = (data && data.result) ? String(data.result) : "No result returned.";
-            document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
-        })
-        .catch((err) => {
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
         });
+
+        const ct = res.headers.get("content-type") || "";
+
+        // NEW: 429 handling (rate limit)
+        if (res.status === 429) {
+            let retryAfter = Number(res.headers.get("Retry-After") || 0);
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Too many requests" };
+            }
+
+            const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
+
+            startRateCooldown(seconds);
+            return;
+        }
+
+        // NEW: 402 handling (OpenAI quota/billing)
+        if (res.status === 402) {
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Payment required / quota issue" };
+            }
+
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "You exceeded OpenAI quota. Check billing/plan.");
+            btn.disabled = false;
+            return;
+        }
+
+        // NEW: 400 handling (missing required fields, etc.)
+        if (res.status === 400) {
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Bad request" };
+            }
+
+            const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
+                (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
+            btn.disabled = false;
+            return;
+        }
+
+        // Other errors
+        if (!res.ok) {
+            if (ct.includes("application/json")) {
+                const j = await res.json().catch(() => null);
+                throw new Error(j?.error || "Request failed.");
+            }
+            const t = await res.text().catch(() => "");
+            throw new Error(t || "Request failed.");
+        }
+
+        // Must be JSON success
+        if (!ct.includes("application/json")) {
+            const t = await res.text().catch(() => "");
+            throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+        }
+
+        const data = await res.json();
+
+        if (data && data.analysis) {
+            const html = renderAnalysisFromJSON(data.analysis);
+            document.getElementById("result").innerHTML = html;
+
+            const historyBox = document.getElementById("history");
+            historyBox.innerHTML =
+                `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                    ${html}
+                 </div>` + historyBox.innerHTML;
+
+            btn.disabled = false;
+            return;
+        }
+
+        const text = (data && data.result) ? String(data.result) : "No result returned.";
+        document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
+        btn.disabled = false;
+
+    } catch (err) {
+        document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+        btn.disabled = false;
+    }
 }
 
 initConsentGate();
