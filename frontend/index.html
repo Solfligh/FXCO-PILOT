@@ -779,7 +779,7 @@ function analyze() {
 
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    // ✅ IMPORTANT: go through Vercel rewrite -> Render
+    // ✅ CHANGED HERE: /api/analyze (so Vercel rewrite catches it)
     fetch("/api/analyze", { method: "POST", body: formData })
         .then(async (res) => {
             const ct = res.headers.get("content-type") || "";
