@@ -4,8 +4,9 @@ import os
 import re
 import time
 import requests
+from collections import deque
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, make_response
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -31,9 +32,15 @@ def _cache_set(key, value, ttl=60):
 
 
 # ==========================
-# Rate Limiting Implementation
+# Rate Limiting (in-memory)
+# - Per-IP + Per-Route key
+# - Sliding window
+# - Returns standard headers + Retry-After
+#
+# NOTE: In-memory resets on deploy/restart and is per-instance.
+# Good enough for MVP on Render. For multi-instance, use Redis later.
 # ==========================
-_RATE_LIMIT = {}
+_RATE = {}  # key -> deque[timestamps]
 
 
 def _client_ip():
@@ -49,16 +56,68 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _rate_ok(ip, limit=30, window=60):
-    """Check if IP is within rate limit."""
+def _rate_key(route_name: str) -> str:
+    return f"{_client_ip()}::{route_name}"
+
+
+def _rate_check(key: str, limit: int, window_seconds: int):
+    """
+    Sliding window rate limit.
+
+    Returns:
+      ok: bool
+      remaining: int (>= 0)
+      reset_in: int seconds until at least one slot frees (0 if ok)
+    """
     now = time.time()
-    if ip not in _RATE_LIMIT:
-        _RATE_LIMIT[ip] = []
-    _RATE_LIMIT[ip] = [t for t in _RATE_LIMIT[ip] if now - t < window]
-    if len(_RATE_LIMIT[ip]) >= limit:
-        return False
-    _RATE_LIMIT[ip].append(now)
-    return True
+    q = _RATE.get(key)
+    if q is None:
+        q = deque()
+        _RATE[key] = q
+
+    # drop old
+    cutoff = now - window_seconds
+    while q and q[0] <= cutoff:
+        q.popleft()
+
+    used = len(q)
+    if used >= limit:
+        # how long until oldest expires
+        reset_in = int(max(0, (q[0] + window_seconds) - now)) if q else window_seconds
+        return False, 0, reset_in
+
+    # accept
+    q.append(now)
+    remaining = max(0, limit - len(q))
+    return True, remaining, 0
+
+
+def _with_ratelimit_headers(resp, limit: int, remaining: int, reset_in: int):
+    """
+    Add basic RateLimit headers.
+    `RateLimit-Reset` is seconds until reset (relative), which is acceptable for many clients.
+    """
+    resp.headers["RateLimit-Limit"] = str(limit)
+    resp.headers["RateLimit-Remaining"] = str(remaining)
+    resp.headers["RateLimit-Reset"] = str(reset_in)
+    if reset_in and reset_in > 0:
+        resp.headers["Retry-After"] = str(reset_in)
+    return resp
+
+
+def _rate_guard(route_name: str, limit: int, window_seconds: int):
+    """
+    Convenience: run rate check for a route, return (blocked_response or None).
+    """
+    key = _rate_key(route_name)
+    ok, remaining, reset_in = _rate_check(key, limit=limit, window_seconds=window_seconds)
+    if ok:
+        return None, remaining, reset_in
+
+    payload = {"ok": False, "error": "Rate limit exceeded. Please slow down."}
+    resp = make_response(jsonify(payload), 429)
+    resp = _with_ratelimit_headers(resp, limit=limit, remaining=0, reset_in=reset_in)
+    return resp, 0, reset_in
 
 
 # ==========================
@@ -79,28 +138,28 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # --------------------------
-# Root route (backend is NOT your frontend)
+# Serve Frontend Files (optional on Render, but harmless)
+# NOTE: Render root (/) can be 404 if you don't ship index.html here.
+# If you want backend to serve a landing page, keep index.html in backend/.
+# Otherwise, you can change this to a simple JSON response.
 # --------------------------
-@app.get("/")
-def root():
-    # Your frontend lives on Vercel; Render is API only.
-    return jsonify(
-        {
-            "ok": True,
-            "service": "fxco-pilot-backend",
-            "endpoints": ["/health", "/api/analyze", "/api/candles", "/quote"],
-        }
-    ), 200
+@app.route("/", methods=["GET"])
+def index():
+    # If index.html exists in backend working dir, serve it; otherwise show a helpful message.
+    try:
+        return send_from_directory(".", "index.html")
+    except Exception:
+        return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health or /api/analyze"}), 200
 
 
-# --------------------------
-# Serve optional static files (harmless; returns 204 if missing)
-# --------------------------
 @app.route("/static/<path:path>")
 def static_files(path):
     return send_from_directory("static", path)
 
 
+# --------------------------
+# FAVICON ROUTES (avoid 500 if files missing)
+# --------------------------
 def _send_static_if_exists(filename: str):
     static_dir = os.path.join(os.getcwd(), "static")
     full_path = os.path.join(static_dir, filename)
@@ -130,7 +189,7 @@ def apple_touch_icon():
 
 
 # --------------------------
-# Health Check
+# Health Check (use this to verify Render is up)
 # --------------------------
 @app.get("/health")
 def health():
@@ -295,20 +354,21 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
 
 @app.route("/quote", methods=["GET"])
 def quote():
-    ip = _client_ip()
-    if not _rate_ok(ip):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
+    blocked, remaining, reset_in = _rate_guard("quote", limit=60, window_seconds=60)
+    if blocked:
+        return blocked
 
     symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
     q = td_price(symbol)
-    return jsonify(q)
+    resp = make_response(jsonify(q), 200)
+    return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
 
 
 @app.get("/api/candles")
 def api_candles():
-    ip = _client_ip()
-    if not _rate_ok(ip):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
+    blocked, remaining, reset_in = _rate_guard("api_candles", limit=60, window_seconds=60)
+    if blocked:
+        return blocked
 
     symbol = request.args.get("symbol", "EURUSD")
     interval = request.args.get("interval", "5min")
@@ -322,7 +382,8 @@ def api_candles():
 
     snap = td_candles(symbol, interval=interval, limit=limit)
     if not snap.get("ok"):
-        return jsonify(snap), 502
+        resp = make_response(jsonify(snap), 502)
+        return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
 
     values = snap.get("values") or []
     candles = []
@@ -337,15 +398,19 @@ def api_candles():
             }
         )
 
-    return jsonify(
-        {
-            "ok": True,
-            "symbol": symbol,
-            "interval": interval,
-            "candles": candles,
-            "source": "twelvedata",
-        }
+    resp = make_response(
+        jsonify(
+            {
+                "ok": True,
+                "symbol": symbol,
+                "interval": interval,
+                "candles": candles,
+                "source": "twelvedata",
+            }
+        ),
+        200,
     )
+    return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
 
 
 def structure_from_candles(values):
@@ -489,66 +554,35 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
-def _read_analyze_payload():
-    """
-    Supports:
-    - multipart/form-data (from HTML <form>) with optional file chart_image
-    - application/json (from PowerShell / fetch) WITHOUT files
-    """
-    pair_type = ""
-    timeframe = ""
-    signal_text = ""
-    img_base64 = None
-
-    # JSON request
-    if request.is_json:
-        data = request.get_json(silent=True) or {}
-        pair_type = str(data.get("pair_type", "")).strip()
-        timeframe = str(data.get("timeframe", "")).strip()
-        signal_text = str(data.get("signal_input", "")).strip()
-
-        # Optional: allow sending base64 chart in JSON
-        img_base64 = data.get("chart_image_base64")
-        if isinstance(img_base64, str):
-            img_base64 = img_base64.strip() or None
-
-        return pair_type, timeframe, signal_text, img_base64
-
-    # multipart/form-data
-    pair_type = request.form.get("pair_type", "").strip()
-    timeframe = request.form.get("timeframe", "").strip()
-    signal_text = request.form.get("signal_input", "").strip()
-
-    file = request.files.get("chart_image")
-    if file and file.filename:
-        img_bytes = file.read()
-        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-
-    return pair_type, timeframe, signal_text, img_base64
-
-
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    ip = _client_ip()
-    if not _rate_ok(ip):
-        return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
+    # tighter limit for the expensive endpoint
+    blocked, remaining, reset_in = _rate_guard("api_analyze", limit=15, window_seconds=60)
+    if blocked:
+        return blocked
 
     oa = _get_openai_client()
     if oa is None:
-        return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
+        resp = make_response(jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500)
+        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
-    pair_type, timeframe, signal_text, img_base64 = _read_analyze_payload()
+    # Accept BOTH form-data (from browser) and JSON (from scripts)
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        pair_type = str(body.get("pair_type", "")).strip()
+        timeframe = str(body.get("timeframe", "")).strip()
+        signal_text = str(body.get("signal_input", "")).strip()
+        img_base64 = None  # (if you later want JSON image support, add it here)
+    else:
+        pair_type = request.form.get("pair_type", "").strip()
+        timeframe = request.form.get("timeframe", "").strip()
+        signal_text = request.form.get("signal_input", "").strip()
 
-    # You can decide whether to hard-require these.
-    # I recommend requiring them so empty requests don't burn API calls.
-    if not pair_type or not timeframe or not signal_text:
-        return jsonify(
-            {
-                "error": "Missing required fields.",
-                "expected": ["pair_type", "timeframe", "signal_input"],
-                "got": {"pair_type": bool(pair_type), "timeframe": bool(timeframe), "signal_input": bool(signal_text)},
-            }
-        ), 400
+        img_base64 = None
+        file = request.files.get("chart_image")
+        if file and file.filename:
+            img_bytes = file.read()
+            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
@@ -607,7 +641,7 @@ Rules:
 - entry/stop_loss/targets MUST be numeric-like.
 - Use live price and structure notes to avoid late entries.
 - If uncertain, choose NEUTRAL.
-""".strip()
+"""
 
     messages = [
         {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON."},
@@ -636,7 +670,8 @@ Rules:
         analysis_obj = json.loads(raw)
 
         if not isinstance(analysis_obj, dict):
-            return jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502
+            resp = make_response(jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502)
+            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
@@ -691,32 +726,34 @@ Rules:
         entry_f = analysis["signal_check"].get("entry")
         sl_f = analysis["signal_check"].get("stop_loss")
 
-        blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
+        blocked_trade, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
 
-        if blocked:
+        if blocked_trade:
             analysis["decision"] = "AVOID TRADE"
             analysis["verdict"] = (analysis.get("verdict") or "").strip()
             analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
             analysis["invalidation_warnings"] = [reason] + (analysis.get("invalidation_warnings") or [])
 
-            return jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"})
+            resp = make_response(jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"}), 200)
+            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
-        return jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
+        # IMPORTANT: if OpenAI quota is exceeded, return 429 (not 500)
+        # Your code currently surfaces it as an exception string from the SDK.
+        resp = make_response(jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"}), 200)
+        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
     except json.JSONDecodeError:
-        return jsonify({"error": "Model did not return valid JSON."}), 502
-
+        resp = make_response(jsonify({"error": "Model did not return valid JSON."}), 502)
+        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
     except Exception as e:
-        # Try to return correct status for OpenAI quota/auth issues
+        # If this looks like OpenAI quota, respond 429 so your frontend can display it correctly
         msg = str(e)
-        status = getattr(e, "status_code", None)
+        if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
+            resp = make_response(jsonify({"error": msg, "code": "insufficient_quota"}), 429)
+            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
-        if status == 401:
-            return jsonify({"error": "OpenAI auth failed (bad API key).", "details": msg}), 401
-        if status == 429 or "insufficient_quota" in msg or "Error code: 429" in msg:
-            return jsonify({"error": "OpenAI quota exceeded / billing issue.", "details": msg}), 429
-
-        return jsonify({"error": msg}), 500
+        resp = make_response(jsonify({"error": msg}), 500)
+        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
 
 
 if __name__ == "__main__":
