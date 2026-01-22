@@ -549,15 +549,12 @@
 
 <script>
 /**
- * API routing:
- * - The frontend is hosted on Vercel.
- * - The backend Flask API is hosted on Render.
- * - We proxy API calls through Vercel via vercel.json rewrites:
- *     /api/*  ->  https://fxco-pilot.onrender.com/*
- *
- * This avoids CORS issues and keeps calls same-origin.
+ * API routing (robust):
+ * - If you're running on Render (onrender.com), the Flask backend is same-origin -> call "/analyze".
+ * - If you're running on Vercel/custom domain, proxy backend via Vercel rewrites -> call "/api/analyze".
  */
-const API_BASE = "/api";
+const IS_RENDER = window.location.hostname.endsWith("onrender.com");
+const API_BASE = IS_RENDER ? "" : "/api";
 
 function updateClock() {
     const now = new Date();
