@@ -160,7 +160,6 @@
             background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
         }
 
-        /* NEW: rate limit hint line under button */
         .rate-hint {
             margin-top: 10px;
             font-size: 12px;
@@ -168,6 +167,17 @@
             opacity: 0.95;
             display: none;
         }
+
+        /* NEW: usage display */
+        .usage-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: rgba(203, 213, 225, 0.92);
+            opacity: 0.95;
+            display: none;
+        }
+        .usage-hint b { color: #ffffff; }
+        .usage-hint .dot { margin: 0 8px; color: rgba(255,255,255,0.25); }
 
         .output-box {
             background: rgba(0,0,0,0.45);
@@ -485,8 +495,9 @@
         </div>
 
         <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
-        <!-- NEW: rate limit feedback -->
         <div id="rateHint" class="rate-hint"></div>
+        <!-- NEW: remaining quota display -->
+        <div id="usageHint" class="usage-hint"></div>
     </div>
 
     <div class="section">
@@ -673,7 +684,7 @@ function renderAnalysisFromJSON(a) {
 }
 
 /* ==========================
-   NEW: Per-session client id
+   Per-session client id
    ========================== */
 function getOrCreateClientId() {
     const key = "fxco_client_id_v1";
@@ -684,7 +695,6 @@ function getOrCreateClientId() {
             else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
             localStorage.setItem(key, cid);
         }
-        // keep it short-ish for headers
         return cid.length > 128 ? cid.slice(0, 128) : cid;
     } catch {
         return "unknown";
@@ -693,7 +703,47 @@ function getOrCreateClientId() {
 const FXCO_CLIENT_ID = getOrCreateClientId();
 
 /* ==========================
-   NEW: Rate limit UX
+   NEW: Usage display from headers
+   ========================== */
+function setUsageHintFromHeaders(headers) {
+    const el = document.getElementById("usageHint");
+    if (!el) return;
+
+    const rem60 = headers.get("X-RateLimit-Remaining-60s");
+    const lim60 = headers.get("X-RateLimit-Limit-60s");
+    const rem24 = headers.get("X-RateLimit-Remaining-24h");
+    const lim24 = headers.get("X-RateLimit-Limit-24h");
+
+    const hasAny = [rem60, lim60, rem24, lim24].some(v => v !== null && v !== "");
+
+    if (!hasAny) {
+        el.style.display = "none";
+        el.innerHTML = "";
+        return;
+    }
+
+    // show what we can; handle missing pieces gracefully
+    const parts = [];
+
+    if (rem60 != null && lim60 != null) {
+        const used60 = Math.max(0, Number(lim60) - Number(rem60));
+        parts.push(`<span><b>Usage:</b> ${used60}/${esc(lim60)} this minute</span>`);
+    } else if (rem60 != null) {
+        parts.push(`<span><b>Remaining:</b> ${esc(rem60)} this minute</span>`);
+    }
+
+    if (rem24 != null && lim24 != null) {
+        parts.push(`<span><b>${esc(rem24)}/${esc(lim24)}</b> left today</span>`);
+    } else if (rem24 != null) {
+        parts.push(`<span><b>${esc(rem24)}</b> left today</span>`);
+    }
+
+    el.style.display = "block";
+    el.innerHTML = parts.join(`<span class="dot">•</span>`);
+}
+
+/* ==========================
+   Rate limit UX
    ========================== */
 let rateTimer = null;
 function setRateHint(msg, show=true) {
@@ -711,8 +761,6 @@ function setRateHint(msg, show=true) {
 function startRateCooldown(seconds) {
     const btn = document.getElementById("analyzeBtn");
     let remaining = Math.max(1, Number(seconds || 1));
-
-    // Respect consent gate too: if not accepted, don't enable on timer end
     const accepted = document.getElementById("acceptLegal")?.checked;
 
     btn.disabled = true;
@@ -725,7 +773,6 @@ function startRateCooldown(seconds) {
             clearInterval(rateTimer);
             rateTimer = null;
             setRateHint("", false);
-            // restore state based on consent
             btn.disabled = !accepted;
             return;
         }
@@ -752,12 +799,8 @@ function initConsentGate() {
     setAnalyzeEnabled(cb.checked);
 
     cb.addEventListener("change", () => {
-        // If a rate cooldown is running, keep disabled until timer ends
-        if (rateTimer) {
-            setAnalyzeEnabled(false);
-        } else {
-            setAnalyzeEnabled(cb.checked);
-        }
+        if (rateTimer) setAnalyzeEnabled(false);
+        else setAnalyzeEnabled(cb.checked);
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
     });
 }
@@ -843,21 +886,14 @@ document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.pre
 async function analyze() {
     const accepted = document.getElementById("acceptLegal")?.checked;
     if (!accepted) { setAnalyzeEnabled(false); return; }
-
-    // If cooldown is active, ignore clicks
     if (rateTimer) return;
 
     setRateHint("", false);
 
-    const pairTypeEl = document.getElementById("pairType");
-    const timeframeEl = document.getElementById("timeframe");
-    const signalEl = document.getElementById("signal");
+    const pairType = (document.getElementById("pairType")?.value || "").trim();
+    const timeframe = (document.getElementById("timeframe")?.value || "").trim();
+    const signal = (document.getElementById("signal")?.value || "").trim();
 
-    const pairType = (pairTypeEl?.value || "").trim();
-    const timeframe = (timeframeEl?.value || "").trim();
-    const signal = (signalEl?.value || "").trim();
-
-    // Client-side guard: prevents easy 400s
     if (!pairType || !timeframe || !signal) {
         document.getElementById("result").innerHTML =
             "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
@@ -880,15 +916,14 @@ async function analyze() {
         const res = await fetch("/api/analyze", {
             method: "POST",
             body: formData,
-            headers: {
-                // NEW: session-based client id for per-client throttling
-                "X-FXCO-Client": FXCO_CLIENT_ID
-            }
+            headers: { "X-FXCO-Client": FXCO_CLIENT_ID }
         });
+
+        // NEW: always update usage banner from response headers
+        setUsageHintFromHeaders(res.headers);
 
         const ct = res.headers.get("content-type") || "";
 
-        // NEW: 429 handling (rate limit)
         if (res.status === 429) {
             let retryAfter = Number(res.headers.get("Retry-After") || 0);
             let j = null;
@@ -907,7 +942,6 @@ async function analyze() {
             return;
         }
 
-        // NEW: 402 handling (OpenAI quota/billing)
         if (res.status === 402) {
             let j = null;
             if (ct.includes("application/json")) {
@@ -923,7 +957,6 @@ async function analyze() {
             return;
         }
 
-        // NEW: 400 handling (missing required fields, etc.)
         if (res.status === 400) {
             let j = null;
             if (ct.includes("application/json")) {
@@ -941,7 +974,6 @@ async function analyze() {
             return;
         }
 
-        // Other errors
         if (!res.ok) {
             if (ct.includes("application/json")) {
                 const j = await res.json().catch(() => null);
@@ -951,7 +983,6 @@ async function analyze() {
             throw new Error(t || "Request failed.");
         }
 
-        // Must be JSON success
         if (!ct.includes("application/json")) {
             const t = await res.text().catch(() => "");
             throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
