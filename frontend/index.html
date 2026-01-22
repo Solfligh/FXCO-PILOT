@@ -160,25 +160,6 @@
             background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
         }
 
-        .rate-hint {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #ffd86b;
-            opacity: 0.95;
-            display: none;
-        }
-
-        /* NEW: usage display */
-        .usage-hint {
-            margin-top: 8px;
-            font-size: 12px;
-            color: rgba(203, 213, 225, 0.92);
-            opacity: 0.95;
-            display: none;
-        }
-        .usage-hint b { color: #ffffff; }
-        .usage-hint .dot { margin: 0 8px; color: rgba(255,255,255,0.25); }
-
         .output-box {
             background: rgba(0,0,0,0.45);
             border-radius: 12px;
@@ -304,6 +285,22 @@
             color: #f8fafc;
         }
         .warn-callout strong { color: #fbbf24; }
+
+        /* NEW: rate-limit pill */
+        .rate-info {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: #cbd5e1;
+            font-size: 12px;
+            line-height: 1.55;
+            display: none;
+        }
+        .rate-info strong { color: #ffffff; }
+        .rate-info .warn { color: #fbbf24; font-weight: 700; }
+        .rate-info .bad { color: #ff6b6b; font-weight: 800; }
 
         .fx-disclaimer {
             position: fixed;
@@ -495,9 +492,9 @@
         </div>
 
         <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
-        <div id="rateHint" class="rate-hint"></div>
-        <!-- NEW: remaining quota display -->
-        <div id="usageHint" class="usage-hint"></div>
+
+        <!-- NEW: Rate limit info -->
+        <div id="rateInfo" class="rate-info"></div>
     </div>
 
     <div class="section">
@@ -683,101 +680,59 @@ function renderAnalysisFromJSON(a) {
     `;
 }
 
-/* ==========================
-   Per-session client id
-   ========================== */
-function getOrCreateClientId() {
-    const key = "fxco_client_id_v1";
-    try {
-        let cid = localStorage.getItem(key);
-        if (!cid) {
-            if (window.crypto && crypto.randomUUID) cid = crypto.randomUUID();
-            else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
-            localStorage.setItem(key, cid);
-        }
-        return cid.length > 128 ? cid.slice(0, 128) : cid;
-    } catch {
-        return "unknown";
-    }
-}
-const FXCO_CLIENT_ID = getOrCreateClientId();
-
-/* ==========================
-   NEW: Usage display from headers
-   ========================== */
-function setUsageHintFromHeaders(headers) {
-    const el = document.getElementById("usageHint");
+/* NEW: rate limit display helpers */
+function setRateInfo(html) {
+    const el = document.getElementById("rateInfo");
     if (!el) return;
-
-    const rem60 = headers.get("X-RateLimit-Remaining-60s");
-    const lim60 = headers.get("X-RateLimit-Limit-60s");
-    const rem24 = headers.get("X-RateLimit-Remaining-24h");
-    const lim24 = headers.get("X-RateLimit-Limit-24h");
-
-    const hasAny = [rem60, lim60, rem24, lim24].some(v => v !== null && v !== "");
-
-    if (!hasAny) {
+    if (!html) {
         el.style.display = "none";
         el.innerHTML = "";
         return;
     }
-
-    // show what we can; handle missing pieces gracefully
-    const parts = [];
-
-    if (rem60 != null && lim60 != null) {
-        const used60 = Math.max(0, Number(lim60) - Number(rem60));
-        parts.push(`<span><b>Usage:</b> ${used60}/${esc(lim60)} this minute</span>`);
-    } else if (rem60 != null) {
-        parts.push(`<span><b>Remaining:</b> ${esc(rem60)} this minute</span>`);
-    }
-
-    if (rem24 != null && lim24 != null) {
-        parts.push(`<span><b>${esc(rem24)}/${esc(lim24)}</b> left today</span>`);
-    } else if (rem24 != null) {
-        parts.push(`<span><b>${esc(rem24)}</b> left today</span>`);
-    }
-
     el.style.display = "block";
-    el.innerHTML = parts.join(`<span class="dot">•</span>`);
+    el.innerHTML = html;
 }
 
-/* ==========================
-   Rate limit UX
-   ========================== */
-let rateTimer = null;
-function setRateHint(msg, show=true) {
-    const el = document.getElementById("rateHint");
-    if (!el) return;
-    if (!show || !msg) {
-        el.style.display = "none";
-        el.innerText = "";
-        return;
+function updateRateInfoFromHeaders(res) {
+    if (!res || !res.headers) return;
+
+    const rem24h = res.headers.get("X-RateLimit-Remaining-24h");
+    const lim24h = res.headers.get("X-RateLimit-Limit-24h");
+    const rem60 = res.headers.get("X-RateLimit-Remaining-60s");
+    const lim60 = res.headers.get("X-RateLimit-Limit-60s");
+    const retryAfter = res.headers.get("Retry-After");
+
+    // Only show if we got at least one signal header
+    const hasAny =
+        rem24h !== null || lim24h !== null ||
+        rem60 !== null || lim60 !== null ||
+        retryAfter !== null;
+
+    if (!hasAny) return;
+
+    let line1 = "";
+    if (rem24h !== null && lim24h !== null) {
+        line1 = `You have <strong>${esc(rem24h)}</strong> requests left today (of ${esc(lim24h)}).`;
+    } else if (rem24h !== null) {
+        line1 = `You have <strong>${esc(rem24h)}</strong> requests left today.`;
     }
-    el.style.display = "block";
-    el.innerText = msg;
-}
 
-function startRateCooldown(seconds) {
-    const btn = document.getElementById("analyzeBtn");
-    let remaining = Math.max(1, Number(seconds || 1));
-    const accepted = document.getElementById("acceptLegal")?.checked;
+    let line2 = "";
+    if (rem60 !== null && lim60 !== null) {
+        line2 = `This minute: <strong>${esc(rem60)}</strong> remaining (of ${esc(lim60)}).`;
+    } else if (rem60 !== null) {
+        line2 = `This minute: <strong>${esc(rem60)}</strong> remaining.`;
+    }
 
-    btn.disabled = true;
-    setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
+    let line3 = "";
+    if (retryAfter !== null) {
+        line3 = `<span class="warn">Rate limit hit.</span> Try again in <strong>${esc(retryAfter)}</strong>s.`;
+    }
 
-    if (rateTimer) clearInterval(rateTimer);
-    rateTimer = setInterval(() => {
-        remaining -= 1;
-        if (remaining <= 0) {
-            clearInterval(rateTimer);
-            rateTimer = null;
-            setRateHint("", false);
-            btn.disabled = !accepted;
-            return;
-        }
-        setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
-    }, 1000);
+    const parts = [line1, line2, line3].filter(Boolean);
+    if (!parts.length) return;
+
+    setRateInfo(parts.join("<br/>"));
 }
 
 function setAnalyzeEnabled(enabled) {
@@ -799,8 +754,7 @@ function initConsentGate() {
     setAnalyzeEnabled(cb.checked);
 
     cb.addEventListener("change", () => {
-        if (rateTimer) setAnalyzeEnabled(false);
-        else setAnalyzeEnabled(cb.checked);
+        setAnalyzeEnabled(cb.checked);
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
     });
 }
@@ -883,136 +837,80 @@ function acknowledgeRisk() {
 }
 document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-async function analyze() {
+function analyze() {
     const accepted = document.getElementById("acceptLegal")?.checked;
     if (!accepted) { setAnalyzeEnabled(false); return; }
-    if (rateTimer) return;
-
-    setRateHint("", false);
-
-    const pairType = (document.getElementById("pairType")?.value || "").trim();
-    const timeframe = (document.getElementById("timeframe")?.value || "").trim();
-    const signal = (document.getElementById("signal")?.value || "").trim();
-
-    if (!pairType || !timeframe || !signal) {
-        document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
-        return;
-    }
 
     const formData = new FormData();
-    formData.append("pair_type", pairType);
-    formData.append("timeframe", timeframe);
-    formData.append("signal_input", signal);
+    formData.append("pair_type", document.getElementById("pairType").value);
+    formData.append("timeframe", document.getElementById("timeframe").value);
+    formData.append("signal_input", document.getElementById("signal").value);
 
     const file = document.getElementById("chart").files[0];
     if (file) formData.append("chart_image", file);
 
-    const btn = document.getElementById("analyzeBtn");
-    btn.disabled = true;
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    try {
-        const res = await fetch("/api/analyze", {
-            method: "POST",
-            body: formData,
-            headers: { "X-FXCO-Client": FXCO_CLIENT_ID }
+    fetch("/api/analyze", { method: "POST", body: formData })
+        .then(async (res) => {
+            // NEW: update rate UI from headers for BOTH success and failure
+            updateRateInfoFromHeaders(res);
+
+            const ct = res.headers.get("content-type") || "";
+            if (!res.ok) {
+                // If 429, make it obvious in UI too
+                if (res.status === 429) {
+                    const retryAfter = res.headers.get("Retry-After");
+                    setRateInfo(
+                        `<span class="warn">Rate limit hit.</span> ` +
+                        (retryAfter ? `Try again in <strong>${esc(retryAfter)}</strong>s.<br/>` : "<br/>") +
+                        (document.getElementById("rateInfo")?.innerHTML || "")
+                    );
+                }
+
+                if (ct.includes("application/json")) {
+                    const j = await res.json();
+                    throw new Error(j.error || "Request failed.");
+                }
+                const t = await res.text();
+                throw new Error(t || "Request failed.");
+            }
+
+            if (!ct.includes("application/json")) {
+                const t = await res.text();
+                throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+            }
+            return res.json();
+        })
+        .then((data) => {
+            if (data && data.analysis) {
+                const html = renderAnalysisFromJSON(data.analysis);
+                document.getElementById("result").innerHTML = html;
+
+                const historyBox = document.getElementById("history");
+                historyBox.innerHTML =
+                    `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                        ${html}
+                     </div>` + historyBox.innerHTML;
+                return;
+            }
+
+            const text = (data && data.result) ? String(data.result) : "No result returned.";
+            document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
+        })
+        .catch((err) => {
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+
+            // If it's the OpenAI quota issue, call it out clearly (matches what your backend returns)
+            const msg = String(err.message || "");
+            if (msg.toLowerCase().includes("insufficient_quota") || msg.toLowerCase().includes("quota")) {
+                setRateInfo(
+                    `<span class="bad">AI quota/billing issue.</span> ` +
+                    `The server's OpenAI key has no quota. Please fix billing on Render.`
+                );
+            }
         });
-
-        // NEW: always update usage banner from response headers
-        setUsageHintFromHeaders(res.headers);
-
-        const ct = res.headers.get("content-type") || "";
-
-        if (res.status === 429) {
-            let retryAfter = Number(res.headers.get("Retry-After") || 0);
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Too many requests" };
-            }
-
-            const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
-
-            startRateCooldown(seconds);
-            return;
-        }
-
-        if (res.status === 402) {
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Payment required / quota issue" };
-            }
-
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "You exceeded OpenAI quota. Check billing/plan.");
-            btn.disabled = false;
-            return;
-        }
-
-        if (res.status === 400) {
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Bad request" };
-            }
-
-            const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
-                (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
-            btn.disabled = false;
-            return;
-        }
-
-        if (!res.ok) {
-            if (ct.includes("application/json")) {
-                const j = await res.json().catch(() => null);
-                throw new Error(j?.error || "Request failed.");
-            }
-            const t = await res.text().catch(() => "");
-            throw new Error(t || "Request failed.");
-        }
-
-        if (!ct.includes("application/json")) {
-            const t = await res.text().catch(() => "");
-            throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
-        }
-
-        const data = await res.json();
-
-        if (data && data.analysis) {
-            const html = renderAnalysisFromJSON(data.analysis);
-            document.getElementById("result").innerHTML = html;
-
-            const historyBox = document.getElementById("history");
-            historyBox.innerHTML =
-                `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                    ${html}
-                 </div>` + historyBox.innerHTML;
-
-            btn.disabled = false;
-            return;
-        }
-
-        const text = (data && data.result) ? String(data.result) : "No result returned.";
-        document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
-        btn.disabled = false;
-
-    } catch (err) {
-        document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
-        btn.disabled = false;
-    }
 }
 
 initConsentGate();
