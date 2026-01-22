@@ -5,20 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FX Co-Pilot – AI Trade Validator</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-   
-    <link rel="icon" href="/static/favicon-v2.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
-    <link rel="manifest" href="/static/manifest.webmanifest">
 
-    
+    <!-- Vercel serves frontend/public/* at / -->
+    <link rel="icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+
     <style>
         body {
             margin: 0;
             padding: 0;
             font-family: "Poppins", sans-serif;
-            background-image: url("/static/bg_fx_4k.png");
+            background-image: url("/images/bg_fx_4k.png");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -779,7 +777,6 @@ function analyze() {
 
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    // ✅ CHANGED HERE: /api/analyze (so Vercel rewrite catches it)
     fetch("/api/analyze", { method: "POST", body: formData })
         .then(async (res) => {
             const ct = res.headers.get("content-type") || "";
