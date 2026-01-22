@@ -4,9 +4,8 @@ import os
 import re
 import time
 import requests
-from collections import deque
 
-from flask import Flask, jsonify, request, send_from_directory, make_response
+from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -32,15 +31,9 @@ def _cache_set(key, value, ttl=60):
 
 
 # ==========================
-# Rate Limiting (in-memory)
-# - Per-IP + Per-Route key
-# - Sliding window
-# - Returns standard headers + Retry-After
-#
-# NOTE: In-memory resets on deploy/restart and is per-instance.
-# Good enough for MVP on Render. For multi-instance, use Redis later.
+# Rate Limiting Implementation
 # ==========================
-_RATE = {}  # key -> deque[timestamps]
+_RATE_LIMIT = {}
 
 
 def _client_ip():
@@ -56,68 +49,16 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _rate_key(route_name: str) -> str:
-    return f"{_client_ip()}::{route_name}"
-
-
-def _rate_check(key: str, limit: int, window_seconds: int):
-    """
-    Sliding window rate limit.
-
-    Returns:
-      ok: bool
-      remaining: int (>= 0)
-      reset_in: int seconds until at least one slot frees (0 if ok)
-    """
+def _rate_ok(ip, limit=30, window=60):
+    """Check if IP is within rate limit."""
     now = time.time()
-    q = _RATE.get(key)
-    if q is None:
-        q = deque()
-        _RATE[key] = q
-
-    # drop old
-    cutoff = now - window_seconds
-    while q and q[0] <= cutoff:
-        q.popleft()
-
-    used = len(q)
-    if used >= limit:
-        # how long until oldest expires
-        reset_in = int(max(0, (q[0] + window_seconds) - now)) if q else window_seconds
-        return False, 0, reset_in
-
-    # accept
-    q.append(now)
-    remaining = max(0, limit - len(q))
-    return True, remaining, 0
-
-
-def _with_ratelimit_headers(resp, limit: int, remaining: int, reset_in: int):
-    """
-    Add basic RateLimit headers.
-    `RateLimit-Reset` is seconds until reset (relative), which is acceptable for many clients.
-    """
-    resp.headers["RateLimit-Limit"] = str(limit)
-    resp.headers["RateLimit-Remaining"] = str(remaining)
-    resp.headers["RateLimit-Reset"] = str(reset_in)
-    if reset_in and reset_in > 0:
-        resp.headers["Retry-After"] = str(reset_in)
-    return resp
-
-
-def _rate_guard(route_name: str, limit: int, window_seconds: int):
-    """
-    Convenience: run rate check for a route, return (blocked_response or None).
-    """
-    key = _rate_key(route_name)
-    ok, remaining, reset_in = _rate_check(key, limit=limit, window_seconds=window_seconds)
-    if ok:
-        return None, remaining, reset_in
-
-    payload = {"ok": False, "error": "Rate limit exceeded. Please slow down."}
-    resp = make_response(jsonify(payload), 429)
-    resp = _with_ratelimit_headers(resp, limit=limit, remaining=0, reset_in=reset_in)
-    return resp, 0, reset_in
+    if ip not in _RATE_LIMIT:
+        _RATE_LIMIT[ip] = []
+    _RATE_LIMIT[ip] = [t for t in _RATE_LIMIT[ip] if now - t < window]
+    if len(_RATE_LIMIT[ip]) >= limit:
+        return False
+    _RATE_LIMIT[ip].append(now)
+    return True
 
 
 # ==========================
@@ -139,13 +80,11 @@ TD_BASE = "https://api.twelvedata.com"
 
 # --------------------------
 # Serve Frontend Files (optional on Render, but harmless)
-# NOTE: Render root (/) can be 404 if you don't ship index.html here.
-# If you want backend to serve a landing page, keep index.html in backend/.
-# Otherwise, you can change this to a simple JSON response.
 # --------------------------
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
-    # If index.html exists in backend working dir, serve it; otherwise show a helpful message.
+    # NOTE: If you don't ship index.html in backend/, Render root will 404.
+    # We keep this, but we also handle "file missing" gracefully.
     try:
         return send_from_directory(".", "index.html")
     except Exception:
@@ -354,21 +293,20 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
 
 @app.route("/quote", methods=["GET"])
 def quote():
-    blocked, remaining, reset_in = _rate_guard("quote", limit=60, window_seconds=60)
-    if blocked:
-        return blocked
+    ip = _client_ip()
+    if not _rate_ok(ip, limit=60, window=60):
+        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
 
     symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
     q = td_price(symbol)
-    resp = make_response(jsonify(q), 200)
-    return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
+    return jsonify(q)
 
 
 @app.get("/api/candles")
 def api_candles():
-    blocked, remaining, reset_in = _rate_guard("api_candles", limit=60, window_seconds=60)
-    if blocked:
-        return blocked
+    ip = _client_ip()
+    if not _rate_ok(ip, limit=60, window=60):
+        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
 
     symbol = request.args.get("symbol", "EURUSD")
     interval = request.args.get("interval", "5min")
@@ -382,8 +320,7 @@ def api_candles():
 
     snap = td_candles(symbol, interval=interval, limit=limit)
     if not snap.get("ok"):
-        resp = make_response(jsonify(snap), 502)
-        return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
+        return jsonify(snap), 502
 
     values = snap.get("values") or []
     candles = []
@@ -398,19 +335,15 @@ def api_candles():
             }
         )
 
-    resp = make_response(
-        jsonify(
-            {
-                "ok": True,
-                "symbol": symbol,
-                "interval": interval,
-                "candles": candles,
-                "source": "twelvedata",
-            }
-        ),
-        200,
+    return jsonify(
+        {
+            "ok": True,
+            "symbol": symbol,
+            "interval": interval,
+            "candles": candles,
+            "source": "twelvedata",
+        }
     )
-    return _with_ratelimit_headers(resp, limit=60, remaining=remaining, reset_in=reset_in)
 
 
 def structure_from_candles(values):
@@ -554,35 +487,76 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
+def _pick_first(d: dict, keys: list[str], default: str = "") -> str:
+    """Return first non-empty string value for given keys in dict."""
+    for k in keys:
+        v = d.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s != "":
+            return s
+    return default
+
+
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    # tighter limit for the expensive endpoint
-    blocked, remaining, reset_in = _rate_guard("api_analyze", limit=15, window_seconds=60)
-    if blocked:
-        return blocked
+    ip = _client_ip()
+    # EXPENSIVE ENDPOINT => keep stricter than others
+    if not _rate_ok(ip, limit=15, window=60):
+        return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
 
     oa = _get_openai_client()
     if oa is None:
-        resp = make_response(jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500)
-        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+        return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
 
-    # Accept BOTH form-data (from browser) and JSON (from scripts)
-    if request.is_json:
-        body = request.get_json(silent=True) or {}
-        pair_type = str(body.get("pair_type", "")).strip()
-        timeframe = str(body.get("timeframe", "")).strip()
-        signal_text = str(body.get("signal_input", "")).strip()
-        img_base64 = None  # (if you later want JSON image support, add it here)
+    # ---- Accept BOTH JSON and form-data, and accept multiple key names ----
+    body_json = request.get_json(silent=True) if request.is_json else None
+    form = request.form or {}
+
+    pair_type = ""
+    timeframe = ""
+    signal_text = ""
+
+    if body_json and isinstance(body_json, dict):
+        pair_type = _pick_first(body_json, ["pair_type", "pairType", "pair", "pairTypeMode"], "")
+        timeframe = _pick_first(body_json, ["timeframe", "timeframeMode", "tf", "mode"], "")
+        signal_text = _pick_first(body_json, ["signal_input", "signalInput", "signal", "signal_text", "signalText"], "")
     else:
-        pair_type = request.form.get("pair_type", "").strip()
-        timeframe = request.form.get("timeframe", "").strip()
-        signal_text = request.form.get("signal_input", "").strip()
+        pair_type = _pick_first(form, ["pair_type", "pairType", "pair"], "")
+        timeframe = _pick_first(form, ["timeframe", "timeframeMode", "tf", "mode"], "")
+        signal_text = _pick_first(form, ["signal_input", "signalInput", "signal", "signal_text", "signalText"], "")
 
-        img_base64 = None
-        file = request.files.get("chart_image")
-        if file and file.filename:
-            img_bytes = file.read()
-            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+    # chart image only supported via form-data file upload (browser)
+    img_base64 = None
+    file = request.files.get("chart_image") or request.files.get("chartImage")
+    if file and getattr(file, "filename", ""):
+        img_bytes = file.read()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    # ---- Validate required fields ----
+    missing = []
+    # pair_type/timeframe can be optional for functionality, but UI expects them; enforce if you want.
+    if not pair_type:
+        missing.append("pair_type")
+    if not timeframe:
+        missing.append("timeframe")
+    if not signal_text:
+        missing.append("signal_input")
+
+    if missing:
+        return (
+            jsonify(
+                {
+                    "error": "Missing required fields.",
+                    "missing": missing,
+                    "received_form_keys": sorted(list(form.keys())),
+                    "received_json_keys": sorted(list(body_json.keys())) if isinstance(body_json, dict) else [],
+                    "hint": "Frontend must send pair_type, timeframe, signal_input (or compatible aliases).",
+                }
+            ),
+            400,
+        )
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
@@ -670,8 +644,7 @@ Rules:
         analysis_obj = json.loads(raw)
 
         if not isinstance(analysis_obj, dict):
-            resp = make_response(jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502)
-            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+            return jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502
 
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
@@ -726,34 +699,26 @@ Rules:
         entry_f = analysis["signal_check"].get("entry")
         sl_f = analysis["signal_check"].get("stop_loss")
 
-        blocked_trade, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
+        blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
 
-        if blocked_trade:
+        if blocked:
             analysis["decision"] = "AVOID TRADE"
             analysis["verdict"] = (analysis.get("verdict") or "").strip()
             analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
             analysis["invalidation_warnings"] = [reason] + (analysis.get("invalidation_warnings") or [])
 
-            resp = make_response(jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"}), 200)
-            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+            return jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"})
 
-        # IMPORTANT: if OpenAI quota is exceeded, return 429 (not 500)
-        # Your code currently surfaces it as an exception string from the SDK.
-        resp = make_response(jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"}), 200)
-        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+        return jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
 
     except json.JSONDecodeError:
-        resp = make_response(jsonify({"error": "Model did not return valid JSON."}), 502)
-        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+        return jsonify({"error": "Model did not return valid JSON."}), 502
     except Exception as e:
-        # If this looks like OpenAI quota, respond 429 so your frontend can display it correctly
+        # If OpenAI quota is exceeded, your frontend should see a clear message.
         msg = str(e)
         if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
-            resp = make_response(jsonify({"error": msg, "code": "insufficient_quota"}), 429)
-            return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
-
-        resp = make_response(jsonify({"error": msg}), 500)
-        return _with_ratelimit_headers(resp, limit=15, remaining=remaining, reset_in=reset_in)
+            return jsonify({"error": msg, "code": "insufficient_quota"}), 429
+        return jsonify({"error": msg}), 500
 
 
 if __name__ == "__main__":
