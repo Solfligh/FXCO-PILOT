@@ -5,14 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FX Co-Pilot – AI Trade Validator</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-   
+
     <link rel="icon" href="/static/favicon-v2.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="manifest" href="/static/manifest.webmanifest">
 
-    
     <style>
         body {
             margin: 0;
@@ -278,7 +277,6 @@
             display: none;
         }
 
-        /* NEW: warnings callout */
         .warn-callout {
             border: 1px solid rgba(251,191,36,0.22);
             background: rgba(251,191,36,0.08);
@@ -550,6 +548,17 @@
 </div>
 
 <script>
+/**
+ * API routing:
+ * - The frontend is hosted on Vercel.
+ * - The backend Flask API is hosted on Render.
+ * - We proxy API calls through Vercel via vercel.json rewrites:
+ *     /api/*  ->  https://fxco-pilot.onrender.com/*
+ *
+ * This avoids CORS issues and keeps calls same-origin.
+ */
+const API_BASE = "/api";
+
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
@@ -780,7 +789,7 @@ function analyze() {
 
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    fetch("/analyze", { method: "POST", body: formData })
+    fetch(`${API_BASE}/analyze`, { method: "POST", body: formData })
         .then(async (res) => {
             const ct = res.headers.get("content-type") || "";
             if (!res.ok) {
