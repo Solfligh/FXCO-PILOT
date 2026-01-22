@@ -8,8 +8,6 @@ import requests
 from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
-# Load environment variables from .env (local dev only)
-
 app = Flask(__name__)
 
 # ==========================
@@ -81,21 +79,28 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # --------------------------
-# Serve Frontend Files (optional on Render, but harmless)
+# Root route (backend is NOT your frontend)
 # --------------------------
-@app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
+@app.get("/")
+def root():
+    # Your frontend lives on Vercel; Render is API only.
+    return jsonify(
+        {
+            "ok": True,
+            "service": "fxco-pilot-backend",
+            "endpoints": ["/health", "/api/analyze", "/api/candles", "/quote"],
+        }
+    ), 200
 
 
+# --------------------------
+# Serve optional static files (harmless; returns 204 if missing)
+# --------------------------
 @app.route("/static/<path:path>")
 def static_files(path):
     return send_from_directory("static", path)
 
 
-# --------------------------
-# FAVICON ROUTES (avoid 500 if files missing)
-# --------------------------
 def _send_static_if_exists(filename: str):
     static_dir = os.path.join(os.getcwd(), "static")
     full_path = os.path.join(static_dir, filename)
@@ -125,7 +130,7 @@ def apple_touch_icon():
 
 
 # --------------------------
-# Health Check (use this to verify Render is up)
+# Health Check
 # --------------------------
 @app.get("/health")
 def health():
@@ -484,26 +489,66 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
+def _read_analyze_payload():
+    """
+    Supports:
+    - multipart/form-data (from HTML <form>) with optional file chart_image
+    - application/json (from PowerShell / fetch) WITHOUT files
+    """
+    pair_type = ""
+    timeframe = ""
+    signal_text = ""
+    img_base64 = None
+
+    # JSON request
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        pair_type = str(data.get("pair_type", "")).strip()
+        timeframe = str(data.get("timeframe", "")).strip()
+        signal_text = str(data.get("signal_input", "")).strip()
+
+        # Optional: allow sending base64 chart in JSON
+        img_base64 = data.get("chart_image_base64")
+        if isinstance(img_base64, str):
+            img_base64 = img_base64.strip() or None
+
+        return pair_type, timeframe, signal_text, img_base64
+
+    # multipart/form-data
+    pair_type = request.form.get("pair_type", "").strip()
+    timeframe = request.form.get("timeframe", "").strip()
+    signal_text = request.form.get("signal_input", "").strip()
+
+    file = request.files.get("chart_image")
+    if file and file.filename:
+        img_bytes = file.read()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+
+    return pair_type, timeframe, signal_text, img_base64
+
+
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     ip = _client_ip()
     if not _rate_ok(ip):
         return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
 
-    # Validate OpenAI config at request time (not startup)
     oa = _get_openai_client()
     if oa is None:
         return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
 
-    pair_type = request.form.get("pair_type", "").strip()
-    timeframe = request.form.get("timeframe", "").strip()
-    signal_text = request.form.get("signal_input", "").strip()
+    pair_type, timeframe, signal_text, img_base64 = _read_analyze_payload()
 
-    img_base64 = None
-    file = request.files.get("chart_image")
-    if file and file.filename:
-        img_bytes = file.read()
-        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+    # You can decide whether to hard-require these.
+    # I recommend requiring them so empty requests don't burn API calls.
+    if not pair_type or not timeframe or not signal_text:
+        return jsonify(
+            {
+                "error": "Missing required fields.",
+                "expected": ["pair_type", "timeframe", "signal_input"],
+                "got": {"pair_type": bool(pair_type), "timeframe": bool(timeframe), "signal_input": bool(signal_text)},
+            }
+        ), 400
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
@@ -562,7 +607,7 @@ Rules:
 - entry/stop_loss/targets MUST be numeric-like.
 - Use live price and structure notes to avoid late entries.
 - If uncertain, choose NEUTRAL.
-"""
+""".strip()
 
     messages = [
         {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON."},
@@ -660,8 +705,18 @@ Rules:
 
     except json.JSONDecodeError:
         return jsonify({"error": "Model did not return valid JSON."}), 502
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Try to return correct status for OpenAI quota/auth issues
+        msg = str(e)
+        status = getattr(e, "status_code", None)
+
+        if status == 401:
+            return jsonify({"error": "OpenAI auth failed (bad API key).", "details": msg}), 401
+        if status == 429 or "insufficient_quota" in msg or "Error code: 429" in msg:
+            return jsonify({"error": "OpenAI quota exceeded / billing issue.", "details": msg}), 429
+
+        return jsonify({"error": msg}), 500
 
 
 if __name__ == "__main__":
