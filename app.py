@@ -1,85 +1,87 @@
-from flask import Flask, request, jsonify, send_from_directory
 import base64
+import json
 import os
 import re
-import json
-import requests
 import time
-from datetime import datetime
-from dotenv import load_dotenv
+import requests
+
+from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
-# ==========================
-# Load .env (ENV VAR ONLY)
-# ==========================
-load_dotenv()
+# Load environment variables from .env (local dev only)
 
 app = Flask(__name__)
 
-@app.get("/health")
-def health():
-    return jsonify({"ok": True})
+# ==========================
+# Cache Implementation
+# ==========================
+_CACHE = {}
+_CACHE_TTL = {}
+
+
+def _cache_get(key):
+    """Retrieve cached value if not expired."""
+    if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
+        return _CACHE[key]
+    return None
+
+
+def _cache_set(key, value, ttl=60):
+    """Cache a value with TTL in seconds."""
+    _CACHE[key] = value
+    _CACHE_TTL[key] = time.time() + ttl
 
 
 # ==========================
-# OpenAI client (uses OPENAI_API_KEY from env automatically)
+# Rate Limiting Implementation
 # ==========================
-client = OpenAI()
-
-# ==========================
-# Twelve Data (Grow) - ENV VAR ONLY
-# ==========================
-TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
-TD_BASE = "https://api.twelvedata.com"
-
-# ==========================
-# Public safety: simple rate limiting + caching (in-memory)
-# ==========================
-CACHE = {}  # key -> {"ts": float, "data": any}
-CACHE_TTL_SECONDS = 12
-
-RATE = {}  # ip -> {"window_start": float, "count": int}
-RATE_WINDOW_SECONDS = 60
-RATE_MAX_REQUESTS_PER_WINDOW = 90  # tune later
+_RATE_LIMIT = {}
 
 
-def _client_ip() -> str:
-    xff = request.headers.get("X-Forwarded-For", "")
+def _client_ip():
+    """
+    Get client IP address.
+
+    - If behind a proxy/CDN, X-Forwarded-For may contain a comma-separated list.
+      The left-most IP is the original client.
+    """
+    xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
         return xff.split(",")[0].strip()
     return request.remote_addr or "unknown"
 
 
-def _rate_ok(ip: str) -> bool:
+def _rate_ok(ip, limit=30, window=60):
+    """Check if IP is within rate limit."""
     now = time.time()
-    rec = RATE.get(ip)
-    if not rec:
-        RATE[ip] = {"window_start": now, "count": 1}
-        return True
-
-    if now - rec["window_start"] >= RATE_WINDOW_SECONDS:
-        RATE[ip] = {"window_start": now, "count": 1}
-        return True
-
-    rec["count"] += 1
-    return rec["count"] <= RATE_MAX_REQUESTS_PER_WINDOW
+    if ip not in _RATE_LIMIT:
+        _RATE_LIMIT[ip] = []
+    _RATE_LIMIT[ip] = [t for t in _RATE_LIMIT[ip] if now - t < window]
+    if len(_RATE_LIMIT[ip]) >= limit:
+        return False
+    _RATE_LIMIT[ip].append(now)
+    return True
 
 
-def _cache_get(key: str):
-    rec = CACHE.get(key)
-    if not rec:
+# ==========================
+# OpenAI client (LAZY INIT - prevents startup crash if key missing)
+# ==========================
+def _get_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
         return None
-    if time.time() - rec["ts"] > CACHE_TTL_SECONDS:
-        return None
-    return rec["data"]
+    return OpenAI(api_key=api_key)
 
 
-def _cache_set(key: str, data):
-    CACHE[key] = {"ts": time.time(), "data": data}
+# ==========================
+# Twelve Data - ENV VAR ONLY
+# ==========================
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
+TD_BASE = "https://api.twelvedata.com"
 
 
 # --------------------------
-# Serve Frontend Files
+# Serve Frontend Files (optional on Render, but harmless)
 # --------------------------
 @app.route("/")
 def index():
@@ -92,40 +94,42 @@ def static_files(path):
 
 
 # --------------------------
-# FAVICON ROUTES (prevents /favicon.ico 404)
+# FAVICON ROUTES (avoid 500 if files missing)
 # --------------------------
+def _send_static_if_exists(filename: str):
+    static_dir = os.path.join(os.getcwd(), "static")
+    full_path = os.path.join(static_dir, filename)
+    if os.path.isfile(full_path):
+        return send_from_directory("static", filename)
+    return ("", 204)
+
+
 @app.route("/favicon.ico")
 def favicon_ico():
-    return send_from_directory("static", "favicon.ico")
+    return _send_static_if_exists("favicon.ico")
 
 
-# Optional: if you have these files, this prevents noisy 404s from browsers/devices
 @app.route("/favicon-32.png")
 def favicon_32():
-    return send_from_directory("static", "favicon-32.png")
+    return _send_static_if_exists("favicon-32.png")
 
 
 @app.route("/favicon-16.png")
 def favicon_16():
-    return send_from_directory("static", "favicon-16.png")
+    return _send_static_if_exists("favicon-16.png")
 
 
 @app.route("/apple-touch-icon.png")
 def apple_touch_icon():
-    return send_from_directory("static", "apple-touch-icon.png")
+    return _send_static_if_exists("apple-touch-icon.png")
 
 
-# ==========================
-# Health (new)
-# ==========================
+# --------------------------
+# Health Check (use this to verify Render is up)
+# --------------------------
 @app.get("/health")
 def health():
-    return jsonify({
-        "ok": True,
-        "service": "FXCO-PILOT",
-        "twelvedata_key_loaded": bool(TWELVE_DATA_API_KEY),
-        "time": datetime.utcnow().isoformat() + "Z"
-    })
+    return jsonify({"ok": True}), 200
 
 
 # ==========================
@@ -171,7 +175,7 @@ def _to_float(v):
         return None
     try:
         return float(m.group(0))
-    except:
+    except Exception:
         return None
 
 
@@ -191,7 +195,7 @@ def _parse_targets(val):
     for n in nums:
         try:
             out.append(float(n))
-        except:
+        except Exception:
             pass
     return out
 
@@ -226,13 +230,14 @@ def td_price(symbol: str):
         r = requests.get(
             f"{TD_BASE}/price",
             params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY},
-            timeout=10
+            timeout=10,
         )
         data = r.json()
-        if "status" in data and data["status"] == "error":
+        if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
             _cache_set(cache_key, out)
             return out
+
         p = float(data["price"])
         out = {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata"}
         _cache_set(cache_key, out)
@@ -263,18 +268,17 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
                 "symbol": symbol,
                 "interval": interval,
                 "outputsize": limit,
-                "apikey": TWELVE_DATA_API_KEY
+                "apikey": TWELVE_DATA_API_KEY,
             },
-            timeout=12
+            timeout=12,
         )
         data = r.json()
-        if "status" in data and data["status"] == "error":
+        if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
             _cache_set(cache_key, out)
             return out
 
         values = data.get("values") or []
-        # values are returned newest-first typically
         out = {"ok": True, "symbol": symbol, "interval": interval, "values": values, "source": "twelvedata"}
         _cache_set(cache_key, out)
         return out
@@ -295,9 +299,6 @@ def quote():
     return jsonify(q)
 
 
-# ==========================
-# NEW: API candles endpoint (for live charts)
-# ==========================
 @app.get("/api/candles")
 def api_candles():
     ip = _client_ip()
@@ -321,40 +322,32 @@ def api_candles():
     values = snap.get("values") or []
     candles = []
     for v in values:
-        candles.append({
-            "datetime": v.get("datetime"),
-            "open": v.get("open"),
-            "high": v.get("high"),
-            "low": v.get("low"),
-            "close": v.get("close"),
-        })
+        candles.append(
+            {
+                "datetime": v.get("datetime"),
+                "open": v.get("open"),
+                "high": v.get("high"),
+                "low": v.get("low"),
+                "close": v.get("close"),
+            }
+        )
 
-    return jsonify({
-        "ok": True,
-        "symbol": symbol,
-        "interval": interval,
-        "candles": candles,  # newest-first
-        "source": "twelvedata"
-    })
+    return jsonify(
+        {
+            "ok": True,
+            "symbol": symbol,
+            "interval": interval,
+            "candles": candles,
+            "source": "twelvedata",
+        }
+    )
 
 
-# ==========================
-# Trend / structure detection (simple + safe)
-# ==========================
 def structure_from_candles(values):
-    """
-    values: list of dicts from Twelve Data time_series
-    We'll classify structure as bullish/bearish/unclear and detect "structure broken".
-    Simple heuristic:
-      - bullish if last close > close N and last swing low is higher than earlier swing low
-      - bearish if last close < close N and last swing high is lower than earlier swing high
-      - broken if opposite break happens relative to implied bias levels
-    """
     if not values or len(values) < 40:
         return {"structure": "unclear", "broken": False, "details": "Not enough candle data."}
 
-    # Convert to oldest->newest for analysis
-    vals = list(reversed(values))
+    vals = list(reversed(values))  # oldest -> newest
 
     try:
         closes = [float(v["close"]) for v in vals]
@@ -364,24 +357,20 @@ def structure_from_candles(values):
         return {"structure": "unclear", "broken": False, "details": "Candle parse error."}
 
     last = closes[-1]
-    prev = closes[-25]  # ~25 bars back
+    prev = closes[-25]
     trend = "bullish" if last > prev else "bearish" if last < prev else "unclear"
 
-    # crude swing points
     recent_low = min(lows[-15:])
     prior_low = min(lows[-40:-15])
     recent_high = max(highs[-15:])
     prior_high = max(highs[-40:-15])
 
     if trend == "bullish":
-        # bullish structure: higher low + pushing highs
         if recent_low > prior_low:
             return {"structure": "bullish", "broken": False, "details": "Higher low detected."}
-        # if trend bullish but recent_low <= prior_low, structure weakening
         return {"structure": "unclear", "broken": False, "details": "Bullish trend but HL not confirmed."}
 
     if trend == "bearish":
-        # bearish structure: lower high + pushing lows
         if recent_high < prior_high:
             return {"structure": "bearish", "broken": False, "details": "Lower high detected."}
         return {"structure": "unclear", "broken": False, "details": "Bearish trend but LH not confirmed."}
@@ -390,12 +379,6 @@ def structure_from_candles(values):
 
 
 def decide_block(bias: str, struct: str, live_price: float, entry: float, sl: float):
-    """
-    BLOCK rules (strict):
-      - If SL already hit (based on live price) => BLOCK
-      - If bias long and structure bearish => BLOCK
-      - If bias short and structure bullish => BLOCK
-    """
     b = (bias or "unclear").lower()
 
     if sl is not None and live_price is not None:
@@ -412,16 +395,13 @@ def decide_block(bias: str, struct: str, live_price: float, entry: float, sl: fl
     return False, ""
 
 
-# ==========================
-# Deterministic confidence / Why / Warnings
-# ==========================
 def compute_confidence(analysis):
     score = 0
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
 
     struct = (mc.get("structure") or "").lower()
-    if struct in ["bullish", "bearish"]:
+    if "bullish" in struct or "bearish" in struct:
         score += 30
     elif struct:
         score += 15
@@ -438,7 +418,7 @@ def compute_confidence(analysis):
             score += 6
 
     liquidity = (mc.get("liquidity") or "").lower()
-    if "liquidity" in liquidity or "sweep" in liquidity or "grab" in liquidity or "equal" in liquidity:
+    if any(x in liquidity for x in ["liquidity", "sweep", "grab", "equal"]):
         score += 20
     elif liquidity:
         score += 10
@@ -482,7 +462,6 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     bias = (analysis.get("bias") or "unclear").lower()
     struct = (analysis.get("market_context", {}) or {}).get("structure") or "unclear"
 
-    # Missing levels
     if not sc.get("entry") or not sc.get("stop_loss") or not sc.get("targets"):
         warnings.append("Missing key levels (entry / SL / targets).")
 
@@ -490,7 +469,6 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     if isinstance(rr, (int, float)) and rr < 1.2:
         warnings.append(f"Low RR (≈ {rr}). Consider skipping or improving RR.")
 
-    # Live invalidation
     if live_snapshot and live_snapshot.get("ok"):
         price = live_snapshot.get("price")
         sl = _to_float(sc.get("stop_loss"))
@@ -500,265 +478,35 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
             if "short" in bias and price >= sl:
                 warnings.append("Live price has hit SL => invalidated.")
 
-    # Structure mismatch warning
-    if ("long" in bias and struct == "bearish") or ("short" in bias and struct == "bullish"):
+    if ("long" in bias and "bearish" in struct.lower()) or ("short" in bias and "bullish" in struct.lower()):
         warnings.append("Structure is against your bias (structure broken).")
 
     return warnings[:8]
 
 
-# ==========================
-# NEW: Simple deterministic signal endpoint
-# ==========================
-def _ema(series, period: int):
-    if not series or period <= 1:
-        return series[:]
-    k = 2 / (period + 1)
-    out = []
-    prev = series[0]
-    out.append(prev)
-    for v in series[1:]:
-        prev = (v * k) + (prev * (1 - k))
-        out.append(prev)
-    return out
-
-
-def _rsi(series, period: int = 14):
-    if len(series) < period + 1:
-        return [50.0] * len(series)
-
-    gains, losses = [], []
-    for i in range(1, len(series)):
-        diff = series[i] - series[i - 1]
-        gains.append(max(diff, 0.0))
-        losses.append(max(-diff, 0.0))
-
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-
-    out = [50.0] * period
-    out.append(100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss))))
-
-    for i in range(period, len(gains)):
-        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
-        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-        out.append(100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss))))
-
-    if len(out) < len(series):
-        out = [50.0] * (len(series) - len(out)) + out
-    return out[:len(series)]
-
-
-def _atr(highs, lows, closes, period: int = 14):
-    if len(closes) < 2:
-        return [0.0] * len(closes)
-
-    tr = []
-    for i in range(len(closes)):
-        if i == 0:
-            tr.append(highs[i] - lows[i])
-        else:
-            tr.append(max(
-                highs[i] - lows[i],
-                abs(highs[i] - closes[i - 1]),
-                abs(lows[i] - closes[i - 1]),
-            ))
-
-    out = [0.0] * len(closes)
-    if len(tr) < period:
-        return out
-
-    first = sum(tr[:period]) / period
-    out[period - 1] = first
-    prev = first
-    for i in range(period, len(tr)):
-        prev = ((prev * (period - 1)) + tr[i]) / period
-        out[i] = prev
-    for i in range(period - 1):
-        out[i] = out[period - 1]
-    return out
-
-
-def _build_signal(values):
-    # values newest-first -> analyze oldest->newest
-    vals = list(reversed(values))
-    closes = [float(v["close"]) for v in vals]
-    highs = [float(v["high"]) for v in vals]
-    lows = [float(v["low"]) for v in vals]
-
-    e20 = _ema(closes, 20)
-    e50 = _ema(closes, 50)
-    r = _rsi(closes, 14)
-    a = _atr(highs, lows, closes, 14)
-
-    last_close = closes[-1]
-    last_e20 = e20[-1]
-    last_e50 = e50[-1]
-    last_rsi = r[-1]
-    last_atr = a[-1] if a[-1] > 0 else (last_close * 0.001)
-
-    trend_up = last_e20 > last_e50
-    trend_down = last_e20 < last_e50
-
-    direction = "WAIT"
-    confidence = 50
-    reasons = []
-
-    if trend_up:
-        reasons.append("Trend up (EMA20 > EMA50).")
-        confidence += 12
-    elif trend_down:
-        reasons.append("Trend down (EMA20 < EMA50).")
-        confidence += 12
-    else:
-        reasons.append("Trend flat (EMA20 ~ EMA50).")
-        confidence -= 10
-
-    if trend_up:
-        if last_rsi < 45:
-            reasons.append(f"RSI {last_rsi:.1f} low in uptrend (pullback entry).")
-            confidence += 15
-            direction = "BUY"
-        elif 45 <= last_rsi <= 65:
-            reasons.append(f"RSI {last_rsi:.1f} supportive in uptrend.")
-            confidence += 8
-            direction = "BUY"
-        else:
-            reasons.append(f"RSI {last_rsi:.1f} high (pullback risk).")
-            confidence -= 12
-            direction = "WAIT"
-
-    if trend_down:
-        if last_rsi > 55:
-            reasons.append(f"RSI {last_rsi:.1f} high in downtrend (pullback entry).")
-            confidence += 15
-            direction = "SELL"
-        elif 35 <= last_rsi <= 55:
-            reasons.append(f"RSI {last_rsi:.1f} supportive in downtrend.")
-            confidence += 8
-            direction = "SELL"
-        else:
-            reasons.append(f"RSI {last_rsi:.1f} low (bounce risk).")
-            confidence -= 12
-            direction = "WAIT"
-
-    confidence = max(0, min(100, confidence))
-
-    rr_target = 2.0
-    if confidence < 55:
-        rr_target = 1.5
-    if confidence < 45:
-        rr_target = 1.2
-
-    entry = last_close
-    sl_dist = 1.2 * last_atr
-
-    if direction == "BUY":
-        sl = entry - sl_dist
-        tp = entry + sl_dist * rr_target
-        invalidation = "Structure broken if price closes below SL zone."
-    elif direction == "SELL":
-        sl = entry + sl_dist
-        tp = entry - sl_dist * rr_target
-        invalidation = "Structure broken if price closes above SL zone."
-    else:
-        sl = None
-        tp = None
-        invalidation = "No active trade. Waiting for higher-quality setup."
-
-    warnings = []
-    if direction in ("BUY", "SELL") and confidence < 55:
-        warnings.append("Low-confidence setup: consider waiting for confirmation.")
-    if last_atr / entry > 0.01:
-        warnings.append("High volatility detected (ATR elevated): reduce position size.")
-
-    return {
-        "direction": direction,
-        "confidence": confidence,
-        "rr_target": rr_target,
-        "entry": round(entry, 6),
-        "sl": round(sl, 6) if sl is not None else None,
-        "tp": round(tp, 6) if tp is not None else None,
-        "atr": round(last_atr, 6),
-        "rsi": round(last_rsi, 2),
-        "ema20": round(last_e20, 6),
-        "ema50": round(last_e50, 6),
-        "why": " ".join(reasons),
-        "warnings": warnings[:8],
-        "invalidation": invalidation,
-    }
-
-
-@app.get("/api/signal")
-def api_signal():
-    ip = _client_ip()
-    if not _rate_ok(ip):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
-
-    symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
-    interval = (request.args.get("interval", "") or "15min").strip()
-    limit = int(request.args.get("limit", "") or 180)
-
-    snap = td_candles(symbol, interval=interval, limit=limit)
-    if not snap.get("ok"):
-        return jsonify(snap), 502
-
-    values = snap.get("values") or []
-    if len(values) < 60:
-        return jsonify({"ok": False, "error": "Not enough candle data to compute a signal."}), 400
-
-    signal = _build_signal(values)
-    live_snapshot = td_price(symbol)
-
-    # strict SL hit check (block)
-    blocked = False
-    reason = ""
-    if live_snapshot.get("ok") and signal.get("direction") in ("BUY", "SELL") and signal.get("sl") is not None:
-        p = live_snapshot.get("price")
-        if signal["direction"] == "BUY" and p <= signal["sl"]:
-            blocked, reason = True, "Live price is at/through Stop Loss. Trade invalidated."
-        if signal["direction"] == "SELL" and p >= signal["sl"]:
-            blocked, reason = True, "Live price is at/through Stop Loss. Trade invalidated."
-
-    return jsonify({
-        "ok": True,
-        "blocked": blocked,
-        "block_reason": reason,
-        "symbol": symbol,
-        "interval": interval,
-        "live_snapshot": live_snapshot,
-        "signal": signal,
-        "disclaimer": "Educational use only. Not financial advice. Trading involves risk."
-    })
-
-
-# ==========================
-# Main Analyze Endpoint (keeps your existing flow)
-# ==========================
 @app.route("/analyze", methods=["POST"])
 def analyze():
     ip = _client_ip()
     if not _rate_ok(ip):
         return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
 
-    # Get text fields
+    # Validate OpenAI config at request time (not startup)
+    oa = _get_openai_client()
+    if oa is None:
+        return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
+
     pair_type = request.form.get("pair_type", "").strip()
     timeframe = request.form.get("timeframe", "").strip()
     signal_text = request.form.get("signal_input", "").strip()
 
-    # Chart image optional
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
         img_bytes = file.read()
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
-    # Detect symbol
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
-    # ==========================
-    # Live data: price + candles
-    # ==========================
     live_snapshot = td_price(symbol)
     candles_snapshot = td_candles(symbol, interval="5min", limit=120)
 
@@ -766,10 +514,6 @@ def analyze():
     if candles_snapshot.get("ok") and candles_snapshot.get("values"):
         struct_info = structure_from_candles(candles_snapshot["values"])
 
-    # ==========================
-    # Ask AI for structured JSON (same UI contract)
-    # ==========================
-    # Provide live info to AI
     live_context = "Live data unavailable."
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
@@ -822,46 +566,33 @@ Rules:
 
     messages = [
         {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON."},
-        {"role": "user", "content": base_prompt}
+        {"role": "user", "content": base_prompt},
     ]
 
-    # Add image (if provided)
     if img_base64:
-        messages.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure/liquidity/trend."},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}}
-            ]
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure/liquidity/trend."},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}},
+                ],
+            }
+        )
 
     try:
-        completion = client.chat.completions.create(
+        completion = oa.chat.completions.create(
             model="gpt-4.1-mini",
             messages=messages,
-            temperature=0.2
+            temperature=0.2,
         )
 
         raw = completion.choices[0].message.content or ""
-
-        try:
-            analysis_obj = json.loads(raw)
-        except Exception:
-            return jsonify({
-                "error": "Model did not return valid JSON.",
-                "debug_preview": raw[:500],
-                "live_snapshot": live_snapshot
-            }), 502
+        analysis_obj = json.loads(raw)
 
         if not isinstance(analysis_obj, dict):
-            return jsonify({
-                "error": "Model JSON was not an object.",
-                "live_snapshot": live_snapshot
-            }), 502
+            return jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502
 
-        # ==========================
-        # Normalize + RR + deterministic confidence
-        # ==========================
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
 
@@ -871,11 +602,9 @@ Rules:
 
         rr = calculate_rr(entry, sl, targets)
 
-        # Force structure string to include live/candle signal
         mc_struct = mc.get("structure") or ""
         mc["structure"] = (mc_struct + f" | Live(5m): {struct_info.get('structure')}").strip(" |")
 
-        # Build normalized analysis object
         analysis = {
             "bias": analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
@@ -885,21 +614,20 @@ Rules:
                 "entry": _to_float(entry),
                 "stop_loss": _to_float(sl),
                 "targets": _parse_targets(targets),
-                "rr": rr
+                "rr": rr,
             },
             "market_context": {
                 "structure": mc.get("structure") or "",
                 "liquidity": mc.get("liquidity") or "",
                 "momentum": mc.get("momentum") or "",
-                "timeframe_alignment": mc.get("timeframe_alignment") or ""
+                "timeframe_alignment": mc.get("timeframe_alignment") or "",
             },
             "decision": analysis_obj.get("decision") or "NEUTRAL",
             "verdict": analysis_obj.get("verdict") or "",
             "guidance": analysis_obj.get("guidance") or [],
-            "live_snapshot": live_snapshot
+            "live_snapshot": live_snapshot,
         }
 
-        # Normalize decision
         d = str(analysis.get("decision") or "NEUTRAL").upper()
         if "TAKE" in d:
             analysis["decision"] = "TAKE TRADE"
@@ -912,53 +640,30 @@ Rules:
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
 
-        # ==========================
-        # BLOCK trade (strict)
-        # ==========================
         live_price = live_snapshot.get("price") if live_snapshot.get("ok") else None
         bias = analysis.get("bias")
-        struct = struct_info.get("structure")  # bullish/bearish/unclear
+        struct = struct_info.get("structure")
         entry_f = analysis["signal_check"].get("entry")
         sl_f = analysis["signal_check"].get("stop_loss")
 
         blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
 
         if blocked:
-            # Force decision
             analysis["decision"] = "AVOID TRADE"
             analysis["verdict"] = (analysis.get("verdict") or "").strip()
             analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
             analysis["invalidation_warnings"] = [reason] + (analysis.get("invalidation_warnings") or [])
 
-            return jsonify({
-                "blocked": True,
-                "block_reason": reason,
-                "analysis": analysis,
-                "mode": "twelvedata_block"
-            })
+            return jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"})
 
-        return jsonify({
-            "blocked": False,
-            "analysis": analysis,
-            "mode": "twelvedata_live"
-        })
+        return jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
 
+    except json.JSONDecodeError:
+        return jsonify({"error": "Model did not return valid JSON."}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/health")
-def health():
-    return jsonify({
-        "ok": True,
-        "service": "FXCO-PILOT",
-        "status": "running"
-    })
-
-
-# --------------------------
-# Run local server
-# --------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port, debug=False)
