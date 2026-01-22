@@ -4,9 +4,9 @@ import os
 import re
 import time
 from collections import deque
-import requests
 
-from flask import Flask, jsonify, request, send_from_directory
+import requests
+from flask import Flask, jsonify, request
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -49,7 +49,7 @@ _RATE_DAY = {}
 def _client_ip():
     """
     Try to get the real client IP behind proxies.
-    Vercel/Render typically set X-Forwarded-For as: "client, proxy1, proxy2"
+    X-Forwarded-For is usually: "client, proxy1, proxy2"
     """
     xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
@@ -63,16 +63,15 @@ def _rate_check(ip: str):
     """
     now = time.time()
 
-    # Init deques
     if ip not in _RATE_SHORT:
         _RATE_SHORT[ip] = deque()
     if ip not in _RATE_DAY:
         _RATE_DAY[ip] = deque()
 
-    # Prune old timestamps
     short_q = _RATE_SHORT[ip]
     day_q = _RATE_DAY[ip]
 
+    # prune old entries
     while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
         short_q.popleft()
     while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
@@ -81,10 +80,9 @@ def _rate_check(ip: str):
     short_remaining = max(0, _SHORT_LIMIT - len(short_q))
     day_remaining = max(0, _DAY_LIMIT - len(day_q))
 
-    # If blocked, compute retry-after from the most restrictive bucket
+    # blocked
     if short_remaining <= 0 or day_remaining <= 0:
         retry_after = 1
-
         if short_remaining <= 0 and short_q:
             retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now - short_q[0])) + 1)
         if day_remaining <= 0 and day_q:
@@ -99,7 +97,7 @@ def _rate_check(ip: str):
         }
         return False, retry_after, headers
 
-    # Allow request: record timestamps
+    # allow: record
     short_q.append(now)
     day_q.append(now)
 
@@ -130,11 +128,11 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
-# Optional static serving (harmless)
+# Root + health
 # ==========================
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
-    # Render backend doesn't need to serve frontend; keep simple:
+    # backend root is not your frontend (frontend is on solflightech.org)
     return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
 
 
@@ -423,28 +421,43 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
+def _pick_first(data: dict, keys: list[str]) -> str:
+    for k in keys:
+        v = data.get(k)
+        if v is not None and str(v).strip() != "":
+            return str(v).strip()
+    return ""
+
+
 def _get_payload_fields():
     """
     Accepts:
       - multipart/form-data (FormData)
       - application/x-www-form-urlencoded
       - application/json
+
+    Also tolerates frontend key variants.
     Returns: (pair_type, timeframe, signal_text)
     """
+    # JSON
     if request.is_json:
         data = request.get_json(silent=True) or {}
-        pair_type = (data.get("pair_type") or "").strip()
-        timeframe = (data.get("timeframe") or "").strip()
-        signal_text = (data.get("signal_input") or "").strip()
+        pair_type = _pick_first(data, ["pair_type", "pairType"])
+        timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])
+        signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
         return pair_type, timeframe, signal_text
 
     # FormData / urlencoded
-    pair_type = (request.form.get("pair_type") or "").strip()
-    timeframe = (request.form.get("timeframe") or "").strip()
-    signal_text = (request.form.get("signal_input") or "").strip()
+    form = request.form or {}
+    pair_type = _pick_first(form, ["pair_type", "pairType"])
+    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
+    signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
     return pair_type, timeframe, signal_text
 
 
+# ==========================
+# Analyze endpoint
+# ==========================
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     # Rate limit ONLY this endpoint
@@ -459,6 +472,14 @@ def analyze():
             }
         )
         resp.status_code = 429
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # IMPORTANT: test mode must happen BEFORE OpenAI + BEFORE validation
+    if request.args.get("test") == "1":
+        resp = jsonify({"ok": True, "mode": "rate_limit_test", "note": "No OpenAI call made."})
+        resp.status_code = 200
         for k, v in rl_headers.items():
             resp.headers[k] = v
         return resp
@@ -479,8 +500,12 @@ def analyze():
             {
                 "error": "Missing required fields.",
                 "missing": missing,
-                "expected": ["pair_type", "timeframe", "signal_input"],
-                "hint": "Make sure frontend sends EXACT field names (pair_type, timeframe, signal_input).",
+                "expected_any_of": {
+                    "pair_type": ["pair_type", "pairType"],
+                    "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    "signal_input": ["signal_input", "signal", "signalText"],
+                },
+                "received_content_type": request.headers.get("Content-Type", ""),
             }
         )
         resp.status_code = 400
@@ -497,7 +522,7 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # Optional image (FormData)
+    # Optional image (FormData only)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -640,11 +665,11 @@ Rules:
             resp.headers[k] = v
         return resp
     except Exception as e:
-        # If OpenAI quota hits, surface it clearly (and do NOT confuse it with rate limiting)
         msg = str(e)
         status = 500
+        # keep OpenAI billing/quota separate from rate limiting
         if "insufficient_quota" in msg or "quota" in msg.lower():
-            status = 402  # Payment Required (clearer than 429 for billing)
+            status = 402
         resp = jsonify({"error": msg})
         resp.status_code = status
         for k, v in rl_headers.items():
