@@ -4,8 +4,8 @@ import os
 import re
 import time
 from collections import deque
-
 import requests
+
 from flask import Flask, jsonify, request
 from openai import OpenAI
 
@@ -33,6 +33,8 @@ def _cache_set(key, value, ttl=60):
 # Rate limiting (in-memory)
 #   - 5 requests / 60s per IP
 #   - 50 requests / 24h per IP
+#   - 5 requests / 60s per ClientID
+#   - 50 requests / 24h per ClientID
 # Applied ONLY to /api/analyze
 # ==========================
 _SHORT_WINDOW_SECONDS = 60
@@ -41,15 +43,19 @@ _SHORT_LIMIT = 5
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 _DAY_LIMIT = 50
 
-# key: ip -> deque[timestamps]
-_RATE_SHORT = {}
-_RATE_DAY = {}
+# Per-IP queues
+_RATE_SHORT_IP = {}
+_RATE_DAY_IP = {}
+
+# Per-Client queues
+_RATE_SHORT_CLIENT = {}
+_RATE_DAY_CLIENT = {}
 
 
 def _client_ip():
     """
     Try to get the real client IP behind proxies.
-    X-Forwarded-For is usually: "client, proxy1, proxy2"
+    Vercel/Render typically set X-Forwarded-For as: "client, proxy1, proxy2"
     """
     xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
@@ -57,21 +63,47 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _rate_check(ip: str):
+def _client_id():
     """
-    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
+    Per-session identifier from the frontend.
+    Frontend will send X-FXCO-Client from localStorage.
+
+    Fallbacks:
+      - X-Client-Id (alternate header)
+      - X-Session-Id (alternate header)
+      - "unknown" if missing
+    """
+    cid = (
+        request.headers.get("X-FXCO-Client")
+        or request.headers.get("X-Client-Id")
+        or request.headers.get("X-Session-Id")
+        or ""
+    ).strip()
+
+    # Keep it bounded / safe for dict keys
+    if not cid:
+        return "unknown"
+    if len(cid) > 128:
+        cid = cid[:128]
+    return cid
+
+
+def _rate_check_bucket(key: str, short_map: dict, day_map: dict):
+    """
+    Generic bucket checker for a given key (ip or client id).
+    Returns (ok, retry_after, remaining_short, remaining_day)
     """
     now = time.time()
 
-    if ip not in _RATE_SHORT:
-        _RATE_SHORT[ip] = deque()
-    if ip not in _RATE_DAY:
-        _RATE_DAY[ip] = deque()
+    if key not in short_map:
+        short_map[key] = deque()
+    if key not in day_map:
+        day_map[key] = deque()
 
-    short_q = _RATE_SHORT[ip]
-    day_q = _RATE_DAY[ip]
+    short_q = short_map[key]
+    day_q = day_map[key]
 
-    # prune old entries
+    # prune
     while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
         short_q.popleft()
     while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
@@ -80,34 +112,59 @@ def _rate_check(ip: str):
     short_remaining = max(0, _SHORT_LIMIT - len(short_q))
     day_remaining = max(0, _DAY_LIMIT - len(day_q))
 
-    # blocked
     if short_remaining <= 0 or day_remaining <= 0:
         retry_after = 1
         if short_remaining <= 0 and short_q:
             retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now - short_q[0])) + 1)
         if day_remaining <= 0 and day_q:
             retry_after = max(retry_after, int(_DAY_WINDOW_SECONDS - (now - day_q[0])) + 1)
+        return False, retry_after, short_remaining, day_remaining
 
-        headers = {
-            "Retry-After": str(retry_after),
-            "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
-            "X-RateLimit-Remaining-60s": str(short_remaining),
-            "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
-            "X-RateLimit-Remaining-24h": str(day_remaining),
-        }
-        return False, retry_after, headers
-
-    # allow: record
+    # allow -> record
     short_q.append(now)
     day_q.append(now)
 
+    return True, 0, short_remaining - 1, day_remaining - 1
+
+
+def _rate_check(ip: str, cid: str):
+    """
+    Enforce BOTH:
+      - per-IP limits
+      - per-ClientID limits
+
+    Returns: (ok: bool, retry_after_seconds: int, headers: dict, blocked_by: str|None)
+    """
+    ok_ip, ra_ip, ip_short_rem, ip_day_rem = _rate_check_bucket(ip, _RATE_SHORT_IP, _RATE_DAY_IP)
+    ok_c, ra_c, c_short_rem, c_day_rem = _rate_check_bucket(cid, _RATE_SHORT_CLIENT, _RATE_DAY_CLIENT)
+
+    ok = ok_ip and ok_c
+    retry_after = max(ra_ip if not ok_ip else 0, ra_c if not ok_c else 0)
+
+    blocked_by = None
+    if not ok:
+        if not ok_c and not ok_ip:
+            blocked_by = "client_and_ip"
+        elif not ok_c:
+            blocked_by = "client"
+        else:
+            blocked_by = "ip"
+
     headers = {
+        "Retry-After": str(retry_after) if not ok else "0",
         "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
-        "X-RateLimit-Remaining-60s": str(short_remaining - 1),
         "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
-        "X-RateLimit-Remaining-24h": str(day_remaining - 1),
+
+        # IP remaining
+        "X-RateLimit-Remaining-60s-IP": str(ip_short_rem),
+        "X-RateLimit-Remaining-24h-IP": str(ip_day_rem),
+
+        # Client remaining
+        "X-RateLimit-Remaining-60s-Client": str(c_short_rem),
+        "X-RateLimit-Remaining-24h-Client": str(c_day_rem),
     }
-    return True, 0, headers
+
+    return ok, retry_after, headers, blocked_by
 
 
 # ==========================
@@ -128,11 +185,10 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
-# Root + health
+# Health + root
 # ==========================
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
-    # backend root is not your frontend (frontend is on solflightech.org)
     return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
 
 
@@ -421,65 +477,49 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
-def _pick_first(data: dict, keys: list[str]) -> str:
-    for k in keys:
-        v = data.get(k)
-        if v is not None and str(v).strip() != "":
-            return str(v).strip()
-    return ""
-
-
 def _get_payload_fields():
     """
     Accepts:
       - multipart/form-data (FormData)
       - application/x-www-form-urlencoded
       - application/json
-
-    Also tolerates frontend key variants.
     Returns: (pair_type, timeframe, signal_text)
     """
-    # JSON
     if request.is_json:
         data = request.get_json(silent=True) or {}
-        pair_type = _pick_first(data, ["pair_type", "pairType"])
-        timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])
-        signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
+        pair_type = (data.get("pair_type") or "").strip()
+        timeframe = (data.get("timeframe") or "").strip()
+        signal_text = (data.get("signal_input") or "").strip()
         return pair_type, timeframe, signal_text
 
     # FormData / urlencoded
-    form = request.form or {}
-    pair_type = _pick_first(form, ["pair_type", "pairType"])
-    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
-    signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
+    pair_type = (request.form.get("pair_type") or "").strip()
+    timeframe = (request.form.get("timeframe") or "").strip()
+    signal_text = (request.form.get("signal_input") or "").strip()
     return pair_type, timeframe, signal_text
 
 
-# ==========================
-# Analyze endpoint
-# ==========================
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    # Rate limit ONLY this endpoint
+    # Rate limit ONLY this endpoint (by IP + ClientID)
     ip = _client_ip()
-    ok, retry_after, rl_headers = _rate_check(ip)
+    cid = _client_id()
+
+    ok, retry_after, rl_headers, blocked_by = _rate_check(ip, cid)
     if not ok:
         resp = jsonify(
             {
                 "error": "Too many requests. Please slow down.",
-                "limits": {"per_60s": _SHORT_LIMIT, "per_24h": _DAY_LIMIT},
+                "blocked_by": blocked_by,
+                "limits": {
+                    "per_60s": _SHORT_LIMIT,
+                    "per_24h": _DAY_LIMIT,
+                    "applies_to": ["ip", "client_id"],
+                },
                 "retry_after_seconds": retry_after,
             }
         )
         resp.status_code = 429
-        for k, v in rl_headers.items():
-            resp.headers[k] = v
-        return resp
-
-    # IMPORTANT: test mode must happen BEFORE OpenAI + BEFORE validation
-    if request.args.get("test") == "1":
-        resp = jsonify({"ok": True, "mode": "rate_limit_test", "note": "No OpenAI call made."})
-        resp.status_code = 200
         for k, v in rl_headers.items():
             resp.headers[k] = v
         return resp
@@ -500,12 +540,8 @@ def analyze():
             {
                 "error": "Missing required fields.",
                 "missing": missing,
-                "expected_any_of": {
-                    "pair_type": ["pair_type", "pairType"],
-                    "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
-                    "signal_input": ["signal_input", "signal", "signalText"],
-                },
-                "received_content_type": request.headers.get("Content-Type", ""),
+                "expected": ["pair_type", "timeframe", "signal_input"],
+                "hint": "Frontend must send EXACT field names: pair_type, timeframe, signal_input.",
             }
         )
         resp.status_code = 400
@@ -522,7 +558,7 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # Optional image (FormData only)
+    # Optional image (FormData)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -665,11 +701,11 @@ Rules:
             resp.headers[k] = v
         return resp
     except Exception as e:
+        # If OpenAI quota hits, surface it clearly (do NOT confuse with rate limiting)
         msg = str(e)
         status = 500
-        # keep OpenAI billing/quota separate from rate limiting
         if "insufficient_quota" in msg or "quota" in msg.lower():
-            status = 402
+            status = 402  # Payment Required
         resp = jsonify({"error": msg})
         resp.status_code = status
         for k, v in rl_headers.items():
