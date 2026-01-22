@@ -5,7 +5,7 @@ import re
 import time
 import requests
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, make_response
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -31,9 +31,11 @@ def _cache_set(key, value, ttl=60):
 
 
 # ==========================
-# Rate Limiting Implementation
+# Rate Limiting (Per-IP + Per-Route, multi-window)
 # ==========================
-_RATE_LIMIT = {}
+# In-memory sliding window counters (good enough for single Render instance).
+# If you scale to multiple instances, move this to Redis/Upstash.
+_RATE_BUCKETS = {}  # key -> list[timestamps]
 
 
 def _client_ip():
@@ -49,16 +51,74 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _rate_ok(ip, limit=30, window=60):
-    """Check if IP is within rate limit."""
+def _rate_check(bucket_key: str, limit: int, window_seconds: int):
+    """
+    Sliding-window check.
+    Returns: (ok: bool, retry_after_seconds: int)
+    """
     now = time.time()
-    if ip not in _RATE_LIMIT:
-        _RATE_LIMIT[ip] = []
-    _RATE_LIMIT[ip] = [t for t in _RATE_LIMIT[ip] if now - t < window]
-    if len(_RATE_LIMIT[ip]) >= limit:
-        return False
-    _RATE_LIMIT[ip].append(now)
-    return True
+    bucket = _RATE_BUCKETS.get(bucket_key, [])
+    # keep only timestamps within the window
+    cutoff = now - window_seconds
+    bucket = [t for t in bucket if t >= cutoff]
+
+    if len(bucket) >= limit:
+        # retry when the oldest request falls out of window
+        oldest = min(bucket) if bucket else now
+        retry_after = int(max(1, (oldest + window_seconds) - now))
+        _RATE_BUCKETS[bucket_key] = bucket
+        return False, retry_after
+
+    bucket.append(now)
+    _RATE_BUCKETS[bucket_key] = bucket
+    return True, 0
+
+
+# Per-route limits: list of (limit, window_seconds)
+RATE_LIMITS = {
+    # expensive endpoint (OpenAI)
+    "analyze": [(5, 60), (50, 86400)],
+
+    # market-data endpoints
+    "candles": [(30, 60), (1000, 86400)],
+    "quote": [(30, 60), (1000, 86400)],
+    # health: no rate limit
+}
+
+
+def _enforce_rate_limit(route_key: str):
+    """
+    Enforces multi-window limits. Returns Flask response if blocked, else None.
+    """
+    rules = RATE_LIMITS.get(route_key)
+    if not rules:
+        return None
+
+    ip = _client_ip()
+    worst_retry_after = 0
+
+    for limit, window_s in rules:
+        bucket_key = f"{route_key}:{ip}:{window_s}:{limit}"
+        ok, retry_after = _rate_check(bucket_key, limit, window_s)
+        if not ok:
+            worst_retry_after = max(worst_retry_after, retry_after)
+
+    if worst_retry_after > 0:
+        resp = make_response(
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Rate limit exceeded. Please slow down.",
+                    "route": route_key,
+                    "retry_after_seconds": worst_retry_after,
+                }
+            ),
+            429,
+        )
+        resp.headers["Retry-After"] = str(worst_retry_after)
+        return resp
+
+    return None
 
 
 # ==========================
@@ -83,12 +143,12 @@ TD_BASE = "https://api.twelvedata.com"
 # --------------------------
 @app.route("/")
 def index():
-    # NOTE: If you don't ship index.html in backend/, Render root will 404.
-    # We keep this, but we also handle "file missing" gracefully.
+    # If you aren't serving frontend from Render, this can 404 and that's okay.
+    # Keeping it simple: serve index.html if present, else return 404.
     try:
         return send_from_directory(".", "index.html")
     except Exception:
-        return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health or /api/analyze"}), 200
+        return ("Not Found", 404)
 
 
 @app.route("/static/<path:path>")
@@ -293,9 +353,9 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
 
 @app.route("/quote", methods=["GET"])
 def quote():
-    ip = _client_ip()
-    if not _rate_ok(ip, limit=60, window=60):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
+    blocked = _enforce_rate_limit("quote")
+    if blocked:
+        return blocked
 
     symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
     q = td_price(symbol)
@@ -304,9 +364,9 @@ def quote():
 
 @app.get("/api/candles")
 def api_candles():
-    ip = _client_ip()
-    if not _rate_ok(ip, limit=60, window=60):
-        return jsonify({"ok": False, "error": "Rate limit exceeded. Please slow down."}), 429
+    blocked = _enforce_rate_limit("candles")
+    if blocked:
+        return blocked
 
     symbol = request.args.get("symbol", "EURUSD")
     interval = request.args.get("interval", "5min")
@@ -487,76 +547,26 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
-def _pick_first(d: dict, keys: list[str], default: str = "") -> str:
-    """Return first non-empty string value for given keys in dict."""
-    for k in keys:
-        v = d.get(k)
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s != "":
-            return s
-    return default
-
-
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    ip = _client_ip()
-    # EXPENSIVE ENDPOINT => keep stricter than others
-    if not _rate_ok(ip, limit=15, window=60):
-        return jsonify({"error": "Rate limit exceeded. Please slow down."}), 429
+    blocked = _enforce_rate_limit("analyze")
+    if blocked:
+        return blocked
 
+    # Validate OpenAI config at request time (not startup)
     oa = _get_openai_client()
     if oa is None:
         return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
 
-    # ---- Accept BOTH JSON and form-data, and accept multiple key names ----
-    body_json = request.get_json(silent=True) if request.is_json else None
-    form = request.form or {}
+    pair_type = request.form.get("pair_type", "").strip()
+    timeframe = request.form.get("timeframe", "").strip()
+    signal_text = request.form.get("signal_input", "").strip()
 
-    pair_type = ""
-    timeframe = ""
-    signal_text = ""
-
-    if body_json and isinstance(body_json, dict):
-        pair_type = _pick_first(body_json, ["pair_type", "pairType", "pair", "pairTypeMode"], "")
-        timeframe = _pick_first(body_json, ["timeframe", "timeframeMode", "tf", "mode"], "")
-        signal_text = _pick_first(body_json, ["signal_input", "signalInput", "signal", "signal_text", "signalText"], "")
-    else:
-        pair_type = _pick_first(form, ["pair_type", "pairType", "pair"], "")
-        timeframe = _pick_first(form, ["timeframe", "timeframeMode", "tf", "mode"], "")
-        signal_text = _pick_first(form, ["signal_input", "signalInput", "signal", "signal_text", "signalText"], "")
-
-    # chart image only supported via form-data file upload (browser)
     img_base64 = None
-    file = request.files.get("chart_image") or request.files.get("chartImage")
-    if file and getattr(file, "filename", ""):
+    file = request.files.get("chart_image")
+    if file and file.filename:
         img_bytes = file.read()
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-
-    # ---- Validate required fields ----
-    missing = []
-    # pair_type/timeframe can be optional for functionality, but UI expects them; enforce if you want.
-    if not pair_type:
-        missing.append("pair_type")
-    if not timeframe:
-        missing.append("timeframe")
-    if not signal_text:
-        missing.append("signal_input")
-
-    if missing:
-        return (
-            jsonify(
-                {
-                    "error": "Missing required fields.",
-                    "missing": missing,
-                    "received_form_keys": sorted(list(form.keys())),
-                    "received_json_keys": sorted(list(body_json.keys())) if isinstance(body_json, dict) else [],
-                    "hint": "Frontend must send pair_type, timeframe, signal_input (or compatible aliases).",
-                }
-            ),
-            400,
-        )
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
@@ -714,11 +724,7 @@ Rules:
     except json.JSONDecodeError:
         return jsonify({"error": "Model did not return valid JSON."}), 502
     except Exception as e:
-        # If OpenAI quota is exceeded, your frontend should see a clear message.
-        msg = str(e)
-        if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
-            return jsonify({"error": msg, "code": "insufficient_quota"}), 429
-        return jsonify({"error": msg}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
