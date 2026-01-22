@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FX Co-Pilot – AI Trade Validator</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-
+   
     <link rel="icon" href="/static/favicon-v2.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="manifest" href="/static/manifest.webmanifest">
 
+    
     <style>
         body {
             margin: 0;
@@ -548,14 +549,6 @@
 </div>
 
 <script>
-/**
- * API routing (robust):
- * - If you're running on Render (onrender.com), the Flask backend is same-origin -> call "/analyze".
- * - If you're running on Vercel/custom domain, proxy backend via Vercel rewrites -> call "/api/analyze".
- */
-const IS_RENDER = window.location.hostname.endsWith("onrender.com");
-const API_BASE = IS_RENDER ? "" : "/api";
-
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
@@ -786,6 +779,7 @@ function analyze() {
 
     document.getElementById("result").innerHTML = "Analyzing…";
 
+    // ✅ IMPORTANT: go through Vercel rewrite -> Render
     fetch("/api/analyze", { method: "POST", body: formData })
         .then(async (res) => {
             const ct = res.headers.get("content-type") || "";
