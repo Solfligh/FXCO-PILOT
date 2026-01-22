@@ -3,47 +3,53 @@ import json
 import os
 import re
 import time
+from collections import deque
 import requests
 
-from flask import Flask, jsonify, request, send_from_directory, make_response
+from flask import Flask, jsonify, request, send_from_directory
 from openai import OpenAI
 
 app = Flask(__name__)
 
 # ==========================
-# Cache Implementation
+# Simple in-memory cache
 # ==========================
 _CACHE = {}
 _CACHE_TTL = {}
 
 
 def _cache_get(key):
-    """Retrieve cached value if not expired."""
     if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
         return _CACHE[key]
     return None
 
 
 def _cache_set(key, value, ttl=60):
-    """Cache a value with TTL in seconds."""
     _CACHE[key] = value
     _CACHE_TTL[key] = time.time() + ttl
 
 
 # ==========================
-# Rate Limiting (Per-IP + Per-Route, multi-window)
+# Rate limiting (in-memory)
+#   - 5 requests / 60s per IP
+#   - 50 requests / 24h per IP
+# Applied ONLY to /api/analyze
 # ==========================
-# In-memory sliding window counters (good enough for single Render instance).
-# If you scale to multiple instances, move this to Redis/Upstash.
-_RATE_BUCKETS = {}  # key -> list[timestamps]
+_SHORT_WINDOW_SECONDS = 60
+_SHORT_LIMIT = 5
+
+_DAY_WINDOW_SECONDS = 24 * 60 * 60
+_DAY_LIMIT = 50
+
+# key: ip -> deque[timestamps]
+_RATE_SHORT = {}
+_RATE_DAY = {}
 
 
 def _client_ip():
     """
-    Get client IP address.
-
-    - If behind a proxy/CDN, X-Forwarded-For may contain a comma-separated list.
-      The left-most IP is the original client.
+    Try to get the real client IP behind proxies.
+    Vercel/Render typically set X-Forwarded-For as: "client, proxy1, proxy2"
     """
     xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
@@ -51,78 +57,63 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _rate_check(bucket_key: str, limit: int, window_seconds: int):
+def _rate_check(ip: str):
     """
-    Sliding-window check.
-    Returns: (ok: bool, retry_after_seconds: int)
+    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
     """
     now = time.time()
-    bucket = _RATE_BUCKETS.get(bucket_key, [])
-    # keep only timestamps within the window
-    cutoff = now - window_seconds
-    bucket = [t for t in bucket if t >= cutoff]
 
-    if len(bucket) >= limit:
-        # retry when the oldest request falls out of window
-        oldest = min(bucket) if bucket else now
-        retry_after = int(max(1, (oldest + window_seconds) - now))
-        _RATE_BUCKETS[bucket_key] = bucket
-        return False, retry_after
+    # Init deques
+    if ip not in _RATE_SHORT:
+        _RATE_SHORT[ip] = deque()
+    if ip not in _RATE_DAY:
+        _RATE_DAY[ip] = deque()
 
-    bucket.append(now)
-    _RATE_BUCKETS[bucket_key] = bucket
-    return True, 0
+    # Prune old timestamps
+    short_q = _RATE_SHORT[ip]
+    day_q = _RATE_DAY[ip]
 
+    while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
+        short_q.popleft()
+    while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
+        day_q.popleft()
 
-# Per-route limits: list of (limit, window_seconds)
-RATE_LIMITS = {
-    # expensive endpoint (OpenAI)
-    "analyze": [(5, 60), (50, 86400)],
+    short_remaining = max(0, _SHORT_LIMIT - len(short_q))
+    day_remaining = max(0, _DAY_LIMIT - len(day_q))
 
-    # market-data endpoints
-    "candles": [(30, 60), (1000, 86400)],
-    "quote": [(30, 60), (1000, 86400)],
-    # health: no rate limit
-}
+    # If blocked, compute retry-after from the most restrictive bucket
+    if short_remaining <= 0 or day_remaining <= 0:
+        retry_after = 1
 
+        if short_remaining <= 0 and short_q:
+            retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now - short_q[0])) + 1)
+        if day_remaining <= 0 and day_q:
+            retry_after = max(retry_after, int(_DAY_WINDOW_SECONDS - (now - day_q[0])) + 1)
 
-def _enforce_rate_limit(route_key: str):
-    """
-    Enforces multi-window limits. Returns Flask response if blocked, else None.
-    """
-    rules = RATE_LIMITS.get(route_key)
-    if not rules:
-        return None
+        headers = {
+            "Retry-After": str(retry_after),
+            "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+            "X-RateLimit-Remaining-60s": str(short_remaining),
+            "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
+            "X-RateLimit-Remaining-24h": str(day_remaining),
+        }
+        return False, retry_after, headers
 
-    ip = _client_ip()
-    worst_retry_after = 0
+    # Allow request: record timestamps
+    short_q.append(now)
+    day_q.append(now)
 
-    for limit, window_s in rules:
-        bucket_key = f"{route_key}:{ip}:{window_s}:{limit}"
-        ok, retry_after = _rate_check(bucket_key, limit, window_s)
-        if not ok:
-            worst_retry_after = max(worst_retry_after, retry_after)
-
-    if worst_retry_after > 0:
-        resp = make_response(
-            jsonify(
-                {
-                    "ok": False,
-                    "error": "Rate limit exceeded. Please slow down.",
-                    "route": route_key,
-                    "retry_after_seconds": worst_retry_after,
-                }
-            ),
-            429,
-        )
-        resp.headers["Retry-After"] = str(worst_retry_after)
-        return resp
-
-    return None
+    headers = {
+        "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+        "X-RateLimit-Remaining-60s": str(short_remaining - 1),
+        "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
+        "X-RateLimit-Remaining-24h": str(day_remaining - 1),
+    }
+    return True, 0, headers
 
 
 # ==========================
-# OpenAI client (LAZY INIT - prevents startup crash if key missing)
+# OpenAI client (lazy init)
 # ==========================
 def _get_openai_client():
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -132,71 +123,28 @@ def _get_openai_client():
 
 
 # ==========================
-# Twelve Data - ENV VAR ONLY
+# Twelve Data
 # ==========================
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 TD_BASE = "https://api.twelvedata.com"
 
 
-# --------------------------
-# Serve Frontend Files (optional on Render, but harmless)
-# --------------------------
+# ==========================
+# Optional static serving (harmless)
+# ==========================
 @app.route("/")
 def index():
-    # If you aren't serving frontend from Render, this can 404 and that's okay.
-    # Keeping it simple: serve index.html if present, else return 404.
-    try:
-        return send_from_directory(".", "index.html")
-    except Exception:
-        return ("Not Found", 404)
+    # Render backend doesn't need to serve frontend; keep simple:
+    return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
 
 
-@app.route("/static/<path:path>")
-def static_files(path):
-    return send_from_directory("static", path)
-
-
-# --------------------------
-# FAVICON ROUTES (avoid 500 if files missing)
-# --------------------------
-def _send_static_if_exists(filename: str):
-    static_dir = os.path.join(os.getcwd(), "static")
-    full_path = os.path.join(static_dir, filename)
-    if os.path.isfile(full_path):
-        return send_from_directory("static", filename)
-    return ("", 204)
-
-
-@app.route("/favicon.ico")
-def favicon_ico():
-    return _send_static_if_exists("favicon.ico")
-
-
-@app.route("/favicon-32.png")
-def favicon_32():
-    return _send_static_if_exists("favicon-32.png")
-
-
-@app.route("/favicon-16.png")
-def favicon_16():
-    return _send_static_if_exists("favicon-16.png")
-
-
-@app.route("/apple-touch-icon.png")
-def apple_touch_icon():
-    return _send_static_if_exists("apple-touch-icon.png")
-
-
-# --------------------------
-# Health Check (use this to verify Render is up)
-# --------------------------
 @app.get("/health")
 def health():
     return jsonify({"ok": True}), 200
 
 
 # ==========================
-# Helpers: symbols / parsing
+# Helpers
 # ==========================
 def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
@@ -277,7 +225,7 @@ def calculate_rr(entry, stop, targets):
 
 
 # ==========================
-# Twelve Data calls (with cache)
+# Twelve Data calls (cached)
 # ==========================
 def td_price(symbol: str):
     if not TWELVE_DATA_API_KEY:
@@ -298,16 +246,16 @@ def td_price(symbol: str):
         data = r.json()
         if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
-            _cache_set(cache_key, out)
+            _cache_set(cache_key, out, ttl=15)
             return out
 
         p = float(data["price"])
         out = {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata"}
-        _cache_set(cache_key, out)
+        _cache_set(cache_key, out, ttl=15)
         return out
     except Exception as e:
         out = {"ok": False, "error": str(e)}
-        _cache_set(cache_key, out)
+        _cache_set(cache_key, out, ttl=15)
         return out
 
 
@@ -338,72 +286,17 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
         data = r.json()
         if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
-            _cache_set(cache_key, out)
+            _cache_set(cache_key, out, ttl=30)
             return out
 
         values = data.get("values") or []
         out = {"ok": True, "symbol": symbol, "interval": interval, "values": values, "source": "twelvedata"}
-        _cache_set(cache_key, out)
+        _cache_set(cache_key, out, ttl=30)
         return out
     except Exception as e:
         out = {"ok": False, "error": str(e)}
-        _cache_set(cache_key, out)
+        _cache_set(cache_key, out, ttl=30)
         return out
-
-
-@app.route("/quote", methods=["GET"])
-def quote():
-    blocked = _enforce_rate_limit("quote")
-    if blocked:
-        return blocked
-
-    symbol = _norm_symbol(request.args.get("symbol", "") or "EURUSD")
-    q = td_price(symbol)
-    return jsonify(q)
-
-
-@app.get("/api/candles")
-def api_candles():
-    blocked = _enforce_rate_limit("candles")
-    if blocked:
-        return blocked
-
-    symbol = request.args.get("symbol", "EURUSD")
-    interval = request.args.get("interval", "5min")
-    limit = request.args.get("limit", 120)
-
-    symbol = _norm_symbol(symbol)
-    try:
-        limit = int(limit)
-    except Exception:
-        limit = 120
-
-    snap = td_candles(symbol, interval=interval, limit=limit)
-    if not snap.get("ok"):
-        return jsonify(snap), 502
-
-    values = snap.get("values") or []
-    candles = []
-    for v in values:
-        candles.append(
-            {
-                "datetime": v.get("datetime"),
-                "open": v.get("open"),
-                "high": v.get("high"),
-                "low": v.get("low"),
-                "close": v.get("close"),
-            }
-        )
-
-    return jsonify(
-        {
-            "ok": True,
-            "symbol": symbol,
-            "interval": interval,
-            "candles": candles,
-            "source": "twelvedata",
-        }
-    )
 
 
 def structure_from_candles(values):
@@ -439,23 +332,6 @@ def structure_from_candles(values):
         return {"structure": "unclear", "broken": False, "details": "Bearish trend but LH not confirmed."}
 
     return {"structure": "unclear", "broken": False, "details": "Trend unclear."}
-
-
-def decide_block(bias: str, struct: str, live_price: float, entry: float, sl: float):
-    b = (bias or "unclear").lower()
-
-    if sl is not None and live_price is not None:
-        if "long" in b and live_price <= sl:
-            return True, "Live price is at/through Stop Loss. Trade invalidated."
-        if "short" in b and live_price >= sl:
-            return True, "Live price is at/through Stop Loss. Trade invalidated."
-
-    if "long" in b and struct == "bearish":
-        return True, "Structure is bearish while bias is LONG (structure broken)."
-    if "short" in b and struct == "bullish":
-        return True, "Structure is bullish while bias is SHORT (structure broken)."
-
-    return False, ""
 
 
 def compute_confidence(analysis):
@@ -547,21 +423,81 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
+def _get_payload_fields():
+    """
+    Accepts:
+      - multipart/form-data (FormData)
+      - application/x-www-form-urlencoded
+      - application/json
+    Returns: (pair_type, timeframe, signal_text)
+    """
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        pair_type = (data.get("pair_type") or "").strip()
+        timeframe = (data.get("timeframe") or "").strip()
+        signal_text = (data.get("signal_input") or "").strip()
+        return pair_type, timeframe, signal_text
+
+    # FormData / urlencoded
+    pair_type = (request.form.get("pair_type") or "").strip()
+    timeframe = (request.form.get("timeframe") or "").strip()
+    signal_text = (request.form.get("signal_input") or "").strip()
+    return pair_type, timeframe, signal_text
+
+
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    blocked = _enforce_rate_limit("analyze")
-    if blocked:
-        return blocked
+    # Rate limit ONLY this endpoint
+    ip = _client_ip()
+    ok, retry_after, rl_headers = _rate_check(ip)
+    if not ok:
+        resp = jsonify(
+            {
+                "error": "Too many requests. Please slow down.",
+                "limits": {"per_60s": _SHORT_LIMIT, "per_24h": _DAY_LIMIT},
+                "retry_after_seconds": retry_after,
+            }
+        )
+        resp.status_code = 429
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
 
-    # Validate OpenAI config at request time (not startup)
+    # Parse payload
+    pair_type, timeframe, signal_text = _get_payload_fields()
+
+    missing = []
+    if not pair_type:
+        missing.append("pair_type")
+    if not timeframe:
+        missing.append("timeframe")
+    if not signal_text:
+        missing.append("signal_input")
+
+    if missing:
+        resp = jsonify(
+            {
+                "error": "Missing required fields.",
+                "missing": missing,
+                "expected": ["pair_type", "timeframe", "signal_input"],
+                "hint": "Make sure frontend sends EXACT field names (pair_type, timeframe, signal_input).",
+            }
+        )
+        resp.status_code = 400
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # OpenAI client check
     oa = _get_openai_client()
     if oa is None:
-        return jsonify({"error": "Missing OPENAI_API_KEY on server."}), 500
+        resp = jsonify({"error": "Missing OPENAI_API_KEY on server."})
+        resp.status_code = 500
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
 
-    pair_type = request.form.get("pair_type", "").strip()
-    timeframe = request.form.get("timeframe", "").strip()
-    signal_text = request.form.get("signal_input", "").strip()
-
+    # Optional image (FormData)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -623,7 +559,6 @@ Return ONLY valid JSON that matches this schema (no markdown):
 Rules:
 - Output MUST be raw JSON only.
 - entry/stop_loss/targets MUST be numeric-like.
-- Use live price and structure notes to avoid late entries.
 - If uncertain, choose NEUTRAL.
 """
 
@@ -653,20 +588,10 @@ Rules:
         raw = completion.choices[0].message.content or ""
         analysis_obj = json.loads(raw)
 
-        if not isinstance(analysis_obj, dict):
-            return jsonify({"error": "Model JSON was not an object.", "live_snapshot": live_snapshot}), 502
-
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
 
-        entry = sc.get("entry")
-        sl = sc.get("stop_loss")
-        targets = sc.get("targets")
-
-        rr = calculate_rr(entry, sl, targets)
-
-        mc_struct = mc.get("structure") or ""
-        mc["structure"] = (mc_struct + f" | Live(5m): {struct_info.get('structure')}").strip(" |")
+        rr = calculate_rr(sc.get("entry"), sc.get("stop_loss"), sc.get("targets"))
 
         analysis = {
             "bias": analysis_obj.get("bias") or "Unclear",
@@ -674,13 +599,13 @@ Rules:
             "clarity": analysis_obj.get("clarity") or 0,
             "signal_check": {
                 "direction": sc.get("direction") or "Unclear",
-                "entry": _to_float(entry),
-                "stop_loss": _to_float(sl),
-                "targets": _parse_targets(targets),
+                "entry": _to_float(sc.get("entry")),
+                "stop_loss": _to_float(sc.get("stop_loss")),
+                "targets": _parse_targets(sc.get("targets")),
                 "rr": rr,
             },
             "market_context": {
-                "structure": mc.get("structure") or "",
+                "structure": (mc.get("structure") or "") + f" | Live(5m): {struct_info.get('structure')}",
                 "liquidity": mc.get("liquidity") or "",
                 "momentum": mc.get("momentum") or "",
                 "timeframe_alignment": mc.get("timeframe_alignment") or "",
@@ -703,28 +628,28 @@ Rules:
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
 
-        live_price = live_snapshot.get("price") if live_snapshot.get("ok") else None
-        bias = analysis.get("bias")
-        struct = struct_info.get("structure")
-        entry_f = analysis["signal_check"].get("entry")
-        sl_f = analysis["signal_check"].get("stop_loss")
-
-        blocked, reason = decide_block(bias, struct, live_price, entry_f, sl_f)
-
-        if blocked:
-            analysis["decision"] = "AVOID TRADE"
-            analysis["verdict"] = (analysis.get("verdict") or "").strip()
-            analysis["verdict"] = (analysis["verdict"] + " " if analysis["verdict"] else "") + f"TRADE BLOCKED: {reason}"
-            analysis["invalidation_warnings"] = [reason] + (analysis.get("invalidation_warnings") or [])
-
-            return jsonify({"blocked": True, "block_reason": reason, "analysis": analysis, "mode": "twelvedata_block"})
-
-        return jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
+        resp = jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
 
     except json.JSONDecodeError:
-        return jsonify({"error": "Model did not return valid JSON."}), 502
+        resp = jsonify({"error": "Model did not return valid JSON."})
+        resp.status_code = 502
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # If OpenAI quota hits, surface it clearly (and do NOT confuse it with rate limiting)
+        msg = str(e)
+        status = 500
+        if "insufficient_quota" in msg or "quota" in msg.lower():
+            status = 402  # Payment Required (clearer than 429 for billing)
+        resp = jsonify({"error": msg})
+        resp.status_code = status
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
 
 
 if __name__ == "__main__":
