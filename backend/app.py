@@ -4,13 +4,38 @@ import os
 import re
 import time
 from collections import deque
-from urllib.parse import urlencode
 
 import requests
-from flask import Flask, jsonify, request, redirect
+from flask import Flask, jsonify, request
 from openai import OpenAI
 
 app = Flask(__name__)
+
+# ============================================================
+# ENV (set these on Render/your host)
+# ============================================================
+# OpenAI:
+#   OPENAI_API_KEY=...
+#
+# Twelve Data:
+#   TWELVE_DATA_API_KEY=...
+#
+# Paystack (REQUIRED if you enable require_payment):
+#   PAYSTACK_SECRET_KEY=sk_live_or_test_xxx
+#   PAYSTACK_PUBLIC_KEY=pk_live_or_test_xxx   # optional (hosted checkout doesn't need it)
+#
+# Pricing:
+#   PAYSTACK_AMOUNT_NGN=10000                 # NGN major (₦10,000/month)
+#   PAYSTACK_CURRENCY=NGN
+#   PAYSTACK_REQUIRE_PAYMENT=1                # 1 to gate /api/analyze behind payment; 0 to disable
+#
+# Callback URL (where Paystack redirects after payment):
+#   PAYSTACK_CALLBACK_URL=https://YOUR-FRONTEND-DOMAIN/
+#   Example: https://fxco-pilot.vercel.app/
+#
+# Optional:
+#   PAYSTACK_ACCESS_DAYS=30                   # how long to unlock after payment (default 30)
+# ============================================================
 
 # ==========================
 # Simple in-memory cache
@@ -122,153 +147,6 @@ def _get_openai_client():
 
 
 # ==========================
-# Paystack (Payments)
-# ==========================
-PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
-PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
-
-# One-tier pricing (monthly) — amount is in kobo (NGN) or in minor units for your currency.
-# Example: NGN 5000 => 500000 kobo
-PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
-PAYSTACK_AMOUNT = int(os.getenv("PAYSTACK_AMOUNT", "500000"))  # default NGN 5,000
-PAYSTACK_PLAN_CODE = os.getenv("PAYSTACK_PLAN_CODE", "").strip()  # optional (for subscriptions)
-
-# Where Paystack should redirect after payment (frontend URL)
-# Example: https://your-frontend-domain.com/?paystack=success
-PAYSTACK_CALLBACK_URL = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
-
-# Optional: lock analyze behind payment verification
-REQUIRE_PAYMENT = os.getenv("REQUIRE_PAYMENT", "0").strip() == "1"
-
-# Cache verified references so you don't verify every request (TTL: 30 days)
-_VERIFIED_REF_TTL = 30 * 24 * 60 * 60
-
-
-def _paystack_ready():
-    return bool(PAYSTACK_SECRET_KEY) and bool(PAYSTACK_PUBLIC_KEY)
-
-
-def _safe_origin():
-    h = request.headers
-    proto = h.get("X-Forwarded-Proto") or "https"
-    host = h.get("X-Forwarded-Host") or h.get("Host") or ""
-    if host:
-        return f"{proto}://{host}"
-    return ""
-
-
-def _paystack_headers():
-    return {
-        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
-        "Content-Type": "application/json",
-    }
-
-
-def _paystack_init(email: str):
-    """
-    Initializes a Paystack transaction.
-    If PAYSTACK_PLAN_CODE is set, Paystack will create subscription for that plan (depending on your setup).
-    """
-    if not _paystack_ready():
-        return {"ok": False, "error": "Missing PAYSTACK_SECRET_KEY or PAYSTACK_PUBLIC_KEY on server."}
-
-    email = (email or "").strip()
-    if not email or "@" not in email:
-        return {"ok": False, "error": "A valid email is required for Paystack checkout."}
-
-    callback = PAYSTACK_CALLBACK_URL or (_safe_origin() + "/?paystack=success")
-
-    payload = {
-        "email": email,
-        "amount": int(PAYSTACK_AMOUNT),
-        "currency": PAYSTACK_CURRENCY,
-        "callback_url": callback,
-        "metadata": {
-            "app": "fxco-pilot",
-            "client_ip": _client_ip(),
-            "fxco_client_id": (request.headers.get("X-FXCO-Client", "") or "")[:128],
-        },
-    }
-
-    # Optional subscription plan
-    if PAYSTACK_PLAN_CODE:
-        payload["plan"] = PAYSTACK_PLAN_CODE
-
-    try:
-        r = requests.post(
-            "https://api.paystack.co/transaction/initialize",
-            headers=_paystack_headers(),
-            data=json.dumps(payload),
-            timeout=15,
-        )
-        data = r.json()
-        if not data.get("status"):
-            return {"ok": False, "error": data.get("message", "Paystack initialize failed"), "raw": data}
-
-        d = data.get("data") or {}
-        return {
-            "ok": True,
-            "authorization_url": d.get("authorization_url"),
-            "access_code": d.get("access_code"),
-            "reference": d.get("reference"),
-        }
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def _paystack_verify(reference: str):
-    """
-    Verifies a Paystack transaction and caches verified reference.
-    """
-    if not _paystack_ready():
-        return {"ok": False, "error": "Missing PAYSTACK_SECRET_KEY or PAYSTACK_PUBLIC_KEY on server."}
-
-    reference = (reference or "").strip()
-    if not reference:
-        return {"ok": False, "error": "Missing reference."}
-
-    cache_key = f"paystack_verified::{reference}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
-
-    try:
-        r = requests.get(
-            f"https://api.paystack.co/transaction/verify/{reference}",
-            headers=_paystack_headers(),
-            timeout=15,
-        )
-        data = r.json()
-        if not data.get("status"):
-            out = {"ok": False, "error": data.get("message", "Paystack verify failed"), "raw": data}
-            _cache_set(cache_key, out, ttl=60)
-            return out
-
-        d = data.get("data") or {}
-        paid = (d.get("status") == "success")
-
-        out = {
-            "ok": True,
-            "paid": bool(paid),
-            "reference": reference,
-            "amount": d.get("amount"),
-            "currency": d.get("currency"),
-            "customer": (d.get("customer") or {}).get("email"),
-            "gateway_response": d.get("gateway_response"),
-            "transaction_status": d.get("status"),
-            "paid_at": d.get("paid_at"),
-        }
-
-        # Cache paid results longer, non-paid shorter
-        _cache_set(cache_key, out, ttl=_VERIFIED_REF_TTL if paid else 120)
-        return out
-    except Exception as e:
-        out = {"ok": False, "error": str(e)}
-        _cache_set(cache_key, out, ttl=60)
-        return out
-
-
-# ==========================
 # Twelve Data
 # ==========================
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
@@ -276,11 +154,124 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
+# Paystack config + state (in-memory)
+# ==========================
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
+
+PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
+
+# ₦10,000/month => 10000 NGN major => 1,000,000 kobo minor
+def _paystack_amount_minor():
+    try:
+        major = int((os.getenv("PAYSTACK_AMOUNT_NGN", "10000") or "10000").strip())
+    except Exception:
+        major = 10000
+    return max(0, major) * 100
+
+
+def _require_payment():
+    v = (os.getenv("PAYSTACK_REQUIRE_PAYMENT", "1") or "1").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _access_days():
+    try:
+        return max(1, int((os.getenv("PAYSTACK_ACCESS_DAYS", "30") or "30").strip()))
+    except Exception:
+        return 30
+
+
+PAYSTACK_BASE = "https://api.paystack.co"
+
+# We store:
+#  - pending reference -> client_id (for mapping after verify)
+#  - access client_id -> paid_until_epoch
+_PENDING_REF = {}  # ref -> {"client_id": str, "created": epoch}
+_ACCESS = {}       # client_id -> {"paid_until": epoch, "last_ref": str, "updated": epoch}
+
+
+def _get_client_id_header():
+    # your frontend already sends X-FXCO-Client to /api/analyze; we reuse it for payments
+    cid = (request.headers.get("X-FXCO-Client") or "").strip()
+    if cid:
+        return cid[:128]
+    return ""
+
+
+def _now():
+    return time.time()
+
+
+def _cleanup_payment_state():
+    # prevent memory growth
+    now = _now()
+    # pending refs expire after 24h
+    for ref in list(_PENDING_REF.keys()):
+        if now - _PENDING_REF[ref].get("created", now) > 24 * 60 * 60:
+            _PENDING_REF.pop(ref, None)
+    # access entries expire after paid_until + 7 days grace
+    for cid in list(_ACCESS.keys()):
+        paid_until = _ACCESS[cid].get("paid_until", 0)
+        if paid_until and now > (paid_until + 7 * 24 * 60 * 60):
+            _ACCESS.pop(cid, None)
+
+
+def _paystack_headers():
+    return {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _paystack_ok_enabled():
+    if not _require_payment():
+        return True
+    return bool(PAYSTACK_SECRET_KEY)
+
+
+def _callback_url():
+    # Paystack redirect url after payment
+    # Best: set PAYSTACK_CALLBACK_URL to your deployed frontend
+    cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
+    if cb:
+        return cb
+    # fallback: origin header (works if same origin / proxied)
+    origin = (request.headers.get("Origin") or "").strip()
+    if origin:
+        return origin
+    # fallback: just host_url (backend) - not ideal but better than nothing
+    return request.host_url.rstrip("/")
+
+
+def _email_ok(email: str) -> bool:
+    if not email:
+        return False
+    email = email.strip()
+    if len(email) > 254:
+        return False
+    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+
+def _is_client_unlocked(client_id: str) -> bool:
+    _cleanup_payment_state()
+    if not _require_payment():
+        return True
+    if not client_id:
+        return False
+    row = _ACCESS.get(client_id)
+    if not row:
+        return False
+    return _now() < float(row.get("paid_until", 0))
+
+
+# ==========================
 # Root + health
 # ==========================
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health, /api/analyze, /api/paystack/*"}), 200
+    return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
 
 
 @app.get("/health")
@@ -294,15 +285,18 @@ def health():
 @app.get("/api/paystack/config")
 def paystack_config():
     """
-    Frontend uses this to get public key + price display.
+    Frontend calls this to show pricing + decide whether to lock analysis.
     """
+    enabled = _require_payment()
+    ok = _paystack_ok_enabled()
     return jsonify(
         {
-            "ok": True,
-            "public_key": PAYSTACK_PUBLIC_KEY,
+            "ok": ok,
+            "require_payment": enabled,
             "currency": PAYSTACK_CURRENCY,
-            "amount": PAYSTACK_AMOUNT,  # minor units
-            "require_payment": REQUIRE_PAYMENT,
+            "amount": _paystack_amount_minor(),  # minor units
+            "public_key": PAYSTACK_PUBLIC_KEY or None,
+            "access_days": _access_days(),
         }
     ), 200
 
@@ -310,33 +304,121 @@ def paystack_config():
 @app.post("/api/paystack/init")
 def paystack_init():
     """
-    POST { email: "user@example.com" }
-    Returns authorization_url + reference.
+    Creates a Paystack hosted checkout session.
+    Expects JSON: { "email": "user@email.com" }
+    Returns: { ok, authorization_url, reference }
     """
-    if request.is_json:
-        body = request.get_json(silent=True) or {}
-    else:
-        body = dict(request.form or {})
-    email = (body.get("email") or "").strip()
+    if not _require_payment():
+        return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
 
-    out = _paystack_init(email)
-    status = 200 if out.get("ok") else 500
-    return jsonify(out), status
+    if not PAYSTACK_SECRET_KEY:
+        return jsonify({"ok": False, "error": "Missing PAYSTACK_SECRET_KEY on server."}), 500
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not _email_ok(email):
+        return jsonify({"ok": False, "error": "Invalid email."}), 400
+
+    client_id = _get_client_id_header()
+    if not client_id:
+        # fallback: lock to IP if client id not provided
+        client_id = "ip:" + _client_ip()
+
+    amount = _paystack_amount_minor()
+    currency = PAYSTACK_CURRENCY
+
+    # Paystack callback: we append query params expected by your frontend
+    cb = _callback_url().rstrip("/")
+    callback_url = f"{cb}/?paystack=success"
+
+    payload = {
+        "email": email,
+        "amount": int(amount),
+        "currency": currency,
+        "callback_url": callback_url,
+        "metadata": {
+            "fxco_client_id": client_id,
+            "product": "FXCO-PILOT",
+            "access_days": _access_days(),
+        },
+    }
+
+    try:
+        r = requests.post(f"{PAYSTACK_BASE}/transaction/initialize", headers=_paystack_headers(), data=json.dumps(payload), timeout=15)
+        j = r.json()
+        if not j.get("status"):
+            return jsonify({"ok": False, "error": j.get("message") or "Paystack init failed."}), 502
+
+        auth_url = (j.get("data") or {}).get("authorization_url")
+        reference = (j.get("data") or {}).get("reference")
+
+        if reference:
+            _PENDING_REF[reference] = {"client_id": client_id, "created": _now()}
+
+        return jsonify({"ok": True, "authorization_url": auth_url, "reference": reference}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.get("/api/paystack/verify")
 def paystack_verify():
     """
-    GET ?reference=xxxx
+    Verifies a Paystack reference and unlocks access for the mapped client_id for N days.
+    Query: ?reference=xxxx
+    Returns: { ok, paid, reference, paid_until }
     """
+    if not _require_payment():
+        return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
+
+    if not PAYSTACK_SECRET_KEY:
+        return jsonify({"ok": False, "error": "Missing PAYSTACK_SECRET_KEY on server."}), 500
+
     reference = (request.args.get("reference") or "").strip()
-    out = _paystack_verify(reference)
-    status = 200 if out.get("ok") else 500
-    return jsonify(out), status
+    if not reference:
+        return jsonify({"ok": False, "error": "Missing reference."}), 400
+
+    try:
+        r = requests.get(f"{PAYSTACK_BASE}/transaction/verify/{reference}", headers=_paystack_headers(), timeout=15)
+        j = r.json()
+
+        if not j.get("status"):
+            return jsonify({"ok": False, "error": j.get("message") or "Paystack verify failed."}), 502
+
+        data = j.get("data") or {}
+        status = (data.get("status") or "").lower()
+        currency = (data.get("currency") or "").upper()
+        amount = int(data.get("amount") or 0)
+
+        expected_amount = int(_paystack_amount_minor())
+        expected_currency = PAYSTACK_CURRENCY
+
+        paid = (status == "success") and (currency == expected_currency) and (amount >= expected_amount)
+
+        # Determine client_id:
+        meta = data.get("metadata") or {}
+        client_id = (meta.get("fxco_client_id") or "").strip()
+
+        if not client_id:
+            # fallback to pending map
+            pending = _PENDING_REF.get(reference) or {}
+            client_id = pending.get("client_id", "")
+
+        if paid and client_id:
+            days = _access_days()
+            paid_until = _now() + days * 24 * 60 * 60
+            _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": reference, "updated": _now()}
+            # no longer pending
+            _PENDING_REF.pop(reference, None)
+            return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": int(paid_until)}), 200
+
+        return jsonify({"ok": True, "paid": False, "reference": reference}), 200
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ==========================
-# Helpers
+# Helpers (existing)
 # ==========================
 def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
@@ -629,11 +711,7 @@ def _get_payload_fields():
       - multipart/form-data (FormData)
       - application/x-www-form-urlencoded
       - application/json
-
-    Also tolerates frontend key variants.
-    Returns: (pair_type, timeframe, signal_text)
     """
-    # JSON
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
@@ -641,7 +719,6 @@ def _get_payload_fields():
         signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
         return pair_type, timeframe, signal_text
 
-    # FormData / urlencoded
     form = request.form or {}
     pair_type = _pick_first(form, ["pair_type", "pairType"])
     timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
@@ -649,31 +726,8 @@ def _get_payload_fields():
     return pair_type, timeframe, signal_text
 
 
-def _require_paid_or_402():
-    """
-    If REQUIRE_PAYMENT=1:
-      - expects X-FXCO-Paystack-Ref header, verifies it once and caches
-    """
-    if not REQUIRE_PAYMENT:
-        return None
-
-    ref = (request.headers.get("X-FXCO-Paystack-Ref", "") or "").strip()
-    if not ref:
-        resp = jsonify({"error": "Payment required. Missing X-FXCO-Paystack-Ref header."})
-        resp.status_code = 402
-        return resp
-
-    v = _paystack_verify(ref)
-    if not v.get("ok") or not v.get("paid"):
-        resp = jsonify({"error": "Payment required. Subscription/payment not verified.", "verify": v})
-        resp.status_code = 402
-        return resp
-
-    return None
-
-
 # ==========================
-# Analyze endpoint
+# Analyze endpoint (with Paystack gate)
 # ==========================
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
@@ -693,7 +747,7 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # IMPORTANT: test mode must happen BEFORE OpenAI + BEFORE validation
+    # OPTIONAL: test mode BEFORE anything expensive
     if request.args.get("test") == "1":
         resp = jsonify({"ok": True, "mode": "rate_limit_test", "note": "No OpenAI call made."})
         resp.status_code = 200
@@ -701,12 +755,42 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # Optional: require payment
-    gate = _require_paid_or_402()
-    if gate is not None:
-        for k, v in rl_headers.items():
-            gate.headers[k] = v
-        return gate
+    # Paystack gate: require valid unlock if enabled
+    if _require_payment():
+        client_id = _get_client_id_header() or ("ip:" + ip)
+        if not _is_client_unlocked(client_id):
+            # If frontend provided a paystack ref header, attempt one quick verify (cached)
+            ref = (request.headers.get("X-FXCO-Paystack-Ref") or "").strip()
+            if ref:
+                cache_key = f"ps_verify::{ref}"
+                cached = _cache_get(cache_key)
+                if cached is None:
+                    # try verify with paystack quickly
+                    try:
+                        vr = requests.get(f"{PAYSTACK_BASE}/transaction/verify/{ref}", headers=_paystack_headers(), timeout=12)
+                        vj = vr.json()
+                        _cache_set(cache_key, vj, ttl=30)  # short cache
+                        cached = vj
+                    except Exception:
+                        cached = None
+
+                if cached and cached.get("status"):
+                    data = cached.get("data") or {}
+                    status = (data.get("status") or "").lower()
+                    currency = (data.get("currency") or "").upper()
+                    amount = int(data.get("amount") or 0)
+                    paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= _paystack_amount_minor())
+                    if paid:
+                        # unlock this client for N days
+                        paid_until = _now() + _access_days() * 24 * 60 * 60
+                        _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": ref, "updated": _now()}
+
+            if not _is_client_unlocked(client_id):
+                resp = jsonify({"error": "Payment required. Please unlock access via Paystack."})
+                resp.status_code = 402
+                for k, v in rl_headers.items():
+                    resp.headers[k] = v
+                return resp
 
     # Parse payload
     pair_type, timeframe, signal_text = _get_payload_fields()
@@ -891,7 +975,6 @@ Rules:
     except Exception as e:
         msg = str(e)
         status = 500
-        # keep OpenAI billing/quota separate from rate limiting
         if "insufficient_quota" in msg or "quota" in msg.lower():
             status = 402
         resp = jsonify({"error": msg})
