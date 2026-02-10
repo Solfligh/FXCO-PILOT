@@ -4,9 +4,10 @@ import os
 import re
 import time
 from collections import deque
-import requests
+from urllib.parse import urlencode
 
-from flask import Flask, jsonify, request
+import requests
+from flask import Flask, jsonify, request, redirect
 from openai import OpenAI
 
 app = Flask(__name__)
@@ -33,8 +34,6 @@ def _cache_set(key, value, ttl=60):
 # Rate limiting (in-memory)
 #   - 5 requests / 60s per IP
 #   - 50 requests / 24h per IP
-#   - 5 requests / 60s per ClientID
-#   - 50 requests / 24h per ClientID
 # Applied ONLY to /api/analyze
 # ==========================
 _SHORT_WINDOW_SECONDS = 60
@@ -43,19 +42,15 @@ _SHORT_LIMIT = 5
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 _DAY_LIMIT = 50
 
-# Per-IP queues
-_RATE_SHORT_IP = {}
-_RATE_DAY_IP = {}
-
-# Per-Client queues
-_RATE_SHORT_CLIENT = {}
-_RATE_DAY_CLIENT = {}
+# key: ip -> deque[timestamps]
+_RATE_SHORT = {}
+_RATE_DAY = {}
 
 
 def _client_ip():
     """
     Try to get the real client IP behind proxies.
-    Vercel/Render typically set X-Forwarded-For as: "client, proxy1, proxy2"
+    X-Forwarded-For is usually: "client, proxy1, proxy2"
     """
     xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
@@ -63,47 +58,21 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
-def _client_id():
+def _rate_check(ip: str):
     """
-    Per-session identifier from the frontend.
-    Frontend will send X-FXCO-Client from localStorage.
-
-    Fallbacks:
-      - X-Client-Id (alternate header)
-      - X-Session-Id (alternate header)
-      - "unknown" if missing
-    """
-    cid = (
-        request.headers.get("X-FXCO-Client")
-        or request.headers.get("X-Client-Id")
-        or request.headers.get("X-Session-Id")
-        or ""
-    ).strip()
-
-    # Keep it bounded / safe for dict keys
-    if not cid:
-        return "unknown"
-    if len(cid) > 128:
-        cid = cid[:128]
-    return cid
-
-
-def _rate_check_bucket(key: str, short_map: dict, day_map: dict):
-    """
-    Generic bucket checker for a given key (ip or client id).
-    Returns (ok, retry_after, remaining_short, remaining_day)
+    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
     """
     now = time.time()
 
-    if key not in short_map:
-        short_map[key] = deque()
-    if key not in day_map:
-        day_map[key] = deque()
+    if ip not in _RATE_SHORT:
+        _RATE_SHORT[ip] = deque()
+    if ip not in _RATE_DAY:
+        _RATE_DAY[ip] = deque()
 
-    short_q = short_map[key]
-    day_q = day_map[key]
+    short_q = _RATE_SHORT[ip]
+    day_q = _RATE_DAY[ip]
 
-    # prune
+    # prune old entries
     while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
         short_q.popleft()
     while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
@@ -112,59 +81,34 @@ def _rate_check_bucket(key: str, short_map: dict, day_map: dict):
     short_remaining = max(0, _SHORT_LIMIT - len(short_q))
     day_remaining = max(0, _DAY_LIMIT - len(day_q))
 
+    # blocked
     if short_remaining <= 0 or day_remaining <= 0:
         retry_after = 1
         if short_remaining <= 0 and short_q:
             retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now - short_q[0])) + 1)
         if day_remaining <= 0 and day_q:
             retry_after = max(retry_after, int(_DAY_WINDOW_SECONDS - (now - day_q[0])) + 1)
-        return False, retry_after, short_remaining, day_remaining
 
-    # allow -> record
+        headers = {
+            "Retry-After": str(retry_after),
+            "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+            "X-RateLimit-Remaining-60s": str(short_remaining),
+            "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
+            "X-RateLimit-Remaining-24h": str(day_remaining),
+        }
+        return False, retry_after, headers
+
+    # allow: record
     short_q.append(now)
     day_q.append(now)
 
-    return True, 0, short_remaining - 1, day_remaining - 1
-
-
-def _rate_check(ip: str, cid: str):
-    """
-    Enforce BOTH:
-      - per-IP limits
-      - per-ClientID limits
-
-    Returns: (ok: bool, retry_after_seconds: int, headers: dict, blocked_by: str|None)
-    """
-    ok_ip, ra_ip, ip_short_rem, ip_day_rem = _rate_check_bucket(ip, _RATE_SHORT_IP, _RATE_DAY_IP)
-    ok_c, ra_c, c_short_rem, c_day_rem = _rate_check_bucket(cid, _RATE_SHORT_CLIENT, _RATE_DAY_CLIENT)
-
-    ok = ok_ip and ok_c
-    retry_after = max(ra_ip if not ok_ip else 0, ra_c if not ok_c else 0)
-
-    blocked_by = None
-    if not ok:
-        if not ok_c and not ok_ip:
-            blocked_by = "client_and_ip"
-        elif not ok_c:
-            blocked_by = "client"
-        else:
-            blocked_by = "ip"
-
     headers = {
-        "Retry-After": str(retry_after) if not ok else "0",
         "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+        "X-RateLimit-Remaining-60s": str(short_remaining - 1),
         "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
-
-        # IP remaining
-        "X-RateLimit-Remaining-60s-IP": str(ip_short_rem),
-        "X-RateLimit-Remaining-24h-IP": str(ip_day_rem),
-
-        # Client remaining
-        "X-RateLimit-Remaining-60s-Client": str(c_short_rem),
-        "X-RateLimit-Remaining-24h-Client": str(c_day_rem),
+        "X-RateLimit-Remaining-24h": str(day_remaining - 1),
     }
-
-    return ok, retry_after, headers, blocked_by
+    return True, 0, headers
 
 
 # ==========================
@@ -178,6 +122,153 @@ def _get_openai_client():
 
 
 # ==========================
+# Paystack (Payments)
+# ==========================
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
+
+# One-tier pricing (monthly) — amount is in kobo (NGN) or in minor units for your currency.
+# Example: NGN 5000 => 500000 kobo
+PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
+PAYSTACK_AMOUNT = int(os.getenv("PAYSTACK_AMOUNT", "500000"))  # default NGN 5,000
+PAYSTACK_PLAN_CODE = os.getenv("PAYSTACK_PLAN_CODE", "").strip()  # optional (for subscriptions)
+
+# Where Paystack should redirect after payment (frontend URL)
+# Example: https://your-frontend-domain.com/?paystack=success
+PAYSTACK_CALLBACK_URL = os.getenv("PAYSTACK_CALLBACK_URL", "").strip()
+
+# Optional: lock analyze behind payment verification
+REQUIRE_PAYMENT = os.getenv("REQUIRE_PAYMENT", "0").strip() == "1"
+
+# Cache verified references so you don't verify every request (TTL: 30 days)
+_VERIFIED_REF_TTL = 30 * 24 * 60 * 60
+
+
+def _paystack_ready():
+    return bool(PAYSTACK_SECRET_KEY) and bool(PAYSTACK_PUBLIC_KEY)
+
+
+def _safe_origin():
+    h = request.headers
+    proto = h.get("X-Forwarded-Proto") or "https"
+    host = h.get("X-Forwarded-Host") or h.get("Host") or ""
+    if host:
+        return f"{proto}://{host}"
+    return ""
+
+
+def _paystack_headers():
+    return {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def _paystack_init(email: str):
+    """
+    Initializes a Paystack transaction.
+    If PAYSTACK_PLAN_CODE is set, Paystack will create subscription for that plan (depending on your setup).
+    """
+    if not _paystack_ready():
+        return {"ok": False, "error": "Missing PAYSTACK_SECRET_KEY or PAYSTACK_PUBLIC_KEY on server."}
+
+    email = (email or "").strip()
+    if not email or "@" not in email:
+        return {"ok": False, "error": "A valid email is required for Paystack checkout."}
+
+    callback = PAYSTACK_CALLBACK_URL or (_safe_origin() + "/?paystack=success")
+
+    payload = {
+        "email": email,
+        "amount": int(PAYSTACK_AMOUNT),
+        "currency": PAYSTACK_CURRENCY,
+        "callback_url": callback,
+        "metadata": {
+            "app": "fxco-pilot",
+            "client_ip": _client_ip(),
+            "fxco_client_id": (request.headers.get("X-FXCO-Client", "") or "")[:128],
+        },
+    }
+
+    # Optional subscription plan
+    if PAYSTACK_PLAN_CODE:
+        payload["plan"] = PAYSTACK_PLAN_CODE
+
+    try:
+        r = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers=_paystack_headers(),
+            data=json.dumps(payload),
+            timeout=15,
+        )
+        data = r.json()
+        if not data.get("status"):
+            return {"ok": False, "error": data.get("message", "Paystack initialize failed"), "raw": data}
+
+        d = data.get("data") or {}
+        return {
+            "ok": True,
+            "authorization_url": d.get("authorization_url"),
+            "access_code": d.get("access_code"),
+            "reference": d.get("reference"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def _paystack_verify(reference: str):
+    """
+    Verifies a Paystack transaction and caches verified reference.
+    """
+    if not _paystack_ready():
+        return {"ok": False, "error": "Missing PAYSTACK_SECRET_KEY or PAYSTACK_PUBLIC_KEY on server."}
+
+    reference = (reference or "").strip()
+    if not reference:
+        return {"ok": False, "error": "Missing reference."}
+
+    cache_key = f"paystack_verified::{reference}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        r = requests.get(
+            f"https://api.paystack.co/transaction/verify/{reference}",
+            headers=_paystack_headers(),
+            timeout=15,
+        )
+        data = r.json()
+        if not data.get("status"):
+            out = {"ok": False, "error": data.get("message", "Paystack verify failed"), "raw": data}
+            _cache_set(cache_key, out, ttl=60)
+            return out
+
+        d = data.get("data") or {}
+        paid = (d.get("status") == "success")
+
+        out = {
+            "ok": True,
+            "paid": bool(paid),
+            "reference": reference,
+            "amount": d.get("amount"),
+            "currency": d.get("currency"),
+            "customer": (d.get("customer") or {}).get("email"),
+            "gateway_response": d.get("gateway_response"),
+            "transaction_status": d.get("status"),
+            "paid_at": d.get("paid_at"),
+        }
+
+        # Cache paid results longer, non-paid shorter
+        _cache_set(cache_key, out, ttl=_VERIFIED_REF_TTL if paid else 120)
+        return out
+    except Exception as e:
+        out = {"ok": False, "error": str(e)}
+        _cache_set(cache_key, out, ttl=60)
+        return out
+
+
+# ==========================
 # Twelve Data
 # ==========================
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
@@ -185,16 +276,63 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
-# Health + root
+# Root + health
 # ==========================
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
-    return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
+    return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health, /api/analyze, /api/paystack/*"}), 200
 
 
 @app.get("/health")
 def health():
     return jsonify({"ok": True}), 200
+
+
+# ==========================
+# Paystack endpoints
+# ==========================
+@app.get("/api/paystack/config")
+def paystack_config():
+    """
+    Frontend uses this to get public key + price display.
+    """
+    return jsonify(
+        {
+            "ok": True,
+            "public_key": PAYSTACK_PUBLIC_KEY,
+            "currency": PAYSTACK_CURRENCY,
+            "amount": PAYSTACK_AMOUNT,  # minor units
+            "require_payment": REQUIRE_PAYMENT,
+        }
+    ), 200
+
+
+@app.post("/api/paystack/init")
+def paystack_init():
+    """
+    POST { email: "user@example.com" }
+    Returns authorization_url + reference.
+    """
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+    else:
+        body = dict(request.form or {})
+    email = (body.get("email") or "").strip()
+
+    out = _paystack_init(email)
+    status = 200 if out.get("ok") else 500
+    return jsonify(out), status
+
+
+@app.get("/api/paystack/verify")
+def paystack_verify():
+    """
+    GET ?reference=xxxx
+    """
+    reference = (request.args.get("reference") or "").strip()
+    out = _paystack_verify(reference)
+    status = 200 if out.get("ok") else 500
+    return jsonify(out), status
 
 
 # ==========================
@@ -477,45 +615,76 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:8]
 
 
+def _pick_first(data: dict, keys: list[str]) -> str:
+    for k in keys:
+        v = data.get(k)
+        if v is not None and str(v).strip() != "":
+            return str(v).strip()
+    return ""
+
+
 def _get_payload_fields():
     """
     Accepts:
       - multipart/form-data (FormData)
       - application/x-www-form-urlencoded
       - application/json
+
+    Also tolerates frontend key variants.
     Returns: (pair_type, timeframe, signal_text)
     """
+    # JSON
     if request.is_json:
         data = request.get_json(silent=True) or {}
-        pair_type = (data.get("pair_type") or "").strip()
-        timeframe = (data.get("timeframe") or "").strip()
-        signal_text = (data.get("signal_input") or "").strip()
+        pair_type = _pick_first(data, ["pair_type", "pairType"])
+        timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])
+        signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
         return pair_type, timeframe, signal_text
 
     # FormData / urlencoded
-    pair_type = (request.form.get("pair_type") or "").strip()
-    timeframe = (request.form.get("timeframe") or "").strip()
-    signal_text = (request.form.get("signal_input") or "").strip()
+    form = request.form or {}
+    pair_type = _pick_first(form, ["pair_type", "pairType"])
+    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
+    signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
     return pair_type, timeframe, signal_text
 
 
+def _require_paid_or_402():
+    """
+    If REQUIRE_PAYMENT=1:
+      - expects X-FXCO-Paystack-Ref header, verifies it once and caches
+    """
+    if not REQUIRE_PAYMENT:
+        return None
+
+    ref = (request.headers.get("X-FXCO-Paystack-Ref", "") or "").strip()
+    if not ref:
+        resp = jsonify({"error": "Payment required. Missing X-FXCO-Paystack-Ref header."})
+        resp.status_code = 402
+        return resp
+
+    v = _paystack_verify(ref)
+    if not v.get("ok") or not v.get("paid"):
+        resp = jsonify({"error": "Payment required. Subscription/payment not verified.", "verify": v})
+        resp.status_code = 402
+        return resp
+
+    return None
+
+
+# ==========================
+# Analyze endpoint
+# ==========================
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    # Rate limit ONLY this endpoint (by IP + ClientID)
+    # Rate limit ONLY this endpoint
     ip = _client_ip()
-    cid = _client_id()
-
-    ok, retry_after, rl_headers, blocked_by = _rate_check(ip, cid)
+    ok, retry_after, rl_headers = _rate_check(ip)
     if not ok:
         resp = jsonify(
             {
                 "error": "Too many requests. Please slow down.",
-                "blocked_by": blocked_by,
-                "limits": {
-                    "per_60s": _SHORT_LIMIT,
-                    "per_24h": _DAY_LIMIT,
-                    "applies_to": ["ip", "client_id"],
-                },
+                "limits": {"per_60s": _SHORT_LIMIT, "per_24h": _DAY_LIMIT},
                 "retry_after_seconds": retry_after,
             }
         )
@@ -523,6 +692,21 @@ def analyze():
         for k, v in rl_headers.items():
             resp.headers[k] = v
         return resp
+
+    # IMPORTANT: test mode must happen BEFORE OpenAI + BEFORE validation
+    if request.args.get("test") == "1":
+        resp = jsonify({"ok": True, "mode": "rate_limit_test", "note": "No OpenAI call made."})
+        resp.status_code = 200
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        return resp
+
+    # Optional: require payment
+    gate = _require_paid_or_402()
+    if gate is not None:
+        for k, v in rl_headers.items():
+            gate.headers[k] = v
+        return gate
 
     # Parse payload
     pair_type, timeframe, signal_text = _get_payload_fields()
@@ -540,8 +724,12 @@ def analyze():
             {
                 "error": "Missing required fields.",
                 "missing": missing,
-                "expected": ["pair_type", "timeframe", "signal_input"],
-                "hint": "Frontend must send EXACT field names: pair_type, timeframe, signal_input.",
+                "expected_any_of": {
+                    "pair_type": ["pair_type", "pairType"],
+                    "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    "signal_input": ["signal_input", "signal", "signalText"],
+                },
+                "received_content_type": request.headers.get("Content-Type", ""),
             }
         )
         resp.status_code = 400
@@ -558,7 +746,7 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # Optional image (FormData)
+    # Optional image (FormData only)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -701,11 +889,11 @@ Rules:
             resp.headers[k] = v
         return resp
     except Exception as e:
-        # If OpenAI quota hits, surface it clearly (do NOT confuse with rate limiting)
         msg = str(e)
         status = 500
+        # keep OpenAI billing/quota separate from rate limiting
         if "insufficient_quota" in msg or "quota" in msg.lower():
-            status = 402  # Payment Required
+            status = 402
         resp = jsonify({"error": msg})
         resp.status_code = status
         for k, v in rl_headers.items():
