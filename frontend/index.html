@@ -160,6 +160,15 @@
             background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
         }
 
+        /* NEW: rate limit hint line under button */
+        .rate-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ffd86b;
+            opacity: 0.95;
+            display: none;
+        }
+
         .output-box {
             background: rgba(0,0,0,0.45);
             border-radius: 12px;
@@ -285,22 +294,6 @@
             color: #f8fafc;
         }
         .warn-callout strong { color: #fbbf24; }
-
-        /* NEW: rate-limit pill */
-        .rate-info {
-            margin-top: 10px;
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-            color: #cbd5e1;
-            font-size: 12px;
-            line-height: 1.55;
-            display: none;
-        }
-        .rate-info strong { color: #ffffff; }
-        .rate-info .warn { color: #fbbf24; font-weight: 700; }
-        .rate-info .bad { color: #ff6b6b; font-weight: 800; }
 
         .fx-disclaimer {
             position: fixed;
@@ -435,6 +428,118 @@
             line-height: 1.6;
         }
 
+        /* ==========================
+           PRICING + PAYMENTS (ADDED)
+           ========================== */
+        .fxco-pricing {
+            max-width: 1100px;
+            margin: 80px auto 90px;
+            padding: 0 20px;
+            text-align: center;
+            color: #e5e7eb;
+        }
+
+        .fxco-pricing h2 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 30px;
+            letter-spacing: 0.2px;
+        }
+
+        .fxco-pricing p {
+            margin: 10px auto 0;
+            max-width: 720px;
+            color: #cbd5e1;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+
+        .fxco-pricing-card {
+            max-width: 520px;
+            margin: 30px auto 0;
+            padding: 28px 26px;
+            border-radius: 18px;
+            background: rgba(18,20,28,0.45);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 12px 50px rgba(0,0,0,0.60);
+        }
+
+        .fxco-price {
+            font-size: 52px;
+            font-weight: 800;
+            color: #ffffff;
+            margin: 10px 0 2px;
+            letter-spacing: -0.4px;
+        }
+
+        .fxco-price span {
+            font-size: 14px;
+            font-weight: 600;
+            color: #cbd5e1;
+            opacity: 0.8;
+        }
+
+        .fxco-features {
+            text-align: left;
+            margin: 18px 0 0;
+            padding-left: 18px;
+            color: #cbd5e1;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        .fxco-features li { margin: 6px 0; }
+
+        .fxco-payments {
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .fxco-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.10);
+            color: #e2e8f0;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+        }
+
+        .fxco-pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            background: rgba(0,212,106,0.85);
+            box-shadow: 0 0 10px rgba(0,212,106,0.25);
+        }
+
+        .fxco-pill.pi .dot {
+            background: rgba(168,85,247,0.90);
+            box-shadow: 0 0 10px rgba(168,85,247,0.25);
+        }
+
+        .fxco-note {
+            margin-top: 12px;
+            color: #cbd5e1;
+            opacity: 0.75;
+            font-size: 12px;
+        }
+
+        .fxco-secondary {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #cbd5e1;
+            opacity: 0.85;
+        }
+
         @media(max-width: 900px){
             .container { flex-direction: column; margin: 20px; padding: 25px; }
         }
@@ -492,9 +597,8 @@
         </div>
 
         <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
-
-        <!-- NEW: Rate limit info -->
-        <div id="rateInfo" class="rate-info"></div>
+        <!-- NEW: rate limit feedback -->
+        <div id="rateHint" class="rate-hint"></div>
     </div>
 
     <div class="section">
@@ -505,6 +609,44 @@
         <div id="history" class="output-box" style="min-height:120px;"></div>
     </div>
 </div>
+
+<!-- =========================
+     PRICING + PAYMENTS (ADDED)
+     ========================= -->
+<section class="fxco-pricing" id="pricing" aria-label="Pricing">
+    <h2>FXCO-Pilot</h2>
+    <p>Trade validation and discipline — before you execute.</p>
+
+    <div class="fxco-pricing-card">
+        <div class="fxco-price">$15 <span>/ month</span></div>
+
+        <ul class="fxco-features">
+            <li>Pre-trade AI validation</li>
+            <li>Clear setup verdict (pass / caution / avoid)</li>
+            <li>Risk-to-reward enforcement</li>
+            <li>Rule-based discipline checks</li>
+            <li>Strategy tracking & performance</li>
+            <li>Unlimited trade history</li>
+            <li>Post-trade reflection</li>
+            <li>Daily & weekly discipline summaries</li>
+        </ul>
+
+        <div class="fxco-payments" aria-label="Payment methods">
+            <span class="fxco-pill"><span class="dot"></span> Card</span>
+            <span class="fxco-pill"><span class="dot"></span> Apple Pay</span>
+            <span class="fxco-pill"><span class="dot"></span> Google Pay</span>
+            <span class="fxco-pill"><span class="dot"></span> PayPal</span>
+            <span class="fxco-pill pi"><span class="dot"></span> Pi (Experimental)</span>
+        </div>
+
+        <button class="btn" onclick="window.location.href='/checkout'" style="margin-top:18px;">
+            Upgrade to FXCO-Pilot
+        </button>
+
+        <div class="fxco-note">Cancel anytime. No signals. No predictions.</div>
+        <div class="fxco-secondary">Secure checkout via Stripe. PayPal supported at checkout.</div>
+    </div>
+</section>
 
 <footer class="fx-disclaimer">
   <p style="margin:0;">
@@ -680,59 +822,63 @@ function renderAnalysisFromJSON(a) {
     `;
 }
 
-/* NEW: rate limit display helpers */
-function setRateInfo(html) {
-    const el = document.getElementById("rateInfo");
+/* ==========================
+   NEW: Per-session client id
+   ========================== */
+function getOrCreateClientId() {
+    const key = "fxco_client_id_v1";
+    try {
+        let cid = localStorage.getItem(key);
+        if (!cid) {
+            if (window.crypto && crypto.randomUUID) cid = crypto.randomUUID();
+            else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
+            localStorage.setItem(key, cid);
+        }
+        // keep it short-ish for headers
+        return cid.length > 128 ? cid.slice(0, 128) : cid;
+    } catch {
+        return "unknown";
+    }
+}
+const FXCO_CLIENT_ID = getOrCreateClientId();
+
+/* ==========================
+   NEW: Rate limit UX
+   ========================== */
+let rateTimer = null;
+function setRateHint(msg, show=true) {
+    const el = document.getElementById("rateHint");
     if (!el) return;
-    if (!html) {
+    if (!show || !msg) {
         el.style.display = "none";
-        el.innerHTML = "";
+        el.innerText = "";
         return;
     }
     el.style.display = "block";
-    el.innerHTML = html;
+    el.innerText = msg;
 }
 
-function updateRateInfoFromHeaders(res) {
-    if (!res || !res.headers) return;
+function startRateCooldown(seconds) {
+    const btn = document.getElementById("analyzeBtn");
+    let remaining = Math.max(1, Number(seconds || 1));
 
-    const rem24h = res.headers.get("X-RateLimit-Remaining-24h");
-    const lim24h = res.headers.get("X-RateLimit-Limit-24h");
-    const rem60 = res.headers.get("X-RateLimit-Remaining-60s");
-    const lim60 = res.headers.get("X-RateLimit-Limit-60s");
-    const retryAfter = res.headers.get("Retry-After");
+    const accepted = document.getElementById("acceptLegal")?.checked;
 
-    // Only show if we got at least one signal header
-    const hasAny =
-        rem24h !== null || lim24h !== null ||
-        rem60 !== null || lim60 !== null ||
-        retryAfter !== null;
+    btn.disabled = true;
+    setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
 
-    if (!hasAny) return;
-
-    let line1 = "";
-    if (rem24h !== null && lim24h !== null) {
-        line1 = `You have <strong>${esc(rem24h)}</strong> requests left today (of ${esc(lim24h)}).`;
-    } else if (rem24h !== null) {
-        line1 = `You have <strong>${esc(rem24h)}</strong> requests left today.`;
-    }
-
-    let line2 = "";
-    if (rem60 !== null && lim60 !== null) {
-        line2 = `This minute: <strong>${esc(rem60)}</strong> remaining (of ${esc(lim60)}).`;
-    } else if (rem60 !== null) {
-        line2 = `This minute: <strong>${esc(rem60)}</strong> remaining.`;
-    }
-
-    let line3 = "";
-    if (retryAfter !== null) {
-        line3 = `<span class="warn">Rate limit hit.</span> Try again in <strong>${esc(retryAfter)}</strong>s.`;
-    }
-
-    const parts = [line1, line2, line3].filter(Boolean);
-    if (!parts.length) return;
-
-    setRateInfo(parts.join("<br/>"));
+    if (rateTimer) clearInterval(rateTimer);
+    rateTimer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+            clearInterval(rateTimer);
+            rateTimer = null;
+            setRateHint("", false);
+            btn.disabled = !accepted;
+            return;
+        }
+        setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
+    }, 1000);
 }
 
 function setAnalyzeEnabled(enabled) {
@@ -754,7 +900,11 @@ function initConsentGate() {
     setAnalyzeEnabled(cb.checked);
 
     cb.addEventListener("change", () => {
-        setAnalyzeEnabled(cb.checked);
+        if (rateTimer) {
+            setAnalyzeEnabled(false);
+        } else {
+            setAnalyzeEnabled(cb.checked);
+        }
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
     });
 }
@@ -837,80 +987,140 @@ function acknowledgeRisk() {
 }
 document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-function analyze() {
+async function analyze() {
     const accepted = document.getElementById("acceptLegal")?.checked;
     if (!accepted) { setAnalyzeEnabled(false); return; }
 
+    if (rateTimer) return;
+
+    setRateHint("", false);
+
+    const pairTypeEl = document.getElementById("pairType");
+    const timeframeEl = document.getElementById("timeframe");
+    const signalEl = document.getElementById("signal");
+
+    const pairType = (pairTypeEl?.value || "").trim();
+    const timeframe = (timeframeEl?.value || "").trim();
+    const signal = (signalEl?.value || "").trim();
+
+    if (!pairType || !timeframe || !signal) {
+        document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
+        return;
+    }
+
     const formData = new FormData();
-    formData.append("pair_type", document.getElementById("pairType").value);
-    formData.append("timeframe", document.getElementById("timeframe").value);
-    formData.append("signal_input", document.getElementById("signal").value);
+    formData.append("pair_type", pairType);
+    formData.append("timeframe", timeframe);
+    formData.append("signal_input", signal);
 
     const file = document.getElementById("chart").files[0];
     if (file) formData.append("chart_image", file);
 
+    const btn = document.getElementById("analyzeBtn");
+    btn.disabled = true;
     document.getElementById("result").innerHTML = "Analyzing…";
 
-    fetch("/api/analyze", { method: "POST", body: formData })
-        .then(async (res) => {
-            // NEW: update rate UI from headers for BOTH success and failure
-            updateRateInfoFromHeaders(res);
-
-            const ct = res.headers.get("content-type") || "";
-            if (!res.ok) {
-                // If 429, make it obvious in UI too
-                if (res.status === 429) {
-                    const retryAfter = res.headers.get("Retry-After");
-                    setRateInfo(
-                        `<span class="warn">Rate limit hit.</span> ` +
-                        (retryAfter ? `Try again in <strong>${esc(retryAfter)}</strong>s.<br/>` : "<br/>") +
-                        (document.getElementById("rateInfo")?.innerHTML || "")
-                    );
-                }
-
-                if (ct.includes("application/json")) {
-                    const j = await res.json();
-                    throw new Error(j.error || "Request failed.");
-                }
-                const t = await res.text();
-                throw new Error(t || "Request failed.");
-            }
-
-            if (!ct.includes("application/json")) {
-                const t = await res.text();
-                throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
-            }
-            return res.json();
-        })
-        .then((data) => {
-            if (data && data.analysis) {
-                const html = renderAnalysisFromJSON(data.analysis);
-                document.getElementById("result").innerHTML = html;
-
-                const historyBox = document.getElementById("history");
-                historyBox.innerHTML =
-                    `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                        ${html}
-                     </div>` + historyBox.innerHTML;
-                return;
-            }
-
-            const text = (data && data.result) ? String(data.result) : "No result returned.";
-            document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
-        })
-        .catch((err) => {
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
-
-            // If it's the OpenAI quota issue, call it out clearly (matches what your backend returns)
-            const msg = String(err.message || "");
-            if (msg.toLowerCase().includes("insufficient_quota") || msg.toLowerCase().includes("quota")) {
-                setRateInfo(
-                    `<span class="bad">AI quota/billing issue.</span> ` +
-                    `The server's OpenAI key has no quota. Please fix billing on Render.`
-                );
+    try {
+        const res = await fetch("/api/analyze", {
+            method: "POST",
+            body: formData,
+            headers: {
+                "X-FXCO-Client": FXCO_CLIENT_ID
             }
         });
+
+        const ct = res.headers.get("content-type") || "";
+
+        if (res.status === 429) {
+            let retryAfter = Number(res.headers.get("Retry-After") || 0);
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Too many requests" };
+            }
+
+            const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
+
+            startRateCooldown(seconds);
+            return;
+        }
+
+        if (res.status === 402) {
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Payment required / quota issue" };
+            }
+
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "You exceeded OpenAI quota. Check billing/plan.");
+            btn.disabled = false;
+            return;
+        }
+
+        if (res.status === 400) {
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Bad request" };
+            }
+
+            const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
+                (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
+            btn.disabled = false;
+            return;
+        }
+
+        if (!res.ok) {
+            if (ct.includes("application/json")) {
+                const j = await res.json().catch(() => null);
+                throw new Error(j?.error || "Request failed.");
+            }
+            const t = await res.text().catch(() => "");
+            throw new Error(t || "Request failed.");
+        }
+
+        if (!ct.includes("application/json")) {
+            const t = await res.text().catch(() => "");
+            throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+        }
+
+        const data = await res.json();
+
+        if (data && data.analysis) {
+            const html = renderAnalysisFromJSON(data.analysis);
+            document.getElementById("result").innerHTML = html;
+
+            const historyBox = document.getElementById("history");
+            historyBox.innerHTML =
+                `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                    ${html}
+                 </div>` + historyBox.innerHTML;
+
+            btn.disabled = false;
+            return;
+        }
+
+        const text = (data && data.result) ? String(data.result) : "No result returned.";
+        document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
+        btn.disabled = false;
+
+    } catch (err) {
+        document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+        btn.disabled = false;
+    }
 }
 
 initConsentGate();
