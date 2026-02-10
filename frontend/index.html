@@ -68,6 +68,31 @@
             top: 0;
             z-index: 900;
             box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+            gap: 12px;
+        }
+
+        .topbar-right {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topbtn {
+            border: 1px solid rgba(255,255,255,0.10);
+            background: rgba(255,255,255,0.06);
+            color: #e5e7eb;
+            font-weight: 700;
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
+        .topbtn.primary {
+            border: 1px solid rgba(0,212,106,0.35);
+            background: rgba(0,212,106,0.14);
+            color: #b8ffdd;
         }
 
         .sessions span {
@@ -428,120 +453,47 @@
             line-height: 1.6;
         }
 
-        /* ==========================
-           PRICING + PAYMENTS (ADDED)
-           ========================== */
-        .fxco-pricing {
-            max-width: 1100px;
-            margin: 80px auto 90px;
-            padding: 0 20px;
-            text-align: center;
-            color: #e5e7eb;
-        }
-
-        .fxco-pricing h2 {
-            margin: 0;
-            color: #ffffff;
-            font-size: 30px;
-            letter-spacing: 0.2px;
-        }
-
-        .fxco-pricing p {
-            margin: 10px auto 0;
-            max-width: 720px;
-            color: #cbd5e1;
-            opacity: 0.9;
-            line-height: 1.6;
-        }
-
-        .fxco-pricing-card {
-            max-width: 520px;
-            margin: 30px auto 0;
-            padding: 28px 26px;
-            border-radius: 18px;
-            background: rgba(18,20,28,0.45);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 12px 50px rgba(0,0,0,0.60);
-        }
-
-        .fxco-price {
-            font-size: 52px;
-            font-weight: 800;
-            color: #ffffff;
-            margin: 10px 0 2px;
-            letter-spacing: -0.4px;
-        }
-
-        .fxco-price span {
-            font-size: 14px;
-            font-weight: 600;
-            color: #cbd5e1;
-            opacity: 0.8;
-        }
-
-        .fxco-features {
-            text-align: left;
-            margin: 18px 0 0;
-            padding-left: 18px;
-            color: #cbd5e1;
-            font-size: 14px;
-            line-height: 1.8;
-        }
-
-        .fxco-features li { margin: 6px 0; }
-
-        .fxco-payments {
-            margin-top: 16px;
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .fxco-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.06);
+        /* ========= NEW: Pricing modal styles ========= */
+        .pricing-card {
             border: 1px solid rgba(255,255,255,0.10);
-            color: #e2e8f0;
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: 0.2px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 16px;
         }
-
-        .fxco-pill .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(0,212,106,0.85);
-            box-shadow: 0 0 10px rgba(0,212,106,0.25);
-        }
-
-        .fxco-pill.pi .dot {
-            background: rgba(168,85,247,0.90);
-            box-shadow: 0 0 10px rgba(168,85,247,0.25);
-        }
-
-        .fxco-note {
-            margin-top: 12px;
-            color: #cbd5e1;
-            opacity: 0.75;
-            font-size: 12px;
-        }
-
-        .fxco-secondary {
+        .price-row {
+            display:flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
             margin-top: 10px;
-            font-size: 13px;
-            color: #cbd5e1;
+        }
+        .price {
+            font-size: 28px;
+            font-weight: 900;
+            color: #ffffff;
+        }
+        .per {
+            font-size: 12px;
             opacity: 0.85;
         }
+        .pill {
+            display:inline-flex;
+            gap:8px;
+            align-items:center;
+            font-size: 12px;
+            border: 1px solid rgba(0,212,106,0.35);
+            background: rgba(0,212,106,0.12);
+            color: #b8ffdd;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-weight: 800;
+        }
+        .muted { opacity: 0.85; }
+        .small { font-size: 12px; line-height: 1.6; }
 
         @media(max-width: 900px){
             .container { flex-direction: column; margin: 20px; padding: 25px; }
+            .sessions span { margin-right: 10px; }
         }
     </style>
 </head>
@@ -552,10 +504,16 @@
 
 <div class="topbar">
     <div id="clock">Loading time...</div>
+
     <div class="sessions">
         <span id="london" class="closed">London</span>
         <span id="newyork" class="closed">New York</span>
         <span id="tokyo" class="closed">Tokyo</span>
+    </div>
+
+    <div class="topbar-right">
+        <button class="topbtn" onclick="openPricing()">Pricing</button>
+        <button id="unlockBtn" class="topbtn primary" onclick="openPricing()">Unlock</button>
     </div>
 </div>
 
@@ -597,8 +555,10 @@
         </div>
 
         <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
-        <!-- NEW: rate limit feedback -->
         <div id="rateHint" class="rate-hint"></div>
+
+        <!-- NEW: payment hint -->
+        <div id="payHint" class="rate-hint" style="display:none;"></div>
     </div>
 
     <div class="section">
@@ -609,44 +569,6 @@
         <div id="history" class="output-box" style="min-height:120px;"></div>
     </div>
 </div>
-
-<!-- =========================
-     PRICING + PAYMENTS (ADDED)
-     ========================= -->
-<section class="fxco-pricing" id="pricing" aria-label="Pricing">
-    <h2>FXCO-Pilot</h2>
-    <p>Trade validation and discipline — before you execute.</p>
-
-    <div class="fxco-pricing-card">
-        <div class="fxco-price">$15 <span>/ month</span></div>
-
-        <ul class="fxco-features">
-            <li>Pre-trade AI validation</li>
-            <li>Clear setup verdict (pass / caution / avoid)</li>
-            <li>Risk-to-reward enforcement</li>
-            <li>Rule-based discipline checks</li>
-            <li>Strategy tracking & performance</li>
-            <li>Unlimited trade history</li>
-            <li>Post-trade reflection</li>
-            <li>Daily & weekly discipline summaries</li>
-        </ul>
-
-        <div class="fxco-payments" aria-label="Payment methods">
-            <span class="fxco-pill"><span class="dot"></span> Card</span>
-            <span class="fxco-pill"><span class="dot"></span> Apple Pay</span>
-            <span class="fxco-pill"><span class="dot"></span> Google Pay</span>
-            <span class="fxco-pill"><span class="dot"></span> PayPal</span>
-            <span class="fxco-pill pi"><span class="dot"></span> Pi (Experimental)</span>
-        </div>
-
-        <button class="btn" onclick="window.location.href='/checkout'" style="margin-top:18px;">
-            Upgrade to FXCO-Pilot
-        </button>
-
-        <div class="fxco-note">Cancel anytime. No signals. No predictions.</div>
-        <div class="fxco-secondary">Secure checkout via Stripe. PayPal supported at checkout.</div>
-    </div>
-</section>
 
 <footer class="fx-disclaimer">
   <p style="margin:0;">
@@ -664,6 +586,7 @@
   </div>
 </footer>
 
+<!-- Existing legal modal -->
 <div id="legalBackdrop" class="legal-backdrop"></div>
 <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
   <div class="legal-modal-header">
@@ -673,6 +596,7 @@
   <div id="legalContent" class="legal-modal-content"></div>
 </div>
 
+<!-- Existing risk modal -->
 <div id="riskBackdrop" class="legal-backdrop"></div>
 <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
   <div class="legal-modal-header">
@@ -704,6 +628,46 @@
     <p style="margin-top:14px;opacity:0.9;">
       Click <b>“I Understand”</b> to continue.
     </p>
+  </div>
+</div>
+
+<!-- NEW: Pricing modal -->
+<div id="pricingBackdrop" class="legal-backdrop"></div>
+<div id="pricingModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="pricingTitle">
+  <div class="legal-modal-header">
+    <div id="pricingTitle" class="legal-modal-title">Pricing</div>
+    <button class="legal-close" onclick="closePricing()">Close</button>
+  </div>
+
+  <div class="legal-modal-content">
+    <div class="pricing-card">
+      <div class="pill">One Plan • Full Access</div>
+      <h2 style="margin-top:12px;">Stop second-guessing trades.</h2>
+      <p class="muted small" style="margin-top:8px;">
+        FX Co-Pilot validates your signal with structure, liquidity and probability — fast.
+        Pay once per month, use it every day.
+      </p>
+
+      <div class="price-row">
+        <div>
+          <div class="price" id="pricingAmount">—</div>
+          <div class="per" id="pricingPer">per month</div>
+        </div>
+        <div class="pill" id="pricingStatus">Checking access…</div>
+      </div>
+
+      <ul class="fx-ul" style="margin-top:12px;">
+        <li>Unlimited AI trade validations</li>
+        <li>Structure + liquidity context</li>
+        <li>Confidence scoring + invalidation warnings</li>
+        <li>History of your recent analyses</li>
+      </ul>
+
+      <button class="btn" style="margin-top:14px;" onclick="startPaystackCheckout()">Pay with Paystack</button>
+      <p class="small muted" style="margin-top:10px;">
+        After payment, you’ll be returned here automatically and your access will unlock.
+      </p>
+    </div>
   </div>
 </div>
 
@@ -834,13 +798,41 @@ function getOrCreateClientId() {
             else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
             localStorage.setItem(key, cid);
         }
-        // keep it short-ish for headers
         return cid.length > 128 ? cid.slice(0, 128) : cid;
     } catch {
         return "unknown";
     }
 }
 const FXCO_CLIENT_ID = getOrCreateClientId();
+
+/* ==========================
+   NEW: Payment state
+   ========================== */
+const PAID_KEY = "fxco_paid_v1";                 // "1" or "0"
+const PAID_REF_KEY = "fxco_paid_ref_v1";         // paystack reference
+
+let PAYSTACK_CONFIG = { ok:false };
+
+function setPayHint(msg, show=true) {
+    const el = document.getElementById("payHint");
+    if (!el) return;
+    if (!show || !msg) { el.style.display = "none"; el.innerText = ""; return; }
+    el.style.display = "block";
+    el.innerText = msg;
+}
+
+function isPaid() {
+    try { return localStorage.getItem(PAID_KEY) === "1"; } catch { return false; }
+}
+function getPaidRef() {
+    try { return localStorage.getItem(PAID_REF_KEY) || ""; } catch { return ""; }
+}
+function setPaid(reference) {
+    try {
+        localStorage.setItem(PAID_KEY, "1");
+        if (reference) localStorage.setItem(PAID_REF_KEY, reference);
+    } catch {}
+}
 
 /* ==========================
    NEW: Rate limit UX
@@ -861,7 +853,6 @@ function setRateHint(msg, show=true) {
 function startRateCooldown(seconds) {
     const btn = document.getElementById("analyzeBtn");
     let remaining = Math.max(1, Number(seconds || 1));
-
     const accepted = document.getElementById("acceptLegal")?.checked;
 
     btn.disabled = true;
@@ -875,6 +866,7 @@ function startRateCooldown(seconds) {
             rateTimer = null;
             setRateHint("", false);
             btn.disabled = !accepted;
+            applyPaymentGateUI();
             return;
         }
         setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
@@ -906,9 +898,13 @@ function initConsentGate() {
             setAnalyzeEnabled(cb.checked);
         }
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
+        applyPaymentGateUI();
     });
 }
 
+/* ==========================
+   Legal modal (existing)
+   ========================== */
 function openLegal(which) {
     const backdrop = document.getElementById("legalBackdrop");
     const modal = document.getElementById("legalModal");
@@ -958,14 +954,16 @@ function openLegal(which) {
     backdrop.style.display = "block";
     modal.style.display = "block";
 }
-
 function closeLegal() {
     document.getElementById("legalBackdrop").style.display = "none";
     document.getElementById("legalModal").style.display = "none";
 }
 document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeLegal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeLegal(); closePricing(); } });
 
+/* ==========================
+   Risk modal (existing)
+   ========================== */
 function showRiskModalIfNeeded() {
     try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
@@ -987,11 +985,163 @@ function acknowledgeRisk() {
 }
 document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
+/* ==========================
+   NEW: Pricing modal
+   ========================== */
+function openPricing() {
+    document.getElementById("pricingBackdrop").style.display = "block";
+    document.getElementById("pricingModal").style.display = "block";
+}
+function closePricing() {
+    document.getElementById("pricingBackdrop").style.display = "none";
+    document.getElementById("pricingModal").style.display = "none";
+}
+document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
+
+/* ==========================
+   NEW: Paystack Checkout
+   ========================== */
+function formatMoneyMinor(amountMinor, currency) {
+    const amt = Number(amountMinor || 0);
+    const cur = (currency || "NGN").toUpperCase();
+    // Paystack amounts are minor units (kobo for NGN)
+    const major = amt / 100;
+    try {
+        return new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(major);
+    } catch {
+        return `${cur} ${major.toFixed(2)}`;
+    }
+}
+
+async function loadPaystackConfig() {
+    try {
+        const res = await fetch("/api/paystack/config");
+        const j = await res.json();
+        PAYSTACK_CONFIG = j || { ok:false };
+        const amountEl = document.getElementById("pricingAmount");
+        if (amountEl && j?.ok) amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
+        applyPaymentGateUI();
+    } catch {
+        // ignore
+    }
+}
+
+function applyPaymentGateUI() {
+    const paid = isPaid();
+    const accepted = document.getElementById("acceptLegal")?.checked;
+    const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
+
+    const statusEl = document.getElementById("pricingStatus");
+    const unlockBtn = document.getElementById("unlockBtn");
+
+    if (statusEl) {
+        statusEl.innerText = paid ? "Active Access" : (requirePayment ? "Locked" : "Optional");
+    }
+    if (unlockBtn) {
+        unlockBtn.innerText = paid ? "Unlocked" : "Unlock";
+    }
+
+    // If backend requires payment: block analyze until paid + accepted + not rate limited
+    const btn = document.getElementById("analyzeBtn");
+    if (!btn) return;
+
+    if (rateTimer) return; // cooldown already overrides
+
+    if (requirePayment && !paid) {
+        btn.disabled = true;
+        if (accepted) setPayHint("Unlock required to run AI analysis. Tap Pricing → Pay with Paystack.", true);
+        return;
+    }
+
+    // Normal consent gate behavior
+    setPayHint("", false);
+    btn.disabled = !accepted;
+}
+
+async function startPaystackCheckout() {
+    // Ask email (Paystack requires one)
+    const email = (prompt("Enter your email for Paystack checkout:") || "").trim();
+    if (!email || !email.includes("@")) {
+        alert("Please enter a valid email.");
+        return;
+    }
+
+    try {
+        // Create initialize session on backend then redirect to Paystack hosted checkout
+        const res = await fetch("/api/paystack/init", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        });
+
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.ok || !j?.authorization_url) {
+            alert("Paystack init failed: " + (j?.error || "Unknown error"));
+            return;
+        }
+
+        // Store reference locally; verification happens after redirect back
+        try { localStorage.setItem(PAID_REF_KEY, j.reference || ""); } catch {}
+
+        window.location.href = j.authorization_url;
+    } catch (e) {
+        alert("Checkout failed: " + (e?.message || "Unknown error"));
+    }
+}
+
+function getQueryParam(name) {
+    const u = new URL(window.location.href);
+    return u.searchParams.get(name);
+}
+
+async function verifyPaystackIfReturned() {
+    const paystack = getQueryParam("paystack");
+    const reference = getQueryParam("reference") || getQueryParam("trxref") || getPaidRef();
+
+    if (paystack !== "success" || !reference) return;
+
+    try {
+        // show quick UI
+        const statusEl = document.getElementById("pricingStatus");
+        if (statusEl) statusEl.innerText = "Verifying payment…";
+
+        const res = await fetch("/api/paystack/verify?reference=" + encodeURIComponent(reference));
+        const j = await res.json().catch(() => null);
+
+        if (res.ok && j?.ok && j?.paid) {
+            setPaid(reference);
+            alert("Payment verified. Access unlocked ✅");
+        } else {
+            alert("Payment not verified yet. If you were charged, refresh in a minute.");
+        }
+
+        // Clean URL
+        const u = new URL(window.location.href);
+        u.searchParams.delete("paystack");
+        u.searchParams.delete("reference");
+        u.searchParams.delete("trxref");
+        window.history.replaceState({}, "", u.toString());
+    } catch {
+        // ignore
+    } finally {
+        applyPaymentGateUI();
+    }
+}
+
+/* ==========================
+   Analyze (updated to pass Paystack ref if required)
+   ========================== */
 async function analyze() {
     const accepted = document.getElementById("acceptLegal")?.checked;
     if (!accepted) { setAnalyzeEnabled(false); return; }
 
     if (rateTimer) return;
+
+    // Payment gate UI handles disabling the button already, but double-protect:
+    if (PAYSTACK_CONFIG?.require_payment && !isPaid()) {
+        openPricing();
+        return;
+    }
 
     setRateHint("", false);
 
@@ -1022,12 +1172,16 @@ async function analyze() {
     document.getElementById("result").innerHTML = "Analyzing…";
 
     try {
+        const headers = { "X-FXCO-Client": FXCO_CLIENT_ID };
+
+        // If backend requires payment, pass reference
+        const ref = getPaidRef();
+        if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
+
         const res = await fetch("/api/analyze", {
             method: "POST",
             body: formData,
-            headers: {
-                "X-FXCO-Client": FXCO_CLIENT_ID
-            }
+            headers
         });
 
         const ct = res.headers.get("content-type") || "";
@@ -1050,18 +1204,20 @@ async function analyze() {
             return;
         }
 
+        // Payment gate (backend)
         if (res.status === 402) {
             let j = null;
             if (ct.includes("application/json")) {
                 try { j = await res.json(); } catch {}
             } else {
                 const t = await res.text().catch(() => "");
-                j = { error: t || "Payment required / quota issue" };
+                j = { error: t || "Payment required" };
             }
-
             document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "You exceeded OpenAI quota. Check billing/plan.");
+                "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
+                "<br/><span style='opacity:0.9'>Open Pricing to unlock.</span>";
             btn.disabled = false;
+            openPricing();
             return;
         }
 
@@ -1078,6 +1234,21 @@ async function analyze() {
             document.getElementById("result").innerHTML =
                 "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
                 (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
+            btn.disabled = false;
+            return;
+        }
+
+        if (res.status === 402) {
+            let j = null;
+            if (ct.includes("application/json")) {
+                try { j = await res.json(); } catch {}
+            } else {
+                const t = await res.text().catch(() => "");
+                j = { error: t || "Payment required / quota issue" };
+            }
+
+            document.getElementById("result").innerHTML =
+                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "OpenAI quota exceeded.");
             btn.disabled = false;
             return;
         }
@@ -1109,22 +1280,27 @@ async function analyze() {
                  </div>` + historyBox.innerHTML;
 
             btn.disabled = false;
+            applyPaymentGateUI();
             return;
         }
 
         const text = (data && data.result) ? String(data.result) : "No result returned.";
         document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
         btn.disabled = false;
+        applyPaymentGateUI();
 
     } catch (err) {
         document.getElementById("result").innerHTML =
             "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
         btn.disabled = false;
+        applyPaymentGateUI();
     }
 }
 
 initConsentGate();
 showRiskModalIfNeeded();
+loadPaystackConfig();
+verifyPaystackIfReturned();
 </script>
 </body>
 </html>
