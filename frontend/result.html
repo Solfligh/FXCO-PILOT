@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FXCO-Pilot — Trade Validation Report</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#f7f9ff;
+      --bg2:#ffffff;
+      --ink:#0b1220;
+      --muted:#5c667a;
+      --card:#ffffff;
+      --line:rgba(15, 23, 42, .10);
+      --shadow: 0 18px 60px rgba(15, 23, 42, .08);
+      --shadow2: 0 10px 30px rgba(15, 23, 42, .08);
+      --radius: 18px;
+      --radius2: 14px;
+
+      --good:#0ea5e9;
+      --good2:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+
+      --chip:#f1f5ff;
+      --chip2:#eefbf3;
+      --chip3:#fff7ed;
+      --chip4:#fff1f2;
+
+      --btn:#0b1220;
+      --btnInk:#ffffff;
+      --btn2:#ffffff;
+      --btn2Ink:#0b1220;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 15% 10%, rgba(14,165,233,.10), transparent 60%),
+        radial-gradient(900px 450px at 85% 0%, rgba(34,197,94,.10), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .wrap{
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 28px 18px 60px;
+    }
+
+    /* Top bar */
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      padding: 10px 4px 18px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+    }
+
+    .mark{
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      background:
+        radial-gradient(12px 12px at 30% 30%, rgba(255,255,255,.8), transparent 55%),
+        linear-gradient(135deg, rgba(14,165,233,.95), rgba(34,197,94,.90));
+      box-shadow: 0 10px 30px rgba(14,165,233,.18);
+      border: 1px solid rgba(255,255,255,.6);
+    }
+
+    .brand h1{
+      font-size: 14px;
+      margin:0;
+      letter-spacing: .2px;
+      font-weight: 600;
+      line-height: 1.1;
+    }
+    .brand p{
+      margin:2px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.1;
+    }
+
+    .actions{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: var(--btn2);
+      color: var(--btn2Ink);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 10px 22px rgba(15,23,42,.06);
+      cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      user-select: none;
+    }
+    .btn:hover{ transform: translateY(-1px); box-shadow: 0 14px 28px rgba(15,23,42,.09); }
+    .btn.primary{
+      background: var(--btn);
+      color: var(--btnInk);
+      border-color: rgba(255,255,255,.08);
+      box-shadow: 0 16px 40px rgba(11,18,32,.20);
+    }
+
+    /* Hero */
+    .hero{
+      margin-top: 10px;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.80);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px){
+      .heroGrid{ grid-template-columns: 1fr; }
+    }
+
+    .titleRow{
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .hero h2{
+      margin:0;
+      font-size: 18px;
+      letter-spacing: .2px;
+      font-weight: 600;
+    }
+
+    .sub{
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .badge{
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.7);
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .dot{
+      width: 9px; height: 9px;
+      border-radius: 999px;
+      display:inline-block;
+    }
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    @media (max-width: 700px){
+      .kpis{ grid-template-columns: 1fr; }
+    }
+
+    .kpi{
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.65);
+      padding: 12px;
+      box-shadow: var(--shadow2);
+    }
+    .kpi .label{
+      color: var(--muted);
+      font-size: 11px;
+      margin:0 0 6px;
+      font-weight: 500;
+    }
+    .kpi .value{
+      margin:0;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    /* Layout below */
+    .grid{
+      display:grid;
+      grid-template-columns: .95fr 1.05fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    @media (max-width: 900px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.86);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow2);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .card h3{
+      margin:0 0 10px;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .list{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+
+    .row{
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.65);
+      border-radius: 14px;
+      padding: 12px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .row .left{
+      min-width: 0;
+    }
+    .row .key{
+      font-size: 11px;
+      color: var(--muted);
+      margin:0 0 4px;
+      font-weight: 600;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .row .val{
+      margin:0;
+      font-size: 13px;
+      font-weight: 600;
+      word-wrap: break-word;
+    }
+
+    .chip{
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: var(--chip);
+      white-space: nowrap;
+    }
+    .chip.good{ background: var(--chip2); }
+    .chip.warn{ background: var(--chip3); }
+    .chip.bad{ background: var(--chip4); }
+
+    .analysis{
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.65);
+      border-radius: 14px;
+      padding: 14px;
+      line-height: 1.75;
+      color: #0b1220;
+      font-size: 13px;
+      white-space: pre-wrap;   /* keeps paragraphs if you send plain text */
+      word-break: break-word;
+    }
+
+    .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
+
+    /* Footer note */
+    .foot{
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+      text-align: center;
+      padding: 10px 6px 0;
+    }
+
+    /* Print */
+    @media print{
+      .topbar .actions{ display:none; }
+      body{ background: #fff; }
+      .hero, .card{ box-shadow: none; border: 1px solid #ddd; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <h1>FXCO-Pilot</h1>
+          <p>AI Trade Validator • Report</p>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="btnBack">← Back</button>
+        <button class="btn" id="btnCopy">Copy Summary</button>
+        <button class="btn" id="btnPrint">Print</button>
+        <button class="btn primary" id="btnNew">New Validation</button>
+      </div>
+    </div>
+
+    <!-- Hero / Summary -->
+    <section class="hero">
+      <div class="heroGrid">
+        <div>
+          <div class="titleRow">
+            <div>
+              <h2>Trade Validation Report</h2>
+              <p class="sub" id="metaLine">Generated —</p>
+            </div>
+
+            <div class="badge" id="verdictBadge">
+              <span class="dot" id="verdictDot"></span>
+              <span id="verdictText">—</span>
+            </div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi">
+              <p class="label">Pair</p>
+              <p class="value" id="kpiPair">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Direction</p>
+              <p class="value" id="kpiSide">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Risk</p>
+              <p class="value" id="kpiRisk">—</p>
+            </div>
+          </div>
+
+          <p class="muted" style="margin: 12px 2px 0;">
+            This report is decision support — not a signal. It evaluates context, risk, and assumptions before execution.
+          </p>
+        </div>
+
+        <div>
+          <div class="card" style="padding: 14px;">
+            <h3 style="margin-bottom: 10px;">Snapshot</h3>
+            <div class="list" id="snapshotList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Details -->
+    <div class="grid">
+      <section class="card">
+        <h3>Key Checks</h3>
+        <div class="list" id="checksList"></div>
+        <p class="muted" style="margin: 12px 2px 0;">
+          Tip: If a check looks “Warn” or “High risk”, tighten the plan (SL placement, confluence, timing) before entry.
+        </p>
+      </section>
+
+      <section class="card">
+        <h3>AI Reasoning</h3>
+        <div class="analysis" id="analysisBox">Loading…</div>
+      </section>
+    </div>
+
+    <div class="foot">
+      FXCO-Pilot helps you validate decisions before execution. Always confirm on your chart and follow your plan.
+    </div>
+  </div>
+
+  <script>
+    function fmt(v){
+      if (v === null || v === undefined || v === "") return "—";
+      return String(v);
+    }
+
+    function safeUpper(v){
+      return fmt(v).toUpperCase();
+    }
+
+    function setVerdict(v){
+      const badge = document.getElementById("verdictBadge");
+      const dot = document.getElementById("verdictDot");
+      const text = document.getElementById("verdictText");
+
+      const verdict = (v || "").toLowerCase();
+
+      let label = "NO VERDICT";
+      let dotColor = "rgba(15,23,42,.35)";
+
+      if (verdict.includes("approve") || verdict.includes("valid") || verdict.includes("green") || verdict.includes("ok")){
+        label = "APPROVED";
+        dotColor = "rgba(34,197,94,.95)";
+      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("yellow")){
+        label = "CAUTION";
+        dotColor = "rgba(245,158,11,.95)";
+      } else if (verdict.includes("reject") || verdict.includes("avoid") || verdict.includes("red") || verdict.includes("no")){
+        label = "REJECTED";
+        dotColor = "rgba(239,68,68,.95)";
+      }
+
+      dot.style.background = dotColor;
+      text.textContent = label;
+    }
+
+    function chipClass(level){
+      const v = (level || "").toLowerCase();
+      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "chip good";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution")) return "chip warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk")) return "chip bad";
+      return "chip";
+    }
+
+    function addRow(container, key, val, chip){
+      const el = document.createElement("div");
+      el.className = "row";
+      el.innerHTML = `
+        <div class="left">
+          <p class="key">${key}</p>
+          <p class="val">${val}</p>
+        </div>
+        ${chip ? `<span class="${chipClass(chip)}">${chip}</span>` : ""}
+      `;
+      container.appendChild(el);
+    }
+
+    function nowStamp(){
+      const d = new Date();
+      return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+    }
+
+    function parseReport(raw){
+      // raw can be anything. We normalize.
+      // Expected: { verdict, analysis, pair, side, risk, snapshot?, checks? }
+      const r = raw || {};
+
+      // Some backends return { result: "..."} or { analysis: "..."}.
+      // Some might return a single string. Handle both.
+      if (typeof r === "string") {
+        return { verdict: "", analysis: r };
+      }
+
+      const verdict = r.verdict ?? r.decision ?? r.status ?? "";
+      const analysis = r.analysis ?? r.reasoning ?? r.result ?? r.message ?? "";
+
+      const pair = r.pair ?? r.symbol ?? r.instrument ?? "";
+      const side = r.side ?? r.direction ?? r.bias ?? "";
+      const risk = r.risk ?? r.risk_summary ?? r.riskLevel ?? "";
+
+      const snapshot = r.snapshot ?? {
+        Entry: r.entry ?? r.entry_price ?? "",
+        "Stop Loss": r.sl ?? r.stop_loss ?? "",
+        "Take Profit": r.tp ?? r.take_profit ?? "",
+        "R:R": r.rr ?? r.risk_reward ?? ""
+      };
+
+      const checks = r.checks ?? r.key_checks ?? r.rules ?? [];
+
+      return { verdict, analysis, pair, side, risk, snapshot, checks, raw: r };
+    }
+
+    function render(report){
+      // Meta
+      document.getElementById("metaLine").textContent = `Generated — ${nowStamp()}`;
+
+      // KPIs
+      document.getElementById("kpiPair").textContent = fmt(report.pair);
+      document.getElementById("kpiSide").textContent = safeUpper(report.side);
+      document.getElementById("kpiRisk").textContent = fmt(report.risk);
+
+      // Verdict
+      setVerdict(report.verdict);
+
+      // Snapshot block
+      const snapshotList = document.getElementById("snapshotList");
+      snapshotList.innerHTML = "";
+
+      const snap = report.snapshot || {};
+      const snapEntries = Object.entries(snap).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
+
+      if (snapEntries.length === 0){
+        addRow(snapshotList, "Snapshot", "No snapshot fields returned.", "");
+      } else {
+        for (const [k,v] of snapEntries){
+          addRow(snapshotList, k, fmt(v), "");
+        }
+      }
+
+      // Checks
+      const checksList = document.getElementById("checksList");
+      checksList.innerHTML = "";
+
+      // checks can be array of strings OR array of objects
+      const checks = Array.isArray(report.checks) ? report.checks : [];
+
+      if (checks.length === 0){
+        addRow(checksList, "Checks", "No structured checks returned. Displaying AI reasoning instead.", "");
+      } else {
+        for (const item of checks){
+          if (typeof item === "string"){
+            addRow(checksList, "Check", item, "");
+          } else {
+            const label = fmt(item.label ?? item.name ?? item.key ?? "Check");
+            const detail = fmt(item.detail ?? item.value ?? item.message ?? "");
+            const level = fmt(item.level ?? item.status ?? item.risk ?? "");
+            addRow(checksList, label, detail || "—", level || "");
+          }
+        }
+      }
+
+      // Analysis
+      const analysisBox = document.getElementById("analysisBox");
+      const text = (typeof report.analysis === "string") ? report.analysis.trim() : "";
+      analysisBox.textContent = text || "No analysis text returned.";
+
+      // Copy payload (summary)
+      window.__fxco_copy = {
+        verdict: report.verdict,
+        pair: report.pair,
+        side: report.side,
+        risk: report.risk,
+        analysis: text
+      };
+    }
+
+    // Actions
+    document.getElementById("btnBack").addEventListener("click", () => history.back());
+    document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
+    document.getElementById("btnPrint").addEventListener("click", () => window.print());
+
+    document.getElementById("btnCopy").addEventListener("click", async () => {
+      try{
+        const d = window.__fxco_copy || {};
+        const out =
+`FXCO-Pilot Trade Validation Report
+Verdict: ${fmt(d.verdict)}
+Pair: ${fmt(d.pair)}
+Direction: ${fmt(d.side)}
+Risk: ${fmt(d.risk)}
+
+Notes:
+${fmt(d.analysis)}`.trim();
+
+        await navigator.clipboard.writeText(out);
+        const btn = document.getElementById("btnCopy");
+        const old = btn.textContent;
+        btn.textContent = "Copied ✓";
+        setTimeout(() => btn.textContent = old, 1100);
+      } catch(e){
+        alert("Copy failed. Your browser may block clipboard access.");
+      }
+    });
+
+    // Load report from sessionStorage
+    (function init(){
+      const raw = sessionStorage.getItem("fxcoReport");
+      if (!raw){
+        // Make it still look pro if user landed here directly
+        render(parseReport({
+          verdict: "No report",
+          analysis: "No validation data was found. Go back and analyze a trade to generate a new report.",
+          pair: "—",
+          side: "—",
+          risk: "—"
+        }));
+        return;
+      }
+
+      try{
+        const parsed = JSON.parse(raw);
+        render(parseReport(parsed));
+      } catch(e){
+        // If it wasn't JSON, render as text
+        render(parseReport(raw));
+      }
+    })();
+  </script>
+</body>
+</html>
