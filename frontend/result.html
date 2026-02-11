@@ -8,7 +8,7 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
@@ -16,22 +16,15 @@
       --bg2:#ffffff;
       --ink:#0b1220;
       --muted:#5c667a;
-      --card:#ffffff;
       --line:rgba(15, 23, 42, .10);
       --shadow: 0 18px 60px rgba(15, 23, 42, .08);
       --shadow2: 0 10px 30px rgba(15, 23, 42, .08);
       --radius: 18px;
       --radius2: 14px;
 
-      --good:#0ea5e9;
-      --good2:#22c55e;
+      --good:#22c55e;
       --warn:#f59e0b;
       --bad:#ef4444;
-
-      --chip:#f1f5ff;
-      --chip2:#eefbf3;
-      --chip3:#fff7ed;
-      --chip4:#fff1f2;
 
       --btn:#0b1220;
       --btnInk:#ffffff;
@@ -41,6 +34,7 @@
 
     * { box-sizing: border-box; }
     html, body { height: 100%; }
+
     body{
       margin:0;
       font-family: Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -54,17 +48,18 @@
     a { color: inherit; text-decoration: none; }
 
     .wrap{
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 28px 18px 60px;
+      padding: 26px 18px 64px;
     }
 
+    /* Top bar */
     .topbar{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap: 12px;
-      padding: 10px 4px 18px;
+      padding: 8px 4px 18px;
     }
 
     .brand{
@@ -87,7 +82,7 @@
       font-size: 14px;
       margin:0;
       letter-spacing: .2px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.1;
     }
     .brand p{
@@ -112,7 +107,7 @@
       padding: 10px 12px;
       border-radius: 12px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       box-shadow: 0 10px 22px rgba(15,23,42,.06);
       cursor: pointer;
       transition: transform .12s ease, box-shadow .12s ease;
@@ -129,10 +124,11 @@
       box-shadow: 0 16px 40px rgba(11,18,32,.20);
     }
 
+    /* Hero */
     .hero{
-      margin-top: 10px;
+      margin-top: 6px;
       border-radius: var(--radius);
-      background: rgba(255,255,255,.80);
+      background: rgba(255,255,255,.82);
       border: 1px solid rgba(255,255,255,.55);
       box-shadow: var(--shadow);
       padding: 18px;
@@ -141,11 +137,10 @@
 
     .heroGrid{
       display:grid;
-      grid-template-columns: 1.2fr .8fr;
+      grid-template-columns: 1.25fr .75fr;
       gap: 14px;
       align-items: start;
     }
-
     @media (max-width: 900px){
       .heroGrid{ grid-template-columns: 1fr; }
     }
@@ -162,7 +157,7 @@
       margin:0;
       font-size: 18px;
       letter-spacing: .2px;
-      font-weight: 600;
+      font-weight: 800;
     }
 
     .sub{
@@ -172,25 +167,86 @@
       line-height: 1.6;
     }
 
-    .badge{
+    /* DECISION BANNER */
+    .decisionBanner{
+      margin-top: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(15,23,42,.10);
+      padding: 14px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .decisionLeft{
+      display:flex;
+      gap: 12px;
+      align-items:flex-start;
+      min-width: 0;
+    }
+
+    .decisionIcon{
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 18px;
+      font-weight: 900;
+      color: #fff;
+      flex: 0 0 auto;
+      box-shadow: 0 14px 28px rgba(15,23,42,.12);
+    }
+
+    .decisionTitle{
+      margin:0;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: .2px;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .decisionMeaning{
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: rgba(15,23,42,.78);
+      line-height: 1.55;
+    }
+
+    .decisionTag{
       border-radius: 999px;
       padding: 8px 10px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 900;
       letter-spacing: .2px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.7);
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.75);
+      white-space: nowrap;
       display:inline-flex;
       align-items:center;
       gap: 8px;
-      white-space: nowrap;
     }
+
     .dot{
       width: 9px; height: 9px;
       border-radius: 999px;
       display:inline-block;
     }
 
+    .banner-good{ background: linear-gradient(180deg, rgba(34,197,94,.12), rgba(34,197,94,.06)); }
+    .banner-warn{ background: linear-gradient(180deg, rgba(245,158,11,.14), rgba(245,158,11,.06)); }
+    .banner-bad { background: linear-gradient(180deg, rgba(239,68,68,.14), rgba(239,68,68,.06)); }
+    .banner-neutral{ background: linear-gradient(180deg, rgba(14,165,233,.10), rgba(14,165,233,.05)); }
+
+    .icon-good{ background: linear-gradient(135deg, rgba(34,197,94,1), rgba(16,185,129,1)); }
+    .icon-warn{ background: linear-gradient(135deg, rgba(245,158,11,1), rgba(251,191,36,1)); }
+    .icon-bad { background: linear-gradient(135deg, rgba(239,68,68,1), rgba(244,63,94,1)); }
+    .icon-neutral{ background: linear-gradient(135deg, rgba(14,165,233,1), rgba(59,130,246,1)); }
+
+    /* KPI cards */
     .kpis{
       display:grid;
       grid-template-columns: repeat(3, 1fr);
@@ -212,15 +268,18 @@
       color: var(--muted);
       font-size: 11px;
       margin:0 0 6px;
-      font-weight: 500;
+      font-weight: 600;
+      letter-spacing: .2px;
+      text-transform: uppercase;
     }
     .kpi .value{
       margin:0;
       font-size: 14px;
-      font-weight: 700;
+      font-weight: 900;
       letter-spacing: .2px;
     }
 
+    /* Layout below */
     .grid{
       display:grid;
       grid-template-columns: .95fr 1.05fr;
@@ -243,7 +302,7 @@
     .card h3{
       margin:0 0 10px;
       font-size: 14px;
-      font-weight: 700;
+      font-weight: 900;
       letter-spacing: .2px;
     }
 
@@ -264,21 +323,19 @@
       gap: 10px;
     }
 
-    .row .left{
-      min-width: 0;
-    }
+    .row .left{ min-width: 0; }
     .row .key{
       font-size: 11px;
       color: var(--muted);
       margin:0 0 4px;
-      font-weight: 600;
+      font-weight: 800;
       letter-spacing: .2px;
       text-transform: uppercase;
     }
     .row .val{
       margin:0;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       word-wrap: break-word;
     }
 
@@ -286,14 +343,14 @@
       border-radius: 999px;
       padding: 7px 10px;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 900;
       border: 1px solid var(--line);
-      background: var(--chip);
+      background: rgba(15,23,42,.04);
       white-space: nowrap;
     }
-    .chip.good{ background: var(--chip2); }
-    .chip.warn{ background: var(--chip3); }
-    .chip.bad{ background: var(--chip4); }
+    .chip.good{ background: rgba(34,197,94,.10); border-color: rgba(34,197,94,.20); }
+    .chip.warn{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.22); }
+    .chip.bad{ background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.22); }
 
     .analysis{
       border: 1px solid var(--line);
@@ -318,6 +375,7 @@
       padding: 10px 6px 0;
     }
 
+    /* Print */
     @media print{
       .topbar .actions{ display:none; }
       body{ background: #fff; }
@@ -354,9 +412,22 @@
               <p class="sub" id="metaLine">Generated —</p>
             </div>
 
-            <div class="badge" id="verdictBadge">
+            <div class="decisionTag" id="verdictBadge">
               <span class="dot" id="verdictDot"></span>
               <span id="verdictText">—</span>
+            </div>
+          </div>
+
+          <!-- BIG Decision banner -->
+          <div class="decisionBanner banner-neutral" id="decisionBanner">
+            <div class="decisionLeft">
+              <div class="decisionIcon icon-neutral" id="decisionIcon">↔</div>
+              <div style="min-width:0;">
+                <p class="decisionTitle" id="decisionTitle">NEUTRAL / NEEDS MORE CONFIRMATION</p>
+                <p class="decisionMeaning" id="decisionMeaning">
+                  The signal is not clear enough yet. Wait for better confirmation (structure + timing + liquidity).
+                </p>
+              </div>
             </div>
           </div>
 
@@ -419,55 +490,10 @@
       return fmt(v).toUpperCase();
     }
 
-    function setVerdict(v){
-      const dot = document.getElementById("verdictDot");
-      const text = document.getElementById("verdictText");
-
-      const verdict = (v || "").toLowerCase();
-
-      let label = "NO VERDICT";
-      let dotColor = "rgba(15,23,42,.35)";
-
-      if (verdict.includes("approve") || verdict.includes("valid") || verdict.includes("green") || verdict.includes("take") || verdict.includes("yes") || verdict.includes("ok")){
-        label = "APPROVED";
-        dotColor = "rgba(34,197,94,.95)";
-      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("yellow") || verdict.includes("reduce")){
-        label = "CAUTION";
-        dotColor = "rgba(245,158,11,.95)";
-      } else if (verdict.includes("reject") || verdict.includes("avoid") || verdict.includes("red") || verdict.includes("no") || verdict.includes("don't")){
-        label = "REJECTED";
-        dotColor = "rgba(239,68,68,.95)";
-      }
-
-      dot.style.background = dotColor;
-      text.textContent = label;
-    }
-
-    function chipClass(level){
-      const v = (level || "").toLowerCase();
-      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "chip good";
-      if (v.includes("warn") || v.includes("medium") || v.includes("caution")) return "chip warn";
-      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk")) return "chip bad";
-      return "chip";
-    }
-
     function escHtml(s){
       return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
       }[m]));
-    }
-
-    function addRow(container, key, val, chip){
-      const el = document.createElement("div");
-      el.className = "row";
-      el.innerHTML = `
-        <div class="left">
-          <p class="key">${escHtml(key)}</p>
-          <p class="val">${escHtml(val)}</p>
-        </div>
-        ${chip ? `<span class="${chipClass(chip)}">${escHtml(chip)}</span>` : ""}
-      `;
-      container.appendChild(el);
     }
 
     function stampFrom(ts){
@@ -487,40 +513,126 @@
       return "";
     }
 
+    function chipClass(level){
+      const v = (level || "").toLowerCase();
+      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "chip good";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution")) return "chip warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk")) return "chip bad";
+      return "chip";
+    }
+
+    function addRow(container, key, val, chip){
+      const el = document.createElement("div");
+      el.className = "row";
+      el.innerHTML = `
+        <div class="left">
+          <p class="key">${escHtml(key)}</p>
+          <p class="val">${escHtml(val)}</p>
+        </div>
+        ${chip ? `<span class="${chipClass(chip)}">${escHtml(chip)}</span>` : ""}
+      `;
+      container.appendChild(el);
+    }
+
+    function setVerdictBadge(v){
+      const dot = document.getElementById("verdictDot");
+      const text = document.getElementById("verdictText");
+
+      const verdict = (v || "").toLowerCase();
+
+      let label = "NO VERDICT";
+      let dotColor = "rgba(15,23,42,.35)";
+
+      if (verdict.includes("take") || verdict.includes("approve") || verdict.includes("valid") || verdict.includes("yes") || verdict.includes("ok")){
+        label = "APPROVED";
+        dotColor = "rgba(34,197,94,.95)";
+      } else if (verdict.includes("neutral") || verdict.includes("wait") || verdict.includes("unclear")){
+        label = "NEUTRAL";
+        dotColor = "rgba(14,165,233,.95)";
+      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("reduce")){
+        label = "CAUTION";
+        dotColor = "rgba(245,158,11,.95)";
+      } else if (verdict.includes("avoid") || verdict.includes("reject") || verdict.includes("no")){
+        label = "REJECTED";
+        dotColor = "rgba(239,68,68,.95)";
+      }
+
+      dot.style.background = dotColor;
+      text.textContent = label;
+    }
+
+    function setDecisionBanner(decisionRaw){
+      const banner = document.getElementById("decisionBanner");
+      const icon = document.getElementById("decisionIcon");
+      const title = document.getElementById("decisionTitle");
+      const meaning = document.getElementById("decisionMeaning");
+
+      const d = String(decisionRaw || "").toUpperCase();
+
+      // defaults
+      banner.className = "decisionBanner banner-neutral";
+      icon.className = "decisionIcon icon-neutral";
+      icon.textContent = "↔";
+      title.textContent = "NEUTRAL / NEEDS MORE CONFIRMATION";
+      meaning.textContent = "The signal is not clear enough yet. Wait for better confirmation (structure + timing + liquidity).";
+
+      if (d.includes("TAKE") || d.includes("BUY") || d.includes("LONG") || d.includes("APPROVE")){
+        banner.className = "decisionBanner banner-good";
+        icon.className = "decisionIcon icon-good";
+        icon.textContent = "✓";
+        title.textContent = "TAKE TRADE (APPROVED)";
+        meaning.textContent = "Conditions look aligned. If your plan matches this setup, execute with strict risk control (SL and position size).";
+        return;
+      }
+
+      if (d.includes("AVOID") || d.includes("REJECT") || d.includes("NO TRADE")){
+        banner.className = "decisionBanner banner-bad";
+        icon.className = "decisionIcon icon-bad";
+        icon.textContent = "✕";
+        title.textContent = "AVOID TRADE (REJECTED)";
+        meaning.textContent = "Too many invalidation risks. Best decision is to stand down or wait for a cleaner setup.";
+        return;
+      }
+
+      if (d.includes("CAUTION") || d.includes("RISKY") || d.includes("REDUCE")){
+        banner.className = "decisionBanner banner-warn";
+        icon.className = "decisionIcon icon-warn";
+        icon.textContent = "!";
+        title.textContent = "CAUTION (TIGHTEN YOUR PLAN)";
+        meaning.textContent = "Setup has mixed signals. Reduce risk, demand stronger confirmation, or wait for a better entry.";
+        return;
+      }
+
+      if (d.includes("NEUTRAL") || d.includes("WAIT") || d.includes("UNCLEAR")){
+        // keep neutral styling
+        return;
+      }
+    }
+
     function normalizeFromIndexPayload(payload){
-      // Handles your new index.html payload:
-      // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
       const p = payload || {};
       const a = (p.analysis && typeof p.analysis === "object") ? p.analysis : {};
 
-      const verdict =
-        pick(a, ["verdict","decision","final_verdict","recommendation"]) ||
-        pick(p, ["verdict","decision","status"]) ||
-        "";
+      // decision is what we will highlight
+      const decision = pick(a, ["decision","verdict","final_verdict","recommendation"]) ||
+                       pick(p, ["decision","verdict","status"]) || "";
 
-      const direction =
-        pick(a, ["direction","bias","side"]) ||
-        "";
+      // direction
+      const direction = pick(a, ["direction","bias","side"]) || "";
 
-      const risk =
-        pick(a, ["risk","risk_level","riskLevel","risk_summary"]) ||
-        "";
+      // risk
+      const risk = pick(a, ["risk","risk_level","riskLevel","risk_summary"]) || "";
 
-      // Pair display: prefer symbol in analysis if present, else pair_type
-      const pair =
-        pick(a, ["pair","symbol","instrument"]) ||
-        pick(p, ["pair","pair_type"]) ||
-        "";
+      const pair = pick(a, ["pair","symbol","instrument"]) || pick(p, ["pair","pair_type"]) || "";
 
-      // Snapshot: try common shapes
+      // Snapshot
       const entry = pick(a, ["entry","entry_price"]);
       const sl = pick(a, ["stop_loss","sl"]);
       const tp = pick(a, ["take_profit","tp","target","targets"]);
       const rr = pick(a, ["rr","risk_reward","riskReward","approx_rr"]);
 
       const snapshot = {};
-
-      if (pair) snapshot["Pair Type"] = pick(p, ["pair_type"]) || pair;
+      if (pick(p, ["pair_type"])) snapshot["Pair Type"] = p.pair_type;
       if (pick(p, ["timeframe"])) snapshot["Timeframe"] = p.timeframe;
       if (direction) snapshot["Direction"] = direction;
       if (entry) snapshot["Entry"] = entry;
@@ -528,7 +640,6 @@
       if (tp) snapshot["Take Profit / Targets"] = tp;
       if (rr) snapshot["Approx R:R"] = rr;
 
-      // Confidence / strength / clarity if present
       const conf = pick(a, ["confidence","ai_confidence","score"]);
       const strength = pick(a, ["strength"]);
       const clarity = pick(a, ["clarity"]);
@@ -536,12 +647,11 @@
       if (strength) snapshot["Strength"] = strength;
       if (clarity) snapshot["Clarity"] = clarity;
 
-      // Build checks list from known fields if present
+      // Checks
       let checks = [];
       const maybeChecks = pick(a, ["checks","key_checks","rules"]);
       if (Array.isArray(maybeChecks)) checks = maybeChecks;
 
-      // If analysis includes "market_context" object, turn it into checks
       const ctx = a.market_context && typeof a.market_context === "object" ? a.market_context : null;
       if (ctx) {
         const ctxPairs = Object.entries(ctx).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
@@ -550,34 +660,27 @@
         }
       }
 
-      // If analysis includes "why" or "reasons" array/string
-      const why = pick(a, ["why","reasons","why_this_trade"]);
-      if (Array.isArray(why)) {
-        for (const s of why) checks.push({ label: "Why", detail: String(s), level: "" });
-      } else if (typeof why === "string" && why.trim()) {
-        // split bullets if present
-        const lines = why.split("\n").map(x => x.trim()).filter(Boolean);
-        if (lines.length > 1) {
-          for (const line of lines) checks.push({ label: "Why", detail: line.replace(/^[-•]\s*/,""), level: "" });
-        } else {
-          checks.push({ label: "Why", detail: why.trim(), level: "" });
-        }
-      }
+      // Reasoning text (your current backend doesn't include long reasoning, so we also build fallback from why/guidance)
+      const whyArr = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 8) : [];
+      const guideArr = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 10) : [];
 
-      // Reasoning text: prefer longform fields
-      const analysisText =
+      let analysisText =
         pick(a, ["reasoning","analysis_text","analysis","summary","verdict_explanation"]) ||
         (typeof p.raw === "object" ? pick(p.raw, ["reasoning","analysis","summary","message"]) : "") ||
         "";
 
-      // If still empty, show the user's original signal (so page isn't blank)
-      const fallbackText =
-        (pick(p, ["signal_input"]) ? "Signal:\n" + p.signal_input : "") ||
-        "";
+      if (!analysisText) {
+        const parts = [];
+        if (whyArr.length) parts.push("Why this decision:\n- " + whyArr.join("\n- "));
+        if (a.verdict) parts.push("\nVerdict:\n" + String(a.verdict));
+        if (guideArr.length) parts.push("\nGuidance:\n- " + guideArr.join("\n- "));
+        analysisText = parts.join("\n");
+      }
 
       return {
-        verdict,
-        analysis: analysisText || fallbackText,
+        decision,
+        verdictBadge: decision,
+        analysis: analysisText || "",
         pair,
         side: direction,
         risk,
@@ -589,46 +692,38 @@
     }
 
     function parseReport(raw){
-      // raw can be JSON string or object
-      const r = raw || {};
+      if (!raw) return normalizeFromIndexPayload({});
+      if (typeof raw === "string") return normalizeFromIndexPayload({ analysis: { decision: "NEUTRAL", summary: raw } });
 
-      if (typeof r === "string") {
-        return { verdict: "", analysis: r, pair: "", side: "", risk: "", snapshot: {}, checks: [], generated_at: Date.now(), raw: r };
+      if (raw && (raw.pair_type !== undefined || raw.signal_input !== undefined || (raw.analysis && typeof raw.analysis === "object"))) {
+        return normalizeFromIndexPayload(raw);
       }
 
-      // If it looks like the new payload (from index.html), normalize it
-      if (r && (r.pair_type !== undefined || r.signal_input !== undefined || (r.analysis && typeof r.analysis === "object"))) {
-        return normalizeFromIndexPayload(r);
-      }
-
-      // Otherwise: old generic format
-      const verdict = r.verdict ?? r.decision ?? r.status ?? "";
-      const analysis = r.analysis ?? r.reasoning ?? r.result ?? r.message ?? "";
-
-      const pair = r.pair ?? r.symbol ?? r.instrument ?? "";
-      const side = r.side ?? r.direction ?? r.bias ?? "";
-      const risk = r.risk ?? r.risk_summary ?? r.riskLevel ?? "";
-
-      const snapshot = r.snapshot ?? {
-        Entry: r.entry ?? r.entry_price ?? "",
-        "Stop Loss": r.sl ?? r.stop_loss ?? "",
-        "Take Profit": r.tp ?? r.take_profit ?? "",
-        "R:R": r.rr ?? r.risk_reward ?? ""
+      // legacy
+      const decision = raw.decision ?? raw.verdict ?? raw.status ?? "";
+      return {
+        decision,
+        verdictBadge: decision,
+        analysis: raw.analysis ?? raw.reasoning ?? raw.result ?? raw.message ?? "",
+        pair: raw.pair ?? raw.symbol ?? raw.instrument ?? "",
+        side: raw.side ?? raw.direction ?? raw.bias ?? "",
+        risk: raw.risk ?? raw.risk_summary ?? raw.riskLevel ?? "",
+        snapshot: raw.snapshot ?? {},
+        checks: raw.checks ?? raw.key_checks ?? raw.rules ?? [],
+        generated_at: raw.generated_at || Date.now(),
+        raw
       };
-
-      const checks = r.checks ?? r.key_checks ?? r.rules ?? [];
-
-      return { verdict, analysis, pair, side, risk, snapshot, checks, generated_at: r.generated_at || Date.now(), raw: r };
     }
 
     function render(report){
       document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at)}`;
 
-      document.getElementById("kpiPair").textContent = fmt(report.pair);
+      document.getElementById("kpiPair").textContent = fmt(report.pair || report.raw?.pair_type || "—");
       document.getElementById("kpiSide").textContent = safeUpper(report.side);
       document.getElementById("kpiRisk").textContent = fmt(report.risk);
 
-      setVerdict(report.verdict);
+      setDecisionBanner(report.decision);
+      setVerdictBadge(report.verdictBadge);
 
       const snapshotList = document.getElementById("snapshotList");
       snapshotList.innerHTML = "";
@@ -649,7 +744,7 @@
 
       const checks = Array.isArray(report.checks) ? report.checks : [];
       if (checks.length === 0){
-        addRow(checksList, "Checks", "No structured checks returned. Displaying AI reasoning instead.", "");
+        addRow(checksList, "Checks", "No structured checks returned. See AI reasoning.", "");
       } else {
         for (const item of checks){
           if (typeof item === "string"){
@@ -668,8 +763,8 @@
       analysisBox.textContent = text || "No analysis text returned.";
 
       window.__fxco_copy = {
-        verdict: report.verdict,
-        pair: report.pair,
+        decision: report.decision,
+        pair: report.pair || report.raw?.pair_type || "",
         side: report.side,
         risk: report.risk,
         analysis: text
@@ -677,13 +772,11 @@
     }
 
     function getStoredReportRaw(){
-      // 1) sessionStorage current run
       try {
         const s = sessionStorage.getItem("fxcoReport");
         if (s) return s;
       } catch {}
 
-      // 2) localStorage fallback (persisted)
       try {
         const l = localStorage.getItem("fxcoReport_last_v1");
         if (l) return l;
@@ -693,7 +786,6 @@
     }
 
     function goBackSmart(){
-      // If user landed directly with no history, go home
       if (window.history.length <= 1) {
         window.location.href = "/";
         return;
@@ -710,7 +802,7 @@
         const d = window.__fxco_copy || {};
         const out =
 `FXCO-Pilot Trade Validation Report
-Verdict: ${fmt(d.verdict)}
+Decision: ${fmt(d.decision)}
 Pair: ${fmt(d.pair)}
 Direction: ${fmt(d.side)}
 Risk: ${fmt(d.risk)}
@@ -733,11 +825,7 @@ ${fmt(d.analysis)}`.trim();
 
       if (!raw){
         render(parseReport({
-          verdict: "No report",
-          analysis: "No validation data was found. Go back and analyze a trade to generate a new report.",
-          pair: "—",
-          side: "—",
-          risk: "—",
+          analysis: { decision: "NEUTRAL", summary: "No validation data was found. Go back and analyze a trade to generate a new report." },
           generated_at: Date.now()
         }));
         return;
@@ -745,11 +833,9 @@ ${fmt(d.analysis)}`.trim();
 
       try{
         const parsed = JSON.parse(raw);
-        // Ensure sessionStorage is hydrated (useful for consistency)
         try { sessionStorage.setItem("fxcoReport", JSON.stringify(parsed)); } catch {}
         render(parseReport(parsed));
       } catch(e){
-        // If it wasn't JSON, render as text
         render(parseReport(raw));
       }
     })();
