@@ -856,7 +856,7 @@
   <div id="previewModal" class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
     <div class="preview-head">
       <div class="preview-title">
-        <b id="previewTitle">Institutional Verdict Preview</b>
+        <b id="previewTitle">Desk Verdict Preview</b>
         <span id="previewMeta">—</span>
       </div>
       <button class="legal-close" onclick="closePreview()">Close</button>
@@ -866,7 +866,7 @@
       <div id="previewBanner" class="decision-banner dec-wait">
         <div class="decision-icon" id="previewIcon">⏸</div>
         <div class="decision-text">
-          <b id="previewTier">WAIT (EDGE NOT CLEAR)</b>
+          <b id="previewTier">WAIT (NO EDGE YET)</b>
           <p id="previewWhy">Loading…</p>
         </div>
       </div>
@@ -883,10 +883,15 @@
           <div class="s" id="previewSC">Strength: — • Clarity: —</div>
         </div>
         <div class="preview-kpi">
-          <div class="k">R:R + Risk</div>
+          <div class="k">R:R + Flags</div>
           <div class="v" id="previewRR">—</div>
           <div class="s" id="previewRiskFlags">—</div>
         </div>
+      </div>
+
+      <div id="previewBlocks" style="display:none;margin-top:12px;border:1px solid rgba(255,90,95,0.22);background:rgba(255,90,95,0.08);padding:12px;border-radius:14px;">
+        <div style="font-weight:900;color:#ff9aa2;margin-bottom:4px;">Hard Blocks</div>
+        <div id="previewBlocksList" style="font-size:12px;line-height:1.6;color:#ffd1d6;"></div>
       </div>
 
       <div class="preview-actions">
@@ -895,7 +900,7 @@
       </div>
 
       <div class="small muted" style="margin-top:10px; color: rgba(203,213,225,0.85);">
-        Desk rule: we don’t auto-approve borderline setups. Always confirm with your chart.
+        Desk rule: we don’t auto-approve borderline setups. “Edge” must be clean.
       </div>
     </div>
   </div>
@@ -1465,7 +1470,7 @@
       }
     }
 
-    /* ✅ Institutional scoring helpers (preview) */
+    /* ✅ Institutional scoring helpers (1% desk model) */
     function parseRR(rr){
       if (rr === null || rr === undefined) return null;
       if (typeof rr === "number" && isFinite(rr)) return rr;
@@ -1479,61 +1484,91 @@
     function computeInstitutionalVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(a.confidence, 0, 100);
-      const str = clamp(a.strength, 0, 10);
-      const clr = clamp(a.clarity, 0, 10);
-      const rr = parseRR(a?.signal_check?.rr);
-      const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
-      let score =
-        (conf * 0.50) +
-        ((str / 10) * 100 * 0.20) +
-        ((clr / 10) * 100 * 0.20) +
-        (rrScore * 0.10);
+      // Backend strength/clarity might be 0..10 or 0..100. Normalize to 0..100.
+      const strRaw = Number(a.strength ?? 0);
+      const clrRaw = Number(a.clarity ?? 0);
+      const str = clamp(strRaw <= 10 ? (strRaw * 10) : strRaw, 0, 100);
+      const clr = clamp(clrRaw <= 10 ? (clrRaw * 10) : clrRaw, 0, 100);
+
+      const rr = parseRR(a?.signal_check?.rr);
+      const hasEntry = a?.signal_check?.entry != null;
+      const hasSL = a?.signal_check?.stop_loss != null;
+      const hasTP = Array.isArray(a?.signal_check?.targets) && a.signal_check.targets.length > 0;
 
       const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const invCount = inv.length;
-      if (invCount >= 1) score -= 14;
-      if (invCount >= 2) score -= 10;
 
-      const hardNoApprove =
-        (conf < 55) ||
-        (rr !== null && rr < 1.5) ||
-        (invCount >= 1);
+      // --- Desk hard blocks (1% feel) ---
+      const hardBlocks = [];
+      if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
+      if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
+      if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
+      if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
+
+      const hardNo = hardBlocks.length > 0;
+
+      // --- Edge score (desk weighting) ---
+      const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+
+      let score =
+        (conf * 0.52) +
+        (str * 0.16) +
+        (clr * 0.22) +
+        (rrScore * 0.10);
+
+      // Penalties (risk flags / missing ticket)
+      if (invCount >= 1) score -= 10;
+      if (invCount >= 2) score -= 10;
+      if (!hasEntry || !hasSL || !hasTP) score -= 12;
 
       score = clamp(score, 0, 100);
 
+      // --- Tiering with desk language ---
       let tier = "WAIT";
-      if (score >= 78 && !hardNoApprove) tier = "APPROVED";
-      else if (score >= 62) tier = "CONDITIONAL";
+      if (score >= 78 && !hardNo) tier = "EXECUTE";
+      else if (score >= 62) tier = "EXECUTE-IF";
       else if (score >= 48) tier = "WAIT";
-      else tier = "REJECTED";
+      else tier = "DO-NOT-TRADE";
 
       const reasons = [];
-      reasons.push(`Confidence ${Math.round(conf)}%`);
+      reasons.push(`Edge ${Math.round(score)}/100`);
+      reasons.push(`Conf ${Math.round(conf)}%`);
       if (rr !== null) reasons.push(`RR ${rr.toFixed(2)}`);
-      reasons.push(`Strength ${Math.round(str)}/10`);
-      reasons.push(`Clarity ${Math.round(clr)}/10`);
-      if (invCount) reasons.push(`${invCount} invalidation warning${invCount>1?"s":""}`);
+      reasons.push(`Strength ${Math.round(str)}/100`);
+      reasons.push(`Clarity ${Math.round(clr)}/100`);
+      if (invCount) reasons.push(`${invCount} flag${invCount>1?"s":""}`);
 
-      const why =
-        tier === "APPROVED"
-          ? "Clean enough for desk-grade execution — only if your chart confirms the setup and risk is defined."
-          : tier === "CONDITIONAL"
-          ? "Edge exists but isn’t clean. Require confirmation, reduce size, and tighten risk before entry."
-          : tier === "WAIT"
-          ? "Edge is not clear. Wait for better structure, better price, or stronger alignment."
-          : "Low edge or elevated invalidation risk. Avoid unless your chart clearly disproves the risk flags.";
+      let why = "";
+      let action = "";
 
-      const action =
-        tier === "APPROVED"
-          ? "Proceed with strict risk rules."
-          : tier === "CONDITIONAL"
-          ? "Proceed only with conditions (confirm + smaller risk)."
-          : tier === "WAIT"
-          ? "No trade now. Set alert + reassess."
-          : "Stand down. Find higher-quality setup.";
+      if (tier === "EXECUTE") {
+        why = "Edge is confirmed. Ticket is complete and risk flags are acceptable.";
+        action = "Execute with defined size, hard SL, and no revenge entries.";
+      } else if (tier === "EXECUTE-IF") {
+        why = "Edge exists but needs confirmation. Conditions must be met before entry.";
+        action = "Reduce size + require confirmation (break/close, sweep, or retest).";
+      } else if (tier === "WAIT") {
+        why = "No clear edge yet. Market context is not aligned or information is incomplete.";
+        action = "Wait for alignment. Set alerts at key levels and reassess.";
+      } else {
+        why = "Fails desk rules (expectancy / completeness / risk flags).";
+        action = "Stand down. Only re-enter the decision if setup materially improves.";
+      }
 
-      return { tier, score: Math.round(score), conf: Math.round(conf), str: Math.round(str), clr: Math.round(clr), rr, invCount, why, action, reasons };
+      return {
+        tier,
+        score: Math.round(score),
+        conf: Math.round(conf),
+        str: Math.round(str),
+        clr: Math.round(clr),
+        rr,
+        invCount,
+        why,
+        action,
+        reasons,
+        hardBlocks
+      };
     }
 
     /* ✅ Preview modal controls */
@@ -1686,7 +1721,7 @@
 
         const data = await res.json();
 
-        // Store for result page (same key)
+        // Store for result page
         const reportPayload = {
           pair_type: pairType,
           timeframe: timeframe,
@@ -1701,95 +1736,40 @@
         renderLocalHistory();
         updateViewReportButton();
 
-        // ✅ Institutional preview (computed here, not trusted from backend)
+        // ✅ Desk verdict
         const v = computeInstitutionalVerdict(reportPayload.analysis || {});
 
-        // Update in-page status area + "Open report" button
+        // Ticket values for the status card
+        const ticket = reportPayload.analysis?.signal_check || {};
+        const entry = ticket.entry ?? "—";
+        const sl = ticket.stop_loss ?? "—";
+        const tp1 = (Array.isArray(ticket.targets) && ticket.targets[0] != null) ? ticket.targets[0] : "—";
+
         const tierColor =
-          v.tier === "APPROVED" ? "#00d46a" :
-          v.tier === "CONDITIONAL" ? "#fbbf24" :
+          v.tier === "EXECUTE" ? "#00d46a" :
+          v.tier === "EXECUTE-IF" ? "#fbbf24" :
           v.tier === "WAIT" ? "#94a3b8" :
           "#ff5a5f";
 
+        const blocks = (v.hardBlocks || []).slice(0, 3).map(x => `<div style="margin-top:4px;opacity:0.95">• ${esc(x)}</div>`).join("");
+
+        // Update status area (1% trade ticket)
         document.getElementById("result").innerHTML = `
-          <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:14px;padding:14px;">
-            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-              <div style="font-weight:900;color:${tierColor};letter-spacing:0.2px;">
-                ${esc(v.tier)} • Edge Score ${esc(v.score)}/100
+          <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:16px;padding:16px;">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+              <div style="font-weight:1000;color:${tierColor};letter-spacing:0.3px;font-size:14px;">
+                ${esc(v.tier)} • EDGE ${esc(v.score)}/100
               </div>
-              <div style="opacity:0.85;font-size:12px;">
-                Confidence ${esc(v.conf)}% ${v.rr !== null ? `• RR ${esc(v.rr.toFixed(2))}` : ""}
+              <div style="opacity:0.9;font-size:12px;line-height:1.5;">
+                Conf ${esc(v.conf)}% ${v.rr !== null ? `• RR ${esc(v.rr.toFixed(2))}` : ""} • Flags ${esc(v.invCount)}
               </div>
             </div>
-            <div style="margin-top:8px;color:#e5e7eb;font-size:12px;line-height:1.6;">
-              ${esc(v.why)}<br/>
-              <span style="opacity:0.9;">${esc(v.action)}</span>
-            </div>
-            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-              <button class="topbtn" onclick="openPreview()">View Preview</button>
-              <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
-            </div>
-          </div>
-        `;
 
-        // Fill preview modal content and open it
-        document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
-
-        const banner = document.getElementById("previewBanner");
-        banner.classList.remove("dec-ok","dec-cond","dec-wait","dec-bad");
-
-        if (v.tier === "APPROVED"){
-          banner.classList.add("dec-ok");
-          document.getElementById("previewIcon").textContent = "✓";
-          document.getElementById("previewTier").textContent = "APPROVED (DESK-GRADE)";
-        } else if (v.tier === "CONDITIONAL"){
-          banner.classList.add("dec-cond");
-          document.getElementById("previewIcon").textContent = "!";
-          document.getElementById("previewTier").textContent = "CONDITIONAL (CONFIRM FIRST)";
-        } else if (v.tier === "WAIT"){
-          banner.classList.add("dec-wait");
-          document.getElementById("previewIcon").textContent = "⏸";
-          document.getElementById("previewTier").textContent = "WAIT (EDGE NOT CLEAR)";
-        } else {
-          banner.classList.add("dec-bad");
-          document.getElementById("previewIcon").textContent = "×";
-          document.getElementById("previewTier").textContent = "REJECTED (DO NOT EXECUTE)";
-        }
-
-        document.getElementById("previewWhy").textContent = `${v.why} ${v.action}`;
-        document.getElementById("previewScore").textContent = `${v.score}/100`;
-        document.getElementById("previewBasis").textContent = v.reasons.join(" • ");
-        document.getElementById("previewConf").textContent = `${v.conf}%`;
-        document.getElementById("previewSC").textContent = `Strength: ${v.str}/10 • Clarity: ${v.clr}/10`;
-        document.getElementById("previewRR").textContent = v.rr !== null ? `RR ${v.rr.toFixed(2)}` : "RR —";
-        document.getElementById("previewRiskFlags").textContent = v.invCount ? `${v.invCount} invalidation warning(s)` : "No invalidation warnings";
-
-        openPreview();
-
-      } catch (err) {
-        document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
-        btn.disabled = false;
-        applyPaymentGateUI();
-      } finally {
-        // re-enable only if allowed
-        if (!rateTimer) {
-          applyPaymentGateUI();
-        }
-      }
-    }
-
-    /* Close preview exposed globally */
-    window.closePreview = closePreview;
-    window.openFullReport = openFullReport;
-
-    initConsentGate();
-    showRiskModalIfNeeded();
-    loadPaystackConfig();
-    verifyPaystackIfReturned();
-    updateTrialButton();
-    renderLocalHistory();
-    updateViewReportButton();
-  </script>
-</body>
-</html>
+            <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
+                <div style="font-size:11px;opacity:0.85;">ENTRY</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(entry)}</div>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
+                <div style="font-size:11px;opacity:0.85;">STOP LOSS</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc
