@@ -8,7 +8,7 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
 
   <style>
     :root{
@@ -16,16 +16,31 @@
       --bg2:#ffffff;
       --ink:#0b1220;
       --muted:#5c667a;
+
+      --card:#ffffff;
       --line:rgba(15, 23, 42, .10);
       --shadow: 0 18px 60px rgba(15, 23, 42, .08);
       --shadow2: 0 10px 30px rgba(15, 23, 42, .08);
+
       --radius: 18px;
       --radius2: 14px;
 
-      --good:#22c55e;
-      --warn:#f59e0b;
-      --bad:#ef4444;
-      --info:#3b82f6;
+      /* Verdict colors */
+      --okBg: rgba(34,197,94,.14);
+      --okLine: rgba(34,197,94,.30);
+      --okInk: #166534;
+
+      --condBg: rgba(245,158,11,.14);
+      --condLine: rgba(245,158,11,.32);
+      --condInk: #92400e;
+
+      --waitBg: rgba(100,116,139,.14);
+      --waitLine: rgba(100,116,139,.28);
+      --waitInk: #334155;
+
+      --badBg: rgba(239,68,68,.12);
+      --badLine: rgba(239,68,68,.30);
+      --badInk: #991b1b;
 
       --btn:#0b1220;
       --btnInk:#ffffff;
@@ -51,7 +66,7 @@
     .wrap{
       max-width: 1120px;
       margin: 0 auto;
-      padding: 26px 18px 64px;
+      padding: 28px 18px 60px;
     }
 
     /* Top bar */
@@ -60,7 +75,7 @@
       align-items:center;
       justify-content:space-between;
       gap: 12px;
-      padding: 8px 4px 18px;
+      padding: 10px 4px 18px;
     }
 
     .brand{
@@ -83,7 +98,7 @@
       font-size: 14px;
       margin:0;
       letter-spacing: .2px;
-      font-weight: 700;
+      font-weight: 600;
       line-height: 1.1;
     }
     .brand p{
@@ -108,7 +123,7 @@
       padding: 10px 12px;
       border-radius: 12px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 600;
       box-shadow: 0 10px 22px rgba(15,23,42,.06);
       cursor: pointer;
       transition: transform .12s ease, box-shadow .12s ease;
@@ -127,9 +142,9 @@
 
     /* Hero */
     .hero{
-      margin-top: 6px;
+      margin-top: 10px;
       border-radius: var(--radius);
-      background: rgba(255,255,255,.82);
+      background: rgba(255,255,255,.80);
       border: 1px solid rgba(255,255,255,.55);
       box-shadow: var(--shadow);
       padding: 18px;
@@ -138,7 +153,7 @@
 
     .heroGrid{
       display:grid;
-      grid-template-columns: 1.25fr .75fr;
+      grid-template-columns: 1.2fr .8fr;
       gap: 14px;
       align-items: start;
     }
@@ -158,7 +173,7 @@
       margin:0;
       font-size: 18px;
       letter-spacing: .2px;
-      font-weight: 800;
+      font-weight: 600;
     }
 
     .sub{
@@ -168,84 +183,58 @@
       line-height: 1.6;
     }
 
-    /* DECISION BANNER */
+    /* Institutional decision banner */
     .decisionBanner{
       margin-top: 12px;
       border-radius: 16px;
-      border: 1px solid rgba(15,23,42,.10);
-      padding: 14px;
+      padding: 14px 14px;
+      border: 1px solid var(--line);
       display:flex;
       align-items:flex-start;
-      justify-content: space-between;
       gap: 12px;
+      box-shadow: var(--shadow2);
+      background: rgba(255,255,255,.75);
     }
-
-    .decisionLeft{
-      display:flex;
-      gap: 12px;
-      align-items:flex-start;
-      min-width: 0;
-    }
-
-    .decisionIcon{
-      width: 38px;
-      height: 38px;
-      border-radius: 14px;
+    .bannerIcon{
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size: 18px;
       font-weight: 900;
-      color: #fff;
+      border: 1px solid rgba(255,255,255,.65);
+      box-shadow: 0 10px 22px rgba(15,23,42,.08);
       flex: 0 0 auto;
-      box-shadow: 0 14px 28px rgba(15,23,42,.12);
     }
-
-    .decisionTitle{
+    .bannerTitle{
       margin:0;
-      font-size: 14px;
-      font-weight: 900;
+      font-size: 13px;
+      font-weight: 800;
       letter-spacing: .2px;
-      line-height: 1.2;
-      word-break: break-word;
     }
-
-    .decisionMeaning{
-      margin: 6px 0 0;
+    .bannerSub{
+      margin:4px 0 0;
+      color: rgba(2,6,23,.75);
       font-size: 12px;
-      color: rgba(15,23,42,.78);
       line-height: 1.55;
     }
 
-    .decisionTag{
-      border-radius: 999px;
-      padding: 8px 10px;
-      font-size: 12px;
-      font-weight: 900;
-      letter-spacing: .2px;
-      border: 1px solid rgba(15,23,42,.10);
-      background: rgba(255,255,255,.75);
-      white-space: nowrap;
-      display:inline-flex;
-      align-items:center;
-      gap: 8px;
-    }
+    .b-ok{ background: var(--okBg); border-color: var(--okLine); }
+    .b-ok .bannerIcon{ background: rgba(34,197,94,.22); color: var(--okInk); }
+    .b-ok .bannerTitle{ color: var(--okInk); }
 
-    .dot{
-      width: 9px; height: 9px;
-      border-radius: 999px;
-      display:inline-block;
-    }
+    .b-cond{ background: var(--condBg); border-color: var(--condLine); }
+    .b-cond .bannerIcon{ background: rgba(245,158,11,.22); color: var(--condInk); }
+    .b-cond .bannerTitle{ color: var(--condInk); }
 
-    .banner-good{ background: linear-gradient(180deg, rgba(34,197,94,.12), rgba(34,197,94,.06)); }
-    .banner-warn{ background: linear-gradient(180deg, rgba(245,158,11,.14), rgba(245,158,11,.06)); }
-    .banner-bad { background: linear-gradient(180deg, rgba(239,68,68,.14), rgba(239,68,68,.06)); }
-    .banner-neutral{ background: linear-gradient(180deg, rgba(14,165,233,.10), rgba(14,165,233,.05)); }
+    .b-wait{ background: var(--waitBg); border-color: var(--waitLine); }
+    .b-wait .bannerIcon{ background: rgba(100,116,139,.22); color: var(--waitInk); }
+    .b-wait .bannerTitle{ color: var(--waitInk); }
 
-    .icon-good{ background: linear-gradient(135deg, rgba(34,197,94,1), rgba(16,185,129,1)); }
-    .icon-warn{ background: linear-gradient(135deg, rgba(245,158,11,1), rgba(251,191,36,1)); }
-    .icon-bad { background: linear-gradient(135deg, rgba(239,68,68,1), rgba(244,63,94,1)); }
-    .icon-neutral{ background: linear-gradient(135deg, rgba(14,165,233,1), rgba(59,130,246,1)); }
+    .b-bad{ background: var(--badBg); border-color: var(--badLine); }
+    .b-bad .bannerIcon{ background: rgba(239,68,68,.18); color: var(--badInk); }
+    .b-bad .bannerTitle{ color: var(--badInk); }
 
     /* KPI cards */
     .kpis{
@@ -269,15 +258,19 @@
       color: var(--muted);
       font-size: 11px;
       margin:0 0 6px;
-      font-weight: 600;
-      letter-spacing: .2px;
-      text-transform: uppercase;
+      font-weight: 500;
     }
     .kpi .value{
       margin:0;
       font-size: 14px;
-      font-weight: 900;
+      font-weight: 700;
       letter-spacing: .2px;
+    }
+    .kpi .mini{
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.5;
     }
 
     /* Layout below */
@@ -303,7 +296,7 @@
     .card h3{
       margin:0 0 10px;
       font-size: 14px;
-      font-weight: 900;
+      font-weight: 700;
       letter-spacing: .2px;
     }
 
@@ -329,14 +322,14 @@
       font-size: 11px;
       color: var(--muted);
       margin:0 0 4px;
-      font-weight: 800;
+      font-weight: 600;
       letter-spacing: .2px;
       text-transform: uppercase;
     }
     .row .val{
       margin:0;
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 600;
       word-wrap: break-word;
     }
 
@@ -344,16 +337,16 @@
       border-radius: 999px;
       padding: 7px 10px;
       font-size: 11px;
-      font-weight: 900;
+      font-weight: 800;
       border: 1px solid var(--line);
-      background: rgba(15,23,42,.04);
       white-space: nowrap;
+      background: rgba(241,245,249,.9);
+      color: #0b1220;
     }
-    .chip.good{ background: rgba(34,197,94,.10); border-color: rgba(34,197,94,.20); }
-    .chip.warn{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.22); }
-    .chip.bad{ background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.22); }
+    .chip.good{ background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.22); color: var(--okInk); }
+    .chip.warn{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.26); color: var(--condInk); }
+    .chip.bad{ background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.22); color: var(--badInk); }
 
-    /* AI Reasoning block (not silent anymore) */
     .analysis{
       border: 1px solid var(--line);
       background: rgba(255,255,255,.65);
@@ -365,18 +358,6 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-
-    .callout{
-      margin-bottom: 10px;
-      border-radius: 14px;
-      border: 1px solid rgba(59,130,246,.18);
-      background: rgba(59,130,246,.08);
-      padding: 10px 12px;
-      font-size: 12px;
-      line-height: 1.55;
-      color: rgba(15,23,42,.86);
-    }
-    .callout b{ font-weight: 900; }
 
     .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
 
@@ -399,6 +380,7 @@
 
 <body>
   <div class="wrap">
+    <!-- Topbar -->
     <div class="topbar">
       <div class="brand">
         <div class="mark"></div>
@@ -416,6 +398,7 @@
       </div>
     </div>
 
+    <!-- Hero -->
     <section class="hero">
       <div class="heroGrid">
         <div>
@@ -424,42 +407,37 @@
               <h2>Trade Validation Report</h2>
               <p class="sub" id="metaLine">Generated —</p>
             </div>
-
-            <div class="decisionTag" id="verdictBadge">
-              <span class="dot" id="verdictDot"></span>
-              <span id="verdictText">—</span>
-            </div>
           </div>
 
-          <div class="decisionBanner banner-neutral" id="decisionBanner">
-            <div class="decisionLeft">
-              <div class="decisionIcon icon-neutral" id="decisionIcon">↔</div>
-              <div style="min-width:0;">
-                <p class="decisionTitle" id="decisionTitle">NEUTRAL / NEEDS MORE CONFIRMATION</p>
-                <p class="decisionMeaning" id="decisionMeaning">
-                  The signal is not clear enough yet. Wait for better confirmation (structure + timing + liquidity).
-                </p>
-              </div>
+          <!-- Institutional decision banner -->
+          <div id="decisionBanner" class="decisionBanner b-wait">
+            <div class="bannerIcon" id="bannerIcon">⏸</div>
+            <div>
+              <p class="bannerTitle" id="bannerTitle">WAIT (INSUFFICIENT EDGE)</p>
+              <p class="bannerSub" id="bannerSub">Loading institutional verdict…</p>
             </div>
           </div>
 
           <div class="kpis">
             <div class="kpi">
-              <p class="label">Pair</p>
+              <p class="label">Instrument</p>
               <p class="value" id="kpiPair">—</p>
+              <div class="mini" id="kpiTf">Timeframe: —</div>
             </div>
             <div class="kpi">
               <p class="label">Direction</p>
               <p class="value" id="kpiSide">—</p>
+              <div class="mini" id="kpiBias">Bias: —</div>
             </div>
             <div class="kpi">
-              <p class="label">Risk</p>
-              <p class="value" id="kpiRisk">—</p>
+              <p class="label">Edge Score</p>
+              <p class="value" id="kpiScore">—</p>
+              <div class="mini" id="kpiParts">Confidence: — • RR: —</div>
             </div>
           </div>
 
           <p class="muted" style="margin: 12px 2px 0;">
-            This report is decision support — not a signal. It evaluates context, risk, and assumptions before execution.
+            Desk rule: we do not “approve” trades on borderline confidence. This report is decision support — not a signal.
           </p>
         </div>
 
@@ -472,12 +450,13 @@
       </div>
     </section>
 
+    <!-- Details -->
     <div class="grid">
       <section class="card">
         <h3>Key Checks</h3>
         <div class="list" id="checksList"></div>
         <p class="muted" style="margin: 12px 2px 0;">
-          Tip: If a check looks “Warn” or “High risk”, tighten the plan (SL placement, confluence, timing) before entry.
+          Tip: If any invalidation appears, treat it as a desk-level risk flag unless your chart disproves it.
         </p>
       </section>
 
@@ -498,34 +477,28 @@
       return String(v);
     }
 
-    function safeUpper(v){
-      return fmt(v).toUpperCase();
-    }
-
-    function escHtml(s){
+    function esc(s){
       return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
       }[m]));
     }
 
-    function stampFrom(ts){
-      const n = Number(ts);
-      const d = isFinite(n) ? new Date(n) : new Date();
-      return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+    function safeUpper(v){
+      const x = fmt(v);
+      if (x === "—") return "—";
+      return x.toUpperCase();
     }
 
-    function pick(obj, keys){
-      for (const k of keys){
-        if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
-      }
-      return "";
+    function nowStamp(ts){
+      const d = ts ? new Date(ts) : new Date();
+      return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
     }
 
     function chipClass(level){
       const v = (level || "").toLowerCase();
-      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "chip good";
-      if (v.includes("warn") || v.includes("medium") || v.includes("caution")) return "chip warn";
-      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk")) return "chip bad";
+      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok") || v.includes("aligned")) return "chip good";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("moderate")) return "chip warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk") || v.includes("invalidation")) return "chip bad";
       return "chip";
     }
 
@@ -534,337 +507,342 @@
       el.className = "row";
       el.innerHTML = `
         <div class="left">
-          <p class="key">${escHtml(key)}</p>
-          <p class="val">${escHtml(val)}</p>
+          <p class="key">${esc(key)}</p>
+          <p class="val">${esc(val)}</p>
         </div>
-        ${chip ? `<span class="${chipClass(chip)}">${escHtml(chip)}</span>` : ""}
+        ${chip ? `<span class="${chipClass(chip)}">${esc(chip)}</span>` : ""}
       `;
       container.appendChild(el);
     }
 
-    function setVerdictBadge(v){
-      const dot = document.getElementById("verdictDot");
-      const text = document.getElementById("verdictText");
-
-      const verdict = (v || "").toLowerCase();
-
-      let label = "NO VERDICT";
-      let dotColor = "rgba(15,23,42,.35)";
-
-      if (verdict.includes("take") || verdict.includes("approve") || verdict.includes("valid") || verdict.includes("yes") || verdict.includes("ok")){
-        label = "APPROVED";
-        dotColor = "rgba(34,197,94,.95)";
-      } else if (verdict.includes("neutral") || verdict.includes("wait") || verdict.includes("unclear")){
-        label = "NEUTRAL";
-        dotColor = "rgba(14,165,233,.95)";
-      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("reduce")){
-        label = "CAUTION";
-        dotColor = "rgba(245,158,11,.95)";
-      } else if (verdict.includes("avoid") || verdict.includes("reject") || verdict.includes("no")){
-        label = "REJECTED";
-        dotColor = "rgba(239,68,68,.95)";
-      }
-
-      dot.style.background = dotColor;
-      text.textContent = label;
+    function parseRR(rr){
+      // rr could be number, "2.64", "RR ≈ 2.6", etc.
+      if (rr === null || rr === undefined) return null;
+      if (typeof rr === "number" && isFinite(rr)) return rr;
+      const s = String(rr);
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return isFinite(n) ? n : null;
     }
 
-    function setDecisionBanner(decisionRaw){
-      const banner = document.getElementById("decisionBanner");
-      const icon = document.getElementById("decisionIcon");
-      const title = document.getElementById("decisionTitle");
-      const meaning = document.getElementById("decisionMeaning");
+    // Normalize payload from index.html
+    function normalize(raw){
+      // index.html stores:
+      // { pair_type, timeframe, signal_input, analysis: { decision, confidence, strength, clarity, signal_check, market_context, invalidation_warnings, why_this_trade, guidance, verdict } , generated_at }
+      const r = raw || {};
+      const a = r.analysis || {};
 
-      const d = String(decisionRaw || "").toUpperCase();
+      const pair = r.pair_type || r.pairType || a.pair || a.symbol || a.instrument || "";
+      const timeframe = r.timeframe || a.timeframe || "";
+      const signal = r.signal_input || r.signal || "";
 
-      banner.className = "decisionBanner banner-neutral";
-      icon.className = "decisionIcon icon-neutral";
-      icon.textContent = "↔";
-      title.textContent = "NEUTRAL / NEEDS MORE CONFIRMATION";
-      meaning.textContent = "The signal is not clear enough yet. Wait for better confirmation (structure + timing + liquidity).";
+      const confidence = (typeof a.confidence === "number") ? a.confidence : Number(a.confidence || 0);
+      const strength = (typeof a.strength === "number") ? a.strength : Number(a.strength || 0);
+      const clarity = (typeof a.clarity === "number") ? a.clarity : Number(a.clarity || 0);
 
-      if (d.includes("TAKE") || d.includes("BUY") || d.includes("LONG") || d.includes("APPROVE")){
-        banner.className = "decisionBanner banner-good";
-        icon.className = "decisionIcon icon-good";
-        icon.textContent = "✓";
-        title.textContent = "TAKE TRADE (APPROVED)";
-        meaning.textContent = "Conditions look aligned. If your plan matches this setup, execute with strict risk control (SL and position size).";
-        return;
-      }
+      const sc = a.signal_check || {};
+      const mc = a.market_context || {};
 
-      if (d.includes("AVOID") || d.includes("REJECT") || d.includes("NO TRADE")){
-        banner.className = "decisionBanner banner-bad";
-        icon.className = "decisionIcon icon-bad";
-        icon.textContent = "✕";
-        title.textContent = "AVOID TRADE (REJECTED)";
-        meaning.textContent = "Too many invalidation risks. Best decision is to stand down or wait for a cleaner setup.";
-        return;
-      }
+      const direction = sc.direction || a.direction || a.side || a.bias || "";
+      const entry = sc.entry || "";
+      const stop = sc.stop_loss || sc.sl || "";
+      const targets = Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || "");
+      const rr = parseRR(sc.rr);
 
-      if (d.includes("CAUTION") || d.includes("RISKY") || d.includes("REDUCE")){
-        banner.className = "decisionBanner banner-warn";
-        icon.className = "decisionIcon icon-warn";
-        icon.textContent = "!";
-        title.textContent = "CAUTION (TIGHTEN YOUR PLAN)";
-        meaning.textContent = "Setup has mixed signals. Reduce risk, demand stronger confirmation, or wait for a better entry.";
-        return;
-      }
-    }
-
-    function flattenContextToBullets(contextObj){
-      if (!contextObj || typeof contextObj !== "object") return [];
-      const out = [];
-      for (const [k,v] of Object.entries(contextObj)){
-        const key = String(k).replace(/_/g, " ");
-        const val = String(v || "").trim();
-        if (!val) continue;
-        out.push(`${key}: ${val}`);
-      }
-      return out;
-    }
-
-    function buildReasoning(report){
-      // 1) Prefer real text if backend sends it
-      const rawText = (typeof report.analysis === "string") ? report.analysis.trim() : "";
-      if (rawText) return rawText;
-
-      // 2) Otherwise: generate a summary from what we DO have
-      const a = (report.raw && report.raw.analysis && typeof report.raw.analysis === "object") ? report.raw.analysis : {};
-      const decision = String(report.decision || "").toUpperCase();
-      const dir = safeUpper(report.side);
-      const conf = pick(a, ["confidence","ai_confidence","score"]);
-      const rr = pick(a, ["approx_rr","rr","risk_reward"]);
-      const verdictLine = pick(a, ["verdict"]) || pick(report.raw, ["verdict"]) || "";
-
+      const invalidations = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean) : [];
       const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean) : [];
 
-      // Market context can be under analysis.market_context
-      const ctx = (a.market_context && typeof a.market_context === "object") ? a.market_context : null;
-      const ctxBullets = flattenContextToBullets(ctx);
+      const verdictText = a.verdict || a.decision || ""; // keep raw, but we won’t trust it for the institutional verdict
 
-      // Also pull “checks list” content into bullets (top few) for readability
-      const checkBullets = [];
-      const checks = Array.isArray(report.checks) ? report.checks : [];
-      for (const item of checks){
-        if (typeof item === "string") {
-          checkBullets.push(item);
-        } else if (item && typeof item === "object") {
-          const label = fmt(item.label ?? item.name ?? item.key ?? "Check");
-          const detail = fmt(item.detail ?? item.value ?? item.message ?? "");
-          if (detail && detail !== "—") checkBullets.push(`${label}: ${detail}`);
+      const generatedAt = r.generated_at ? new Date(r.generated_at).getTime() : Date.now();
+
+      return {
+        pair, timeframe, signal,
+        confidence: isFinite(confidence) ? confidence : 0,
+        strength: isFinite(strength) ? strength : 0,
+        clarity: isFinite(clarity) ? clarity : 0,
+        direction,
+        entry, stop, targets, rr,
+        mc,
+        invalidations,
+        why,
+        guidance,
+        verdictText,
+        raw: r,
+        generatedAt
+      };
+    }
+
+    // Institutional-level decision rules
+    function institutionalVerdict(n){
+      // Score components (0..100)
+      const conf = clamp(n.confidence, 0, 100);
+
+      // strength/clarity expected 0..10
+      const str = clamp(n.strength, 0, 10);
+      const clr = clamp(n.clarity, 0, 10);
+
+      // RR usually ~1..4+. Map 1.0 -> 0, 2.0 -> 50, 3.0 -> 80, 4.0 -> 100
+      const rr = (n.rr === null || n.rr === undefined) ? null : Math.max(0, Number(n.rr));
+      const rrScore = rr === null ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+
+      // Weighted score (conservative desk-style)
+      let score =
+        (conf * 0.50) +
+        ((str / 10) * 100 * 0.20) +
+        ((clr / 10) * 100 * 0.20) +
+        (rrScore * 0.10);
+
+      // Penalties
+      const invCount = Array.isArray(n.invalidations) ? n.invalidations.length : 0;
+      if (invCount >= 1) score -= 14;
+      if (invCount >= 2) score -= 10;
+
+      // Hard guards (institutional)
+      // 1) If confidence < 55 => cannot be approved
+      // 2) If RR exists and < 1.5 => cannot be approved
+      // 3) If invalidations exist => cannot be approved (max CONDITIONAL)
+      const hardNoApprove =
+        (conf < 55) ||
+        (rr !== null && rr < 1.5) ||
+        (invCount >= 1);
+
+      score = clamp(score, 0, 100);
+
+      // Tiering (desk-like)
+      // APPROVED: strong edge + clean
+      // CONDITIONAL: edge exists but needs conditions (size down / wait trigger / confirm)
+      // WAIT: insufficient edge / mixed context
+      // REJECTED: low edge or major invalidation risk
+      let tier = "WAIT";
+      if (score >= 78 && !hardNoApprove) tier = "APPROVED";
+      else if (score >= 62) tier = "CONDITIONAL";
+      else if (score >= 48) tier = "WAIT";
+      else tier = "REJECTED";
+
+      // Build message
+      const reasons = [];
+      reasons.push(`Confidence ${Math.round(conf)}%`);
+      if (n.rr !== null) reasons.push(`RR ${Number(n.rr).toFixed(2)}`);
+      if (isFinite(n.strength)) reasons.push(`Strength ${Math.round(str)}/10`);
+      if (isFinite(n.clarity)) reasons.push(`Clarity ${Math.round(clr)}/10`);
+      if (invCount) reasons.push(`${invCount} invalidation warning${invCount>1?"s":""}`);
+
+      const why =
+        tier === "APPROVED"
+          ? "Conditions look aligned. Execute only if your chart matches this setup and risk is defined."
+          : tier === "CONDITIONAL"
+          ? "Edge exists but it’s not clean enough for automatic approval. Tighten risk, wait for trigger, or reduce size."
+          : tier === "WAIT"
+          ? "Insufficient edge for a professional entry. Wait for clearer structure or better pricing."
+          : "Low edge or elevated invalidation risk. Stand down unless your chart clearly disproves the risks.";
+
+      // Desk-style action guidance (1-liner)
+      const action =
+        tier === "APPROVED"
+          ? "Proceed only with strict risk rules."
+          : tier === "CONDITIONAL"
+          ? "Proceed only with conditions: confirmation + reduced risk."
+          : tier === "WAIT"
+          ? "No trade now. Set alerts and reassess."
+          : "Avoid. Look for a higher-quality setup.";
+
+      return { tier, score: Math.round(score), why, action, reasons, conf: Math.round(conf) };
+    }
+
+    function clamp(n, min, max){ return Math.max(min, Math.min(max, Number(n || 0))); }
+
+    function paintBanner(v){
+      const banner = document.getElementById("decisionBanner");
+      const icon = document.getElementById("bannerIcon");
+      const title = document.getElementById("bannerTitle");
+      const sub = document.getElementById("bannerSub");
+
+      const tier = v.tier;
+
+      banner.classList.remove("b-ok","b-cond","b-wait","b-bad");
+
+      if (tier === "APPROVED"){
+        banner.classList.add("b-ok");
+        icon.textContent = "✓";
+        title.textContent = "APPROVED (DESK-GRADE)";
+      } else if (tier === "CONDITIONAL"){
+        banner.classList.add("b-cond");
+        icon.textContent = "!";
+        title.textContent = "CONDITIONAL (CONFIRM FIRST)";
+      } else if (tier === "WAIT"){
+        banner.classList.add("b-wait");
+        icon.textContent = "⏸";
+        title.textContent = "WAIT (EDGE NOT CLEAR)";
+      } else {
+        banner.classList.add("b-bad");
+        icon.textContent = "×";
+        title.textContent = "REJECTED (DO NOT EXECUTE)";
+      }
+
+      const line = `${v.why} ${v.action}`;
+      sub.textContent = line;
+    }
+
+    function renderChecks(n){
+      const checksList = document.getElementById("checksList");
+      checksList.innerHTML = "";
+
+      // Use market_context as structured checks
+      const mc = n.mc || {};
+      const entries = [];
+
+      if (mc.structure) entries.push({ label:"Context • Structure", detail: String(mc.structure), level: "" });
+      if (mc.liquidity) entries.push({ label:"Context • Liquidity", detail: String(mc.liquidity), level: "" });
+      if (mc.momentum) entries.push({ label:"Context • Momentum", detail: String(mc.momentum), level: "" });
+      if (mc.timeframe_alignment) entries.push({ label:"Context • Timeframe Alignment", detail: String(mc.timeframe_alignment), level: "" });
+
+      // Invalidation warnings are desk-grade checks (always prominent)
+      if (Array.isArray(n.invalidations) && n.invalidations.length){
+        for (const w of n.invalidations.slice(0, 6)){
+          entries.unshift({ label:"Invalidation Warning", detail: String(w), level: "High risk" });
         }
-        if (checkBullets.length >= 6) break;
       }
 
+      if (!entries.length){
+        addRow(checksList, "Checks", "No structured checks returned.", "");
+        return;
+      }
+
+      for (const it of entries){
+        addRow(checksList, it.label, it.detail || "—", it.level || "");
+      }
+    }
+
+    function renderSnapshot(n){
+      const snapshotList = document.getElementById("snapshotList");
+      snapshotList.innerHTML = "";
+
+      // Show the fields that matter in a report (institutional formatting)
+      addRow(snapshotList, "Pair Type", fmt(n.pair || "—"), "");
+      addRow(snapshotList, "Timeframe", fmt(n.timeframe || "—"), "");
+      addRow(snapshotList, "Direction", fmt(n.direction || "—"), "");
+
+      if (n.entry) addRow(snapshotList, "Entry", fmt(n.entry), "");
+      if (n.stop) addRow(snapshotList, "Stop Loss", fmt(n.stop), "");
+      if (n.targets) addRow(snapshotList, "Targets", fmt(n.targets), "");
+      if (n.rr !== null && n.rr !== undefined) addRow(snapshotList, "R:R", Number(n.rr).toFixed(2), "");
+
+      // Confidence/Strength/Clarity are also part of the snapshot
+      addRow(snapshotList, "AI Confidence", `${Math.round(n.confidence)}%`, "");
+      if (isFinite(n.strength)) addRow(snapshotList, "Strength", fmt(n.strength), "");
+      if (isFinite(n.clarity)) addRow(snapshotList, "Clarity", fmt(n.clarity), "");
+    }
+
+    function buildReasoning(n, verdictObj){
+      // Build a meaningful narrative even if backend doesn’t send a single "analysis text"
       const lines = [];
-      lines.push(`Summary`);
-      lines.push(`- Decision: ${decision || "—"}`);
-      if (dir && dir !== "—") lines.push(`- Direction: ${dir}`);
-      if (conf) lines.push(`- Confidence: ${conf}`);
-      if (rr) lines.push(`- Approx R:R: ${rr}`);
-      if (verdictLine) lines.push(`- Verdict note: ${verdictLine}`);
 
-      const evidence = [];
-      for (const b of ctxBullets.slice(0, 6)) evidence.push(b);
-      for (const b of checkBullets.slice(0, 6)) evidence.push(b);
+      lines.push("Institutional Summary");
+      lines.push(`• Verdict: ${verdictObj.tier} (Edge Score: ${verdictObj.score}/100)`);
+      lines.push(`• Basis: ${verdictObj.reasons.join(" • ")}`);
 
-      if (evidence.length) {
-        lines.push(`\nEvidence seen`);
-        for (const b of evidence.slice(0, 8)) lines.push(`- ${b}`);
+      // Signal check
+      lines.push("");
+      lines.push("Signal Check");
+      lines.push(`• Direction: ${fmt(n.direction)}`);
+      lines.push(`• Entry: ${fmt(n.entry)}`);
+      lines.push(`• Stop Loss: ${fmt(n.stop)}`);
+      lines.push(`• Targets: ${fmt(n.targets)}`);
+      lines.push(`• Approx RR: ${n.rr !== null ? Number(n.rr).toFixed(2) : "—"}`);
+
+      // Market context
+      const mc = n.mc || {};
+      lines.push("");
+      lines.push("Market Context");
+      lines.push(`• Structure: ${fmt(mc.structure)}`);
+      lines.push(`• Liquidity: ${fmt(mc.liquidity)}`);
+      lines.push(`• Momentum: ${fmt(mc.momentum)}`);
+      lines.push(`• Timeframe alignment: ${fmt(mc.timeframe_alignment)}`);
+
+      // Invalidation warnings
+      if (Array.isArray(n.invalidations) && n.invalidations.length){
+        lines.push("");
+        lines.push("Invalidation Warnings (desk-grade)");
+        for (const w of n.invalidations.slice(0, 6)){
+          lines.push(`• ${fmt(w)}`);
+        }
       }
 
-      if (why.length) {
-        lines.push(`\nWhy this decision`);
-        for (const b of why.slice(0, 8)) lines.push(`- ${b}`);
+      // Why + Guidance (if available)
+      if (Array.isArray(n.why) && n.why.length){
+        lines.push("");
+        lines.push("Why This Trade");
+        for (const w of n.why.slice(0, 7)){
+          lines.push(`• ${fmt(w)}`);
+        }
       }
 
-      if (guidance.length) {
-        lines.push(`\nGuidance`);
-        for (const b of guidance.slice(0, 10)) lines.push(`- ${b}`);
+      if (n.raw?.analysis?.verdict){
+        lines.push("");
+        lines.push("Model Verdict Notes");
+        lines.push(fmt(n.raw.analysis.verdict));
       }
 
-      // Hard fallback so it never looks empty
-      if (lines.length <= 3){
-        lines.push(`\nNo detailed reasoning text was returned by the server.`);
-        lines.push(`FXCO-Pilot generated this summary from the available context fields.`);
+      if (Array.isArray(n.guidance) && n.guidance.length){
+        lines.push("");
+        lines.push("Execution Guidance");
+        for (const g of n.guidance.slice(0, 7)){
+          lines.push(`• ${fmt(g)}`);
+        }
+      }
+
+      // Always include the original signal for auditability
+      if (n.signal){
+        lines.push("");
+        lines.push("Original Input");
+        lines.push(n.signal);
       }
 
       return lines.join("\n");
     }
 
-    function normalizeFromIndexPayload(payload){
-      const p = payload || {};
-      const a = (p.analysis && typeof p.analysis === "object") ? p.analysis : {};
+    function render(n){
+      // Meta
+      document.getElementById("metaLine").textContent = `Generated — ${nowStamp(n.generatedAt)}`;
 
-      const decision = pick(a, ["decision","verdict","final_verdict","recommendation"]) ||
-                       pick(p, ["decision","verdict","status"]) || "";
+      // Institutional verdict
+      const v = institutionalVerdict(n);
+      paintBanner(v);
 
-      const direction = pick(a, ["direction","bias","side"]) || "";
-      const risk = pick(a, ["risk","risk_level","riskLevel","risk_summary"]) || "";
-      const pair = pick(a, ["pair","symbol","instrument"]) || pick(p, ["pair","pair_type"]) || "";
+      // KPIs
+      document.getElementById("kpiPair").textContent = fmt(n.pair);
+      document.getElementById("kpiTf").textContent = `Timeframe: ${fmt(n.timeframe)}`;
+      document.getElementById("kpiSide").textContent = safeUpper(n.direction || "—");
+      document.getElementById("kpiBias").textContent = `Bias: ${fmt(n.mc?.structure || n.raw?.analysis?.bias || "—")}`;
+      document.getElementById("kpiScore").textContent = `${v.score}/100`;
+      document.getElementById("kpiParts").textContent = `Confidence: ${v.conf}% • RR: ${n.rr !== null ? Number(n.rr).toFixed(2) : "—"}`;
 
-      const entry = pick(a, ["entry","entry_price"]);
-      const sl = pick(a, ["stop_loss","sl"]);
-      const tp = pick(a, ["take_profit","tp","target","targets"]);
-      const rr = pick(a, ["rr","risk_reward","riskReward","approx_rr"]);
+      // Snapshot + Checks
+      renderSnapshot(n);
+      renderChecks(n);
 
-      const snapshot = {};
-      if (pick(p, ["pair_type"])) snapshot["Pair Type"] = p.pair_type;
-      if (pick(p, ["timeframe"])) snapshot["Timeframe"] = p.timeframe;
-      if (direction) snapshot["Direction"] = direction;
-      if (entry) snapshot["Entry"] = entry;
-      if (sl) snapshot["Stop Loss"] = sl;
-      if (tp) snapshot["Take Profit / Targets"] = tp;
-      if (rr) snapshot["Approx R:R"] = rr;
-
-      const conf = pick(a, ["confidence","ai_confidence","score"]);
-      const strength = pick(a, ["strength"]);
-      const clarity = pick(a, ["clarity"]);
-      if (conf) snapshot["AI Confidence"] = conf;
-      if (strength) snapshot["Strength"] = strength;
-      if (clarity) snapshot["Clarity"] = clarity;
-
-      let checks = [];
-      const maybeChecks = pick(a, ["checks","key_checks","rules"]);
-      if (Array.isArray(maybeChecks)) checks = maybeChecks;
-
-      // Also push market_context into checks list (so it shows even if checks are missing)
-      const ctx = a.market_context && typeof a.market_context === "object" ? a.market_context : null;
-      if (ctx) {
-        const ctxPairs = Object.entries(ctx).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
-        for (const [k,v] of ctxPairs) {
-          checks.push({ label: "Context • " + String(k).replace(/_/g," "), detail: String(v), level: "" });
-        }
-      }
-
-      const analysisText = pick(a, ["reasoning","analysis_text","summary","explanation"]) || "";
-
-      return {
-        decision,
-        verdictBadge: decision,
-        analysis: analysisText,
-        pair,
-        side: direction,
-        risk,
-        snapshot,
-        checks,
-        generated_at: pick(p, ["generated_at"]) || Date.now(),
-        raw: payload
-      };
-    }
-
-    function parseReport(raw){
-      if (!raw) return normalizeFromIndexPayload({});
-      if (typeof raw === "string") return normalizeFromIndexPayload({ analysis: { decision: "NEUTRAL", summary: raw } });
-
-      if (raw && (raw.pair_type !== undefined || raw.signal_input !== undefined || (raw.analysis && typeof raw.analysis === "object"))) {
-        return normalizeFromIndexPayload(raw);
-      }
-
-      const decision = raw.decision ?? raw.verdict ?? raw.status ?? "";
-      return {
-        decision,
-        verdictBadge: decision,
-        analysis: raw.analysis ?? raw.reasoning ?? raw.result ?? raw.message ?? "",
-        pair: raw.pair ?? raw.symbol ?? raw.instrument ?? "",
-        side: raw.side ?? raw.direction ?? raw.bias ?? "",
-        risk: raw.risk ?? raw.risk_summary ?? raw.riskLevel ?? "",
-        snapshot: raw.snapshot ?? {},
-        checks: raw.checks ?? raw.key_checks ?? raw.rules ?? [],
-        generated_at: raw.generated_at || Date.now(),
-        raw
-      };
-    }
-
-    function render(report){
-      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at)}`;
-
-      document.getElementById("kpiPair").textContent = fmt(report.pair || report.raw?.pair_type || "—");
-      document.getElementById("kpiSide").textContent = safeUpper(report.side);
-      document.getElementById("kpiRisk").textContent = fmt(report.risk);
-
-      setDecisionBanner(report.decision);
-      setVerdictBadge(report.verdictBadge);
-
-      const snapshotList = document.getElementById("snapshotList");
-      snapshotList.innerHTML = "";
-
-      const snap = report.snapshot || {};
-      const snapEntries = Object.entries(snap).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
-
-      if (snapEntries.length === 0){
-        addRow(snapshotList, "Snapshot", "No snapshot fields returned.", "");
-      } else {
-        for (const [k,v] of snapEntries){
-          addRow(snapshotList, k, fmt(v), "");
-        }
-      }
-
-      const checksList = document.getElementById("checksList");
-      checksList.innerHTML = "";
-
-      const checks = Array.isArray(report.checks) ? report.checks : [];
-      if (checks.length === 0){
-        addRow(checksList, "Checks", "No structured checks returned. See AI reasoning.", "");
-      } else {
-        for (const item of checks){
-          if (typeof item === "string"){
-            addRow(checksList, "Check", item, "");
-          } else {
-            const label = fmt(item.label ?? item.name ?? item.key ?? "Check");
-            const detail = fmt(item.detail ?? item.value ?? item.message ?? "");
-            const level = fmt(item.level ?? item.status ?? item.risk ?? "");
-            addRow(checksList, label, detail || "—", level || "");
-          }
-        }
-      }
-
+      // Reasoning
       const analysisBox = document.getElementById("analysisBox");
-      const reasoning = buildReasoning(report);
+      analysisBox.textContent = buildReasoning(n, v);
 
-      // If backend didn't send reasoning, show a small callout so users trust it
-      const backendSentText = (typeof report.analysis === "string") && report.analysis.trim().length > 0;
-      const callout = backendSentText ? "" : `
-        <div class="callout">
-          <b>Reasoning Summary:</b> The server did not return a long-form explanation, so FXCO-Pilot generated this readable summary from your context + checks.
-        </div>
-      `;
-
-      analysisBox.innerHTML = callout + `<div>${escHtml(reasoning)}</div>`;
-
+      // Copy payload
       window.__fxco_copy = {
-        decision: report.decision,
-        pair: report.pair || report.raw?.pair_type || "",
-        side: report.side,
-        risk: report.risk,
-        analysis: reasoning
+        tier: v.tier,
+        score: v.score,
+        confidence: v.conf,
+        rr: n.rr,
+        pair: n.pair,
+        timeframe: n.timeframe,
+        direction: n.direction,
+        reasoning: analysisBox.textContent
       };
     }
 
-    function getStoredReportRaw(){
-      try {
-        const s = sessionStorage.getItem("fxcoReport");
-        if (s) return s;
-      } catch {}
-
-      try {
-        const l = localStorage.getItem("fxcoReport_last_v1");
-        if (l) return l;
-      } catch {}
-
-      return "";
-    }
-
-    function goBackSmart(){
-      if (window.history.length <= 1) {
-        window.location.href = "/";
-        return;
-      }
-      history.back();
-    }
-
-    document.getElementById("btnBack").addEventListener("click", goBackSmart);
+    // Actions
+    document.getElementById("btnBack").addEventListener("click", () => history.back());
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
 
@@ -873,13 +851,16 @@
         const d = window.__fxco_copy || {};
         const out =
 `FXCO-Pilot Trade Validation Report
-Decision: ${fmt(d.decision)}
-Pair: ${fmt(d.pair)}
-Direction: ${fmt(d.side)}
-Risk: ${fmt(d.risk)}
+Institutional Verdict: ${fmt(d.tier)} (Edge Score: ${fmt(d.score)}/100)
+Confidence: ${fmt(d.confidence)}%
+RR: ${d.rr !== null && d.rr !== undefined ? Number(d.rr).toFixed(2) : "—"}
 
-Notes:
-${fmt(d.analysis)}`.trim();
+Instrument: ${fmt(d.pair)}
+Timeframe: ${fmt(d.timeframe)}
+Direction: ${fmt(d.direction)}
+
+Reasoning:
+${fmt(d.reasoning)}`.trim();
 
         await navigator.clipboard.writeText(out);
         const btn = document.getElementById("btnCopy");
@@ -891,12 +872,24 @@ ${fmt(d.analysis)}`.trim();
       }
     });
 
+    // Load report from sessionStorage
     (function init(){
-      const raw = getStoredReportRaw();
-
+      const raw = sessionStorage.getItem("fxcoReport");
       if (!raw){
-        render(parseReport({
-          analysis: { decision: "NEUTRAL", summary: "No validation data was found. Go back and analyze a trade to generate a new report." },
+        render(normalize({
+          pair_type: "—",
+          timeframe: "—",
+          signal_input: "",
+          analysis: {
+            confidence: 0,
+            strength: 0,
+            clarity: 0,
+            verdict: "No report found",
+            guidance: [
+              "No validation data was found in this session.",
+              "Go back and analyze a trade to generate a new report."
+            ]
+          },
           generated_at: Date.now()
         }));
         return;
@@ -904,10 +897,16 @@ ${fmt(d.analysis)}`.trim();
 
       try{
         const parsed = JSON.parse(raw);
-        try { sessionStorage.setItem("fxcoReport", JSON.stringify(parsed)); } catch {}
-        render(parseReport(parsed));
+        render(normalize(parsed));
       } catch(e){
-        render(parseReport(raw));
+        // If it wasn't JSON, render as fallback
+        render(normalize({
+          pair_type: "—",
+          timeframe: "—",
+          signal_input: "",
+          analysis: { verdict: "Unknown", guidance: [String(raw)] },
+          generated_at: Date.now()
+        }));
       }
     })();
   </script>
