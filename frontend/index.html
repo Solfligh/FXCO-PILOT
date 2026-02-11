@@ -87,12 +87,18 @@
       border-radius: 12px;
       cursor: pointer;
       transition: 0.15s;
+      white-space: nowrap;
     }
     .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
     .topbtn.primary {
       border: 1px solid rgba(0,212,106,0.35);
       background: rgba(0,212,106,0.14);
       color: #b8ffdd;
+    }
+    .topbtn.warn {
+      border: 1px solid rgba(251,191,36,0.35);
+      background: rgba(251,191,36,0.14);
+      color: #fff3c4;
     }
 
     .sessions span {
@@ -145,21 +151,23 @@
       display: block;
     }
 
-    select, textarea, input[type="file"] {
+    select, textarea, input[type="file"], input[type="email"], input[type="text"] {
       width: 100%;
       padding: 12px;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       border-radius: 8px;
       border: none;
       background: #0b0d14cc;
       backdrop-filter: blur(6px);
       color: #cfd3d8;
       font-size: 14px;
+      box-sizing: border-box;
     }
 
     textarea { height: 110px; resize: none; }
 
     .btn {
+      reminding: none;
       width: 100%;
       padding: 15px;
       border-radius: 10px;
@@ -491,6 +499,24 @@
     .muted { opacity: 0.85; }
     .small { font-size: 12px; line-height: 1.6; }
 
+    /* Auth (OTP) modal bits */
+    .auth-row {
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin-top: 10px;
+    }
+    .auth-row .topbtn { flex: 1; }
+    .auth-status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #ffd86b;
+      opacity: 0.95;
+      display:none;
+    }
+    .auth-ok { color: #b8ffdd; }
+    .auth-danger { color: #ff9aa2; }
+
     @media(max-width: 900px){
       .container { flex-direction: column; margin: 20px; padding: 25px; }
       .sessions span { margin-right: 10px; }
@@ -512,6 +538,7 @@
     </div>
 
     <div class="topbar-right">
+      <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
       <button id="unlockBtn" class="topbtn primary" onclick="openPricing()">Unlock</button>
     </div>
@@ -650,7 +677,6 @@
 
         <div class="price-row">
           <div>
-            <!-- fallback shows ₦10,000 until backend config loads -->
             <div class="price" id="pricingAmount">₦10,000</div>
             <div class="per" id="pricingPer">per month</div>
           </div>
@@ -668,6 +694,47 @@
         <p class="small muted" style="margin-top:10px;">
           After payment, you’ll be returned here automatically and your access will unlock.
         </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth (OTP) modal -->
+  <div id="authBackdrop" class="legal-backdrop"></div>
+  <div id="authModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="legal-modal-header">
+      <div id="authTitle" class="legal-modal-title">Start Free Trial</div>
+      <button class="legal-close" onclick="closeAuth()">Close</button>
+    </div>
+
+    <div class="legal-modal-content">
+      <div class="legal-callout">
+        <p style="margin:0;">
+          <strong>Free Trial:</strong> Verify your email to start your 14-day trial. This helps stop spam and keeps the service stable.
+        </p>
+      </div>
+
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
+
+      <div class="auth-row">
+        <button class="topbtn primary" onclick="authSendCode()">Send code</button>
+        <button class="topbtn" onclick="authPasteSavedEmail()">Use saved</button>
+      </div>
+
+      <div style="height:10px"></div>
+
+      <label>6-digit code</label>
+      <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" />
+
+      <div class="auth-row">
+        <button class="topbtn primary" onclick="authVerifyCode()">Verify & Start Trial</button>
+        <button class="topbtn" onclick="authLogout()">Sign out</button>
+      </div>
+
+      <div id="authStatus" class="auth-status"></div>
+
+      <div class="small muted" style="margin-top:12px;">
+        Tip: After verifying, you can analyze right away. If your trial ends, you can unlock via Pricing.
       </div>
     </div>
   </div>
@@ -803,6 +870,153 @@
       }
     }
     const FXCO_CLIENT_ID = getOrCreateClientId();
+
+    /* Auth storage */
+    const AUTH_TOKEN_KEY = "fxco_auth_token_v1";
+    const AUTH_EMAIL_KEY = "fxco_auth_email_v1";
+    const TRIAL_END_KEY  = "fxco_trial_end_v1 (cache)";
+
+    function getAuthToken() {
+      try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
+    }
+    function getAuthEmail() {
+      try { return localStorage.getItem(AUTH_EMAIL_KEY) || ""; } catch { return ""; }
+    }
+    function setAuth(email, token, trialEnds) {
+      try {
+        if (email) localStorage.setItem(AUTH_EMAIL_KEY, email);
+        if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+        if (trialEnds) localStorage.setItem(TRIAL_END_KEY, String(trialEnds));
+      } catch {}
+    }
+    function clearAuth() {
+      try {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_EMAIL_KEY);
+        localStorage.removeItem(TRIAL_END_KEY);
+      } catch {}
+    }
+
+    function isTrialActiveLocal() {
+      try {
+        const end = Number(localStorage.getItem(TRIAL_END_KEY) || "0");
+        if (!end) return false;
+        return Date.now() < end * 1000;
+      } catch { return false; }
+    }
+
+    function setAuthStatus(msg, kind) {
+      const el = document.getElementById("authStatus");
+      if (!el) return;
+      if (!msg) { el.style.display = "none"; el.innerText = ""; el.className = "auth-status"; return; }
+      el.style.display = "block";
+      el.innerText = msg;
+      el.className = "auth-status " + (kind || "");
+    }
+
+    function openAuth() {
+      document.getElementById("authBackdrop").style.display = "block";
+      document.getElementById("authModal").style.display = "block";
+      const email = getAuthEmail();
+      if (email) document.getElementById("authEmail").value = email;
+      setAuthStatus("", "");
+    }
+    function closeAuth() {
+      document.getElementById("authBackdrop").style.display = "none";
+      document.getElementById("authModal").style.display = "none";
+      setAuthStatus("", "");
+    }
+    document.getElementById("authBackdrop").addEventListener("click", closeAuth);
+
+    function authPasteSavedEmail() {
+      const e = getAuthEmail();
+      if (e) document.getElementById("authEmail").value = e;
+    }
+
+    async function authSendCode() {
+      const email = (document.getElementById("authEmail").value || "").trim().toLowerCase();
+      if (!email || !email.includes("@")) {
+        setAuthStatus("Enter a valid email.", "auth-danger");
+        return;
+      }
+      setAuthStatus("Sending code…", "");
+      try {
+        const res = await fetch("/api/auth/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.ok) {
+          setAuthStatus("Failed: " + (j?.error || "Unable to send OTP."), "auth-danger");
+          return;
+        }
+        try { localStorage.setItem(AUTH_EMAIL_KEY, email); } catch {}
+        setAuthStatus("Code sent. Check your inbox (and spam).", "auth-ok");
+      } catch (e) {
+        setAuthStatus("Failed: " + (e?.message || "Network error"), "auth-danger");
+      }
+    }
+
+    async function authVerifyCode() {
+      const email = (document.getElementById("authEmail").value || "").trim().toLowerCase();
+      const code = (document.getElementById("authCode").value || "").trim();
+      if (!email || !email.includes("@")) {
+        setAuthStatus("Enter a valid email.", "auth-danger");
+        return;
+      }
+      if (!/^\d{6}$/.test(code)) {
+        setAuthStatus("Enter the 6-digit code.", "auth-danger");
+        return;
+      }
+
+      setAuthStatus("Verifying…", "");
+      try {
+        const res = await fetch("/api/auth/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, code })
+        });
+        const j = await res.json().catch(() => null);
+        if (!res.ok || !j?.ok || !j?.token) {
+          setAuthStatus("Failed: " + (j?.error || "Verification failed."), "auth-danger");
+          return;
+        }
+        setAuth(email, j.token, j.trial_ends || 0);
+        setAuthStatus("Verified ✅ Trial active.", "auth-ok");
+        updateTrialButton();
+        applyPaymentGateUI();
+        closeAuth();
+      } catch (e) {
+        setAuthStatus("Failed: " + (e?.message || "Network error"), "auth-danger");
+      }
+    }
+
+    function authLogout() {
+      clearAuth();
+      updateTrialButton();
+      applyPaymentGateUI();
+      setAuthStatus("Signed out.", "auth-ok");
+    }
+
+    function updateTrialButton() {
+      const btn = document.getElementById("trialBtn");
+      if (!btn) return;
+
+      const token = getAuthToken();
+      const active = isTrialActiveLocal();
+
+      if (token && active) {
+        btn.innerText = "Trial Active ✅";
+        btn.className = "topbtn primary";
+      } else if (token && !active) {
+        btn.innerText = "Trial Ended • Verify";
+        btn.className = "topbtn warn";
+      } else {
+        btn.innerText = "Start Free Trial";
+        btn.className = "topbtn warn";
+      }
+    }
 
     /* Payment state */
     const PAID_KEY = "fxco_paid_v1";
@@ -986,7 +1200,7 @@
     document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
 
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { closeLegal(); closePricing(); }
+      if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); }
     });
 
     /* Paystack */
@@ -1008,13 +1222,11 @@
         PAYSTACK_CONFIG = j || { ok:false };
 
         const amountEl = document.getElementById("pricingAmount");
-        // If backend sends amount/currency, use it; otherwise keep ₦10,000 fallback
-        if (amountEl && j?.ok && typeof j.amount !== "undefined") {
+        if (amountEl && j && typeof j.amount !== "undefined") {
           amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
         }
         applyPaymentGateUI();
       } catch {
-        // keep fallback UI
         applyPaymentGateUI();
       }
     }
@@ -1024,23 +1236,29 @@
       const accepted = document.getElementById("acceptLegal")?.checked;
       const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
 
+      const token = getAuthToken();
+      const trialActive = token && isTrialActiveLocal();
+
       const statusEl = document.getElementById("pricingStatus");
       const unlockBtn = document.getElementById("unlockBtn");
 
       if (statusEl) {
-        statusEl.innerText = paid ? "Active Access" : (requirePayment ? "Locked" : "Optional");
+        statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
       }
       if (unlockBtn) {
-        unlockBtn.innerText = paid ? "Unlocked" : "Unlock";
+        unlockBtn.innerText = (paid || trialActive) ? "Unlocked" : "Unlock";
       }
 
       const btn = document.getElementById("analyzeBtn");
       if (!btn) return;
       if (rateTimer) return;
 
-      if (requirePayment && !paid) {
+      // If require payment, allow analysis during trial OR paid.
+      if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
-        if (accepted) setPayHint("Unlock required to run AI analysis. Tap Pricing → Pay with Paystack.", true);
+        if (accepted) {
+          setPayHint("Start your free trial (verify email) or Unlock via Pricing.", true);
+        }
         return;
       }
 
@@ -1049,7 +1267,8 @@
     }
 
     async function startPaystackCheckout() {
-      const email = (prompt("Enter your email for Paystack checkout:") || "").trim();
+      const emailSeed = getAuthEmail() || "";
+      const email = (prompt("Enter your email for Paystack checkout:", emailSeed) || "").trim();
       if (!email || !email.includes("@")) {
         alert("Please enter a valid email.");
         return;
@@ -1116,11 +1335,13 @@
     async function analyze() {
       const accepted = document.getElementById("acceptLegal")?.checked;
       if (!accepted) { setAnalyzeEnabled(false); return; }
-
       if (rateTimer) return;
 
-      if (PAYSTACK_CONFIG?.require_payment && !isPaid()) {
-        openPricing();
+      // Gate: if require payment, allow if (paid OR trialActive)
+      const trialActive = getAuthToken() && isTrialActiveLocal();
+      if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
+        // Encourage trial first (anti-spam)
+        openAuth();
         return;
       }
 
@@ -1155,6 +1376,9 @@
       try {
         const headers = { "X-FXCO-Client": FXCO_CLIENT_ID };
 
+        const token = getAuthToken();
+        if (token) headers["X-FXCO-Auth"] = token;
+
         const ref = getPaidRef();
         if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
 
@@ -1166,6 +1390,14 @@
 
         const ct = res.headers.get("content-type") || "";
 
+        // cache trial end from headers if backend provides it (nice-to-have)
+        const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
+        if (trialEndsHdr) {
+          const n = Number(trialEndsHdr);
+          if (n) { try { localStorage.setItem(TRIAL_END_KEY, String(n)); } catch {} }
+          updateTrialButton();
+        }
+
         if (res.status === 429) {
           let retryAfter = Number(res.headers.get("Retry-After") || 0);
           let j = null;
@@ -1175,29 +1407,27 @@
             const t = await res.text().catch(() => "");
             j = { error: t || "Too many requests" };
           }
-
           const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
-
           startRateCooldown(seconds);
           return;
         }
 
-        // Payment required (locked)
         if (res.status === 402) {
           let j = null;
           if (ct.includes("application/json")) {
             try { j = await res.json(); } catch {}
           } else {
             const t = await res.text().catch(() => "");
-            j = { error: t || "Payment required" };
+            j = { error: t || "Access locked" };
           }
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
-            "<br/><span style='opacity:0.9'>Open Pricing to unlock.</span>";
+            "<br/><span style='opacity:0.9'>Start Trial (verify email) or open Pricing to unlock.</span>";
           btn.disabled = false;
-          openPricing();
+          applyPaymentGateUI();
+          openAuth();
           return;
         }
 
@@ -1266,6 +1496,7 @@
     showRiskModalIfNeeded();
     loadPaystackConfig();
     verifyPaystackIfReturned();
+    updateTrialButton();
   </script>
 </body>
 </html>
