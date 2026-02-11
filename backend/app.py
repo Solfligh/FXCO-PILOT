@@ -1,11 +1,13 @@
 import base64
+import hashlib
+import hmac
 import json
 import os
 import re
 import time
-import hmac
-import hashlib
 from collections import deque
+from datetime import datetime, timezone, timedelta
+from typing import Optional, Tuple
 
 import requests
 from flask import Flask, jsonify, request
@@ -14,49 +16,43 @@ from openai import OpenAI
 app = Flask(__name__)
 
 # ============================================================
-# ENV NOTES
+# ENV
 # ============================================================
-# OpenAI:
-#   OPENAI_API_KEY=...
-#
-# Twelve Data:
-#   TWELVE_DATA_API_KEY=...
+# OpenAI: OPENAI_API_KEY
+# TwelveData: TWELVE_DATA_API_KEY
 #
 # Paystack:
-#   PAYSTACK_SECRET_KEY=sk_live_or_test_xxx
-#   PAYSTACK_PUBLIC_KEY=pk_live_or_test_xxx   # optional
-#   PAYSTACK_CALLBACK_URL=https://fxco-pilot.solfightech.org/
+#   PAYSTACK_SECRET_KEY
+#   PAYSTACK_PUBLIC_KEY (optional)
+#   PAYSTACK_CALLBACK_URL
 #
-# Payment gate toggle (supports both):
-#   REQUIRE_PAYMENT=true/false
-#   PAYSTACK_REQUIRE_PAYMENT=1/0
+# Payment gate toggle:
+#   PAYSTACK_REQUIRE_PAYMENT=1  OR  REQUIRE_PAYMENT=true
 #
-# Amount (supports both):
-#   PAYSTACK_AMOUNT=1000000      # MINOR units (kobo) preferred (matches your Render screenshot)
-#   OR PAYSTACK_AMOUNT_NGN=10000 # MAJOR units (naira) fallback -> converted to minor
-#
-# Currency (supports both):
+# Pricing:
+#   PAYSTACK_AMOUNT_NGN=10000   (NGN major) OR PAYSTACK_AMOUNT=1000000 (minor units)
 #   PAYSTACK_CURRENCY=NGN
-#   PAYSTACK_CURRENCY_CODE=NGN (optional alt)
+#   PAYSTACK_ACCESS_DAYS=30
+#
+# Supabase (for OTP + trials + paid access persistence):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#
+# Resend:
+#   RESEND_API_KEY
+#   RESEND_FROM_EMAIL
 #
 # Trial:
 #   TRIAL_DAYS=14
 #
-# Resend (email OTP):
-#   RESEND_API_KEY=...
-#   RESEND_FROM=FXCO-PILOT <no-reply@solfightech.org>
+# Auth signing:
 #   AUTH_SIGNING_SECRET=long_random_string
-#   RESEND_OTP_TTL_SECONDS=600
 #
 # Rate limits:
 #   FREE_LIMIT_60S=5
 #   FREE_LIMIT_24H=50
 #   PAID_LIMIT_60S=60
 #   PAID_LIMIT_24H=2000
-#
-# Optional guest throttles (defaults used if missing):
-#   GUEST_LIMIT_60S=2
-#   GUEST_LIMIT_24H=10
 # ============================================================
 
 # ==========================
@@ -65,10 +61,12 @@ app = Flask(__name__)
 _CACHE = {}
 _CACHE_TTL = {}
 
+
 def _cache_get(key):
     if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
         return _CACHE[key]
     return None
+
 
 def _cache_set(key, value, ttl=60):
     _CACHE[key] = value
@@ -76,63 +74,50 @@ def _cache_set(key, value, ttl=60):
 
 
 # ==========================
-# Helpers: env access
+# Time helpers
 # ==========================
-def _env_first(*keys, default=""):
-    for k in keys:
-        v = os.getenv(k)
-        if v is not None and str(v).strip() != "":
-            return str(v).strip()
-    return default
+def _now() -> float:
+    return time.time()
 
-def _env_bool(*keys, default=False):
-    v = _env_first(*keys, default=("1" if default else "0")).strip().lower()
-    return v in ("1", "true", "yes", "y", "on")
 
-def _env_int(*keys, default=0, minv=None, maxv=None):
-    raw = _env_first(*keys, default=str(default))
+def _utc_now_dt() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _dt_to_iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _parse_iso(dt_str: str) -> Optional[datetime]:
     try:
-        n = int(str(raw).strip())
+        # Supabase returns ISO timestamps; Python can parse most of them
+        return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except Exception:
-        n = int(default)
-    if minv is not None:
-        n = max(minv, n)
-    if maxv is not None:
-        n = min(maxv, n)
-    return n
+        return None
 
 
 # ==========================
-# Rate limiting (tiered)
-#   - Guest: very low (to slow spam)
-#   - Trial: uses FREE_LIMIT_*
-#   - Paid: uses PAID_LIMIT_*
-# Applied ONLY to /api/analyze
+# Request identity
 # ==========================
-_SHORT_WINDOW_SECONDS = 60
-_DAY_WINDOW_SECONDS = 24 * 60 * 60
-
-# key: identity -> deque[timestamps]
-_RATE_SHORT = {}
-_RATE_DAY = {}
-
-
 def _client_ip():
-    """
-    Try to get the real client IP behind proxies.
-    X-Forwarded-For is usually: "client, proxy1, proxy2"
-    """
     xff = request.headers.get("X-Forwarded-For", "").strip()
     if xff:
         return xff.split(",")[0].strip()
     return request.remote_addr or "unknown"
 
 
+def _get_client_id_header():
+    cid = (request.headers.get("X-FXCO-Client") or "").strip()
+    if cid:
+        return cid[:128]
+    return ""
+
+
 # ==========================
 # OpenAI client (lazy init)
 # ==========================
 def _get_openai_client():
-    api_key = _env_first("OPENAI_API_KEY", default="").strip()
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return None
     return OpenAI(api_key=api_key)
@@ -141,64 +126,278 @@ def _get_openai_client():
 # ==========================
 # Twelve Data
 # ==========================
-TWELVE_DATA_API_KEY = _env_first("TWELVE_DATA_API_KEY", default="").strip()
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
-# Paystack config + state (in-memory)
+# Supabase helpers (PostgREST)
 # ==========================
-PAYSTACK_SECRET_KEY = _env_first("PAYSTACK_SECRET_KEY", default="").strip()
-PAYSTACK_PUBLIC_KEY = _env_first("PAYSTACK_PUBLIC_KEY", default="").strip()
-PAYSTACK_CURRENCY = _env_first("PAYSTACK_CURRENCY", "PAYSTACK_CURRENCY_CODE", default="NGN").strip().upper()
+SUPABASE_URL = (os.getenv("SUPABASE_URL", "") or "").strip().rstrip("/")
+SUPABASE_SERVICE_ROLE_KEY = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
+
+
+def _sb_ok() -> bool:
+    return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
+
+def _sb_headers():
+    return {
+        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
+    """
+    Select first row matching filters, or None.
+    """
+    if not _sb_ok():
+        return None
+
+    params = {k: f"eq.{v}" for k, v in filters.items()}
+    # limit=1
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers=_sb_headers(),
+            params={**params, "select": "*", "limit": "1"},
+            timeout=12,
+        )
+        if r.status_code >= 400:
+            return None
+        rows = r.json()
+        if isinstance(rows, list) and rows:
+            return rows[0]
+        return None
+    except Exception:
+        return None
+
+
+def _sb_upsert(table: str, row: dict, conflict: str) -> bool:
+    """
+    Upsert by conflict column.
+    """
+    if not _sb_ok():
+        return False
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+            params={"on_conflict": conflict},
+            data=json.dumps(row),
+            timeout=12,
+        )
+        return 200 <= r.status_code < 300
+    except Exception:
+        return False
+
+
+def _sb_update(table: str, filters: dict, patch: dict) -> bool:
+    if not _sb_ok():
+        return False
+    params = {k: f"eq.{v}" for k, v in filters.items()}
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers={**_sb_headers(), "Prefer": "return=minimal"},
+            params=params,
+            data=json.dumps(patch),
+            timeout=12,
+        )
+        return 200 <= r.status_code < 300
+    except Exception:
+        return False
+
+
+# ==========================
+# Resend helpers
+# ==========================
+RESEND_API_KEY = (os.getenv("RESEND_API_KEY", "") or "").strip()
+RESEND_FROM_EMAIL = (os.getenv("RESEND_FROM_EMAIL", "") or "").strip()
+
+
+def _resend_ok() -> bool:
+    return bool(RESEND_API_KEY and RESEND_FROM_EMAIL)
+
+
+def _send_email_resend(to_email: str, subject: str, html: str) -> Tuple[bool, str]:
+    if not _resend_ok():
+        return False, "Resend not configured (missing RESEND_API_KEY or RESEND_FROM_EMAIL)."
+    try:
+        r = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            data=json.dumps(
+                {
+                    "from": RESEND_FROM_EMAIL,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html,
+                }
+            ),
+            timeout=12,
+        )
+        if r.status_code >= 400:
+            try:
+                return False, r.json().get("message") or r.text
+            except Exception:
+                return False, r.text
+        return True, "sent"
+    except Exception as e:
+        return False, str(e)
+
+
+# ==========================
+# Trial config
+# ==========================
+def _trial_days() -> int:
+    try:
+        return max(1, int((os.getenv("TRIAL_DAYS", "14") or "14").strip()))
+    except Exception:
+        return 14
+
+
+# ==========================
+# Auth token (simple HMAC-signed JSON)
+# ==========================
+AUTH_SIGNING_SECRET = (os.getenv("AUTH_SIGNING_SECRET", "") or "").strip()
+
+
+def _b64url_encode(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
+
+
+def _b64url_decode(s: str) -> bytes:
+    pad = "=" * ((4 - (len(s) % 4)) % 4)
+    return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
+
+
+def _sign(payload_bytes: bytes) -> str:
+    key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
+    return _b64url_encode(hmac.new(key, payload_bytes, hashlib.sha256).digest())
+
+
+def _make_token(email: str, trial_ends_epoch: int) -> str:
+    payload = {
+        "email": email,
+        "trial_ends": int(trial_ends_epoch),
+        "iat": int(_now()),
+        "v": 1,
+    }
+    pb = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return f"{_b64url_encode(pb)}.{_sign(pb)}"
+
+
+def _verify_token(token: str) -> Optional[dict]:
+    try:
+        if not token or "." not in token:
+            return None
+        p, sig = token.split(".", 1)
+        pb = _b64url_decode(p)
+        expected = _sign(pb)
+        if not hmac.compare_digest(expected, sig):
+            return None
+        payload = json.loads(pb.decode("utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        if "email" not in payload or "trial_ends" not in payload:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+# ==========================
+# OTP helpers (Supabase stored, hashed)
+# ==========================
+def _email_ok(email: str) -> bool:
+    if not email:
+        return False
+    email = email.strip()
+    if len(email) > 254:
+        return False
+    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+
+def _otp_code() -> str:
+    # 6-digit numeric code
+    n = int.from_bytes(os.urandom(4), "big") % 1000000
+    return f"{n:06d}"
+
+
+def _otp_hash(email: str, code: str) -> str:
+    # stable per email+code (prevents rainbow reuse)
+    key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
+    msg = (email.strip().lower() + ":" + code.strip()).encode("utf-8")
+    return hashlib.sha256(hmac.new(key, msg, hashlib.sha256).digest()).hexdigest()
+
+
+def _trial_row(email: str) -> Optional[dict]:
+    return _sb_select_one("fxco_trials", {"email": email})
+
+
+def _trial_active(email: str) -> Tuple[bool, int]:
+    """
+    Returns (active, trial_ends_epoch)
+    """
+    row = _trial_row(email)
+    if not row:
+        return False, 0
+    te = row.get("trial_ends")
+    if not te:
+        return False, 0
+    dt = _parse_iso(str(te))
+    if not dt:
+        return False, 0
+    epoch = int(dt.timestamp())
+    return (_now() < epoch), epoch
+
+
+# ==========================
+# Paystack config + state (Supabase persistent)
+# ==========================
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
+PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
 PAYSTACK_BASE = "https://api.paystack.co"
 
+
 def _require_payment():
-    # supports both env names
-    return _env_bool("REQUIRE_PAYMENT", "PAYSTACK_REQUIRE_PAYMENT", default=True)
+    # support BOTH env names
+    v = (os.getenv("PAYSTACK_REQUIRE_PAYMENT", "") or os.getenv("REQUIRE_PAYMENT", "1") or "1").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
 
 def _access_days():
-    return _env_int("PAYSTACK_ACCESS_DAYS", default=30, minv=1, maxv=3650)
+    try:
+        return max(1, int((os.getenv("PAYSTACK_ACCESS_DAYS", "30") or "30").strip()))
+    except Exception:
+        return 30
 
-def _trial_days():
-    return _env_int("TRIAL_DAYS", default=14, minv=1, maxv=365)
 
 def _paystack_amount_minor():
     """
-    Preferred: PAYSTACK_AMOUNT is already MINOR units (kobo) (matches your Render screenshot).
-    Fallback: PAYSTACK_AMOUNT_NGN is MAJOR units -> convert to minor.
+    Supports:
+      - PAYSTACK_AMOUNT=1000000 (minor units)
+      - PAYSTACK_AMOUNT_NGN=10000 (major NGN)
     """
-    if _env_first("PAYSTACK_AMOUNT", default="").strip() != "":
-        amt = _env_int("PAYSTACK_AMOUNT", default=0, minv=0)
-        return amt
+    amt_minor = (os.getenv("PAYSTACK_AMOUNT", "") or "").strip()
+    if amt_minor:
+        try:
+            return max(0, int(amt_minor))
+        except Exception:
+            pass
 
-    major = _env_int("PAYSTACK_AMOUNT_NGN", default=10000, minv=0)
-    return major * 100
+    # fallback to NGN major
+    try:
+        major = int((os.getenv("PAYSTACK_AMOUNT_NGN", "10000") or "10000").strip())
+    except Exception:
+        major = 10000
+    return max(0, major) * 100
 
-# We store:
-#  - pending reference -> client_id
-#  - access client_id -> paid_until_epoch
-_PENDING_REF = {}  # ref -> {"client_id": str, "created": epoch}
-_ACCESS = {}       # client_id -> {"paid_until": epoch, "last_ref": str, "updated": epoch}
-
-def _get_client_id_header():
-    cid = (request.headers.get("X-FXCO-Client") or "").strip()
-    if cid:
-        return cid[:128]
-    return ""
-
-def _now():
-    return time.time()
-
-def _cleanup_payment_state():
-    now = _now()
-    for ref in list(_PENDING_REF.keys()):
-        if now - _PENDING_REF[ref].get("created", now) > 24 * 60 * 60:
-            _PENDING_REF.pop(ref, None)
-    for cid in list(_ACCESS.keys()):
-        paid_until = _ACCESS[cid].get("paid_until", 0)
-        if paid_until and now > (paid_until + 7 * 24 * 60 * 60):
-            _ACCESS.pop(cid, None)
 
 def _paystack_headers():
     return {
@@ -207,23 +406,16 @@ def _paystack_headers():
         "Accept": "application/json",
     }
 
-def _paystack_ok_enabled():
-    """
-    If payment is not required => OK.
-    If payment is required => need secret key.
-    """
-    if not _require_payment():
-        return True
-    return bool(PAYSTACK_SECRET_KEY)
 
 def _callback_url():
-    cb = _env_first("PAYSTACK_CALLBACK_URL", default="").strip()
+    cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
     if cb:
         return cb
     origin = (request.headers.get("Origin") or "").strip()
     if origin:
         return origin
     return request.host_url.rstrip("/")
+
 
 def _ensure_paystack_success_param(url: str) -> str:
     u = (url or "").strip()
@@ -234,213 +426,86 @@ def _ensure_paystack_success_param(url: str) -> str:
     sep = "&" if "?" in u else "?"
     return f"{u}{sep}paystack=success"
 
-def _email_ok(email: str) -> bool:
-    if not email:
-        return False
-    email = email.strip()
-    if len(email) > 254:
-        return False
-    return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+def _get_paid_until(client_id: str) -> int:
+    if not client_id:
+        return 0
+    row = _sb_select_one("fxco_access", {"client_id": client_id})
+    if not row:
+        return 0
+    pu = row.get("paid_until")
+    if not pu:
+        return 0
+    dt = _parse_iso(str(pu))
+    if not dt:
+        return 0
+    return int(dt.timestamp())
+
 
 def _is_client_unlocked(client_id: str) -> bool:
-    _cleanup_payment_state()
     if not _require_payment():
-        # if payment gate is off, treat as "unlocked"
         return True
     if not client_id:
         return False
-    row = _ACCESS.get(client_id)
-    if not row:
-        return False
-    return _now() < float(row.get("paid_until", 0))
+    return _now() < _get_paid_until(client_id)
+
+
+def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
+    if not client_id:
+        return
+    dt = datetime.fromtimestamp(int(paid_until_epoch), tz=timezone.utc)
+    _sb_upsert(
+        "fxco_access",
+        {
+            "client_id": client_id,
+            "paid_until": _dt_to_iso(dt),
+            "last_ref": ref or None,
+            "updated_at": _dt_to_iso(_utc_now_dt()),
+        },
+        conflict="client_id",
+    )
 
 
 # ==========================
-# Resend OTP + Trial (in-memory)
+# Rate limiting (in-memory, but keyed by client id when possible)
 # ==========================
-RESEND_API_KEY = _env_first("RESEND_API_KEY", default="").strip()
-RESEND_FROM = _env_first("RESEND_FROM", default="").strip()
-AUTH_SIGNING_SECRET = _env_first("AUTH_SIGNING_SECRET", default="").strip()
-OTP_TTL_SECONDS = _env_int("RESEND_OTP_TTL_SECONDS", default=600, minv=60, maxv=3600)
-
-_OTP = {}     # email -> {"code": "123456", "exp": epoch, "attempts": int}
-_TRIAL = {}   # email -> {"start": epoch, "end": epoch}
-
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
-
-def _b64url_decode(s: str) -> bytes:
-    s = (s or "").strip()
-    pad = "=" * (-len(s) % 4)
-    return base64.urlsafe_b64decode(s + pad)
-
-def _sign_token(payload: dict) -> str:
-    if not AUTH_SIGNING_SECRET:
-        return ""
-    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    p = _b64url(raw)
-    sig = hmac.new(AUTH_SIGNING_SECRET.encode("utf-8"), p.encode("utf-8"), hashlib.sha256).digest()
-    return f"{p}.{_b64url(sig)}"
-
-def _verify_token(token: str) -> dict | None:
-    if not AUTH_SIGNING_SECRET:
-        return None
-    t = (token or "").strip()
-    if not t or "." not in t:
-        return None
-    p, s = t.split(".", 1)
+def _env_int(name: str, default: int) -> int:
     try:
-        expected = hmac.new(AUTH_SIGNING_SECRET.encode("utf-8"), p.encode("utf-8"), hashlib.sha256).digest()
-        if not hmac.compare_digest(_b64url(expected), s):
-            return None
-        payload = json.loads(_b64url_decode(p).decode("utf-8"))
-        exp = float(payload.get("exp") or 0)
-        if exp and _now() > exp:
-            return None
-        return payload
+        return max(1, int((os.getenv(name, str(default)) or str(default)).strip()))
     except Exception:
-        return None
-
-def _get_auth_email():
-    """
-    Accepts token in:
-      - X-FXCO-Auth: <token>
-      - Authorization: Bearer <token>
-    Returns lowercased email or "".
-    """
-    token = (request.headers.get("X-FXCO-Auth") or "").strip()
-    if not token:
-        authz = (request.headers.get("Authorization") or "").strip()
-        if authz.lower().startswith("bearer "):
-            token = authz.split(" ", 1)[1].strip()
-
-    payload = _verify_token(token)
-    if not payload:
-        return ""
-    email = (payload.get("email") or "").strip().lower()
-    if not _email_ok(email):
-        return ""
-    return email
-
-def _trial_status(email: str):
-    """
-    Returns tuple: (active: bool, end_epoch: int | None, started: bool)
-    """
-    e = (email or "").strip().lower()
-    if not e:
-        return (False, None, False)
-
-    row = _TRIAL.get(e)
-    if not row:
-        return (False, None, False)
-
-    end = float(row.get("end") or 0)
-    active = _now() < end
-    return (active, int(end) if end else None, True)
-
-def _ensure_trial(email: str):
-    e = (email or "").strip().lower()
-    if not e:
-        return None
-    if e in _TRIAL:
-        return _TRIAL[e]
-    start = _now()
-    end = start + (_trial_days() * 24 * 60 * 60)
-    _TRIAL[e] = {"start": start, "end": end}
-    return _TRIAL[e]
-
-def _resend_send_otp(email: str, code: str):
-    if not RESEND_API_KEY or not RESEND_FROM:
-        return False, "Resend not configured (missing RESEND_API_KEY or RESEND_FROM)."
-
-    subject = "Your FXCO-PILOT verification code"
-    html = f"""
-    <div style="font-family:Arial,sans-serif;line-height:1.6">
-      <h2 style="margin:0 0 12px">Verify your email</h2>
-      <p style="margin:0 0 12px">Your FXCO-PILOT code is:</p>
-      <div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:12px 0">{code}</div>
-      <p style="margin:0;color:#555">This code expires in {int(OTP_TTL_SECONDS/60)} minutes.</p>
-    </div>
-    """
-
-    payload = {
-        "from": RESEND_FROM,
-        "to": [email],
-        "subject": subject,
-        "html": html,
-    }
-
-    try:
-        r = requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            data=json.dumps(payload),
-            timeout=12,
-        )
-        if r.status_code >= 200 and r.status_code < 300:
-            return True, ""
-        return False, f"Resend error: {r.status_code} {r.text[:200]}"
-    except Exception as e:
-        return False, str(e)
+        return default
 
 
-# ==========================
-# Tiered rate check (UPDATED)
-# ==========================
-def _rate_check(ip: str):
+FREE_LIMIT_60S = _env_int("FREE_LIMIT_60S", 5)
+FREE_LIMIT_24H = _env_int("FREE_LIMIT_24H", 50)
+PAID_LIMIT_60S = _env_int("PAID_LIMIT_60S", 60)
+PAID_LIMIT_24H = _env_int("PAID_LIMIT_24H", 2000)
+
+_SHORT_WINDOW_SECONDS = 60
+_DAY_WINDOW_SECONDS = 24 * 60 * 60
+
+_RATE_SHORT = {}
+_RATE_DAY = {}
+
+
+def _rate_check(identity_key: str, is_paid: bool):
     """
     Returns: (ok: bool, retry_after_seconds: int, headers: dict)
-
-    Tier logic:
-      - paid: if _is_client_unlocked(client_id) == True
-      - trial: if email is verified and within trial window
-      - guest: everything else (very limited)
-    Identity key:
-      - use verified email when present (strong anti-spam)
-      - else use client_id (localStorage UUID)
-      - else use ip
+    Limits depend on paid status.
     """
-    now = time.time()
+    now = _now()
 
-    client_id = _get_client_id_header() or ("ip:" + (ip or "unknown"))
-    auth_email = _get_auth_email()
+    short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
+    day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
 
-    is_paid = _is_client_unlocked(client_id)
-    trial_active, trial_end, trial_started = _trial_status(auth_email)
+    if identity_key not in _RATE_SHORT:
+        _RATE_SHORT[identity_key] = deque()
+    if identity_key not in _RATE_DAY:
+        _RATE_DAY[identity_key] = deque()
 
-    if is_paid:
-        tier = "paid"
-        short_limit = _env_int("PAID_LIMIT_60S", default=60, minv=1, maxv=100000)
-        day_limit = _env_int("PAID_LIMIT_24H", default=2000, minv=1, maxv=10000000)
-    elif trial_active:
-        tier = "trial"
-        short_limit = _env_int("FREE_LIMIT_60S", default=5, minv=1, maxv=100000)
-        day_limit = _env_int("FREE_LIMIT_24H", default=50, minv=1, maxv=10000000)
-    else:
-        tier = "guest"
-        short_limit = _env_int("GUEST_LIMIT_60S", default=2, minv=1, maxv=100000)
-        day_limit = _env_int("GUEST_LIMIT_24H", default=10, minv=1, maxv=10000000)
+    short_q = _RATE_SHORT[identity_key]
+    day_q = _RATE_DAY[identity_key]
 
-    if auth_email:
-        ident = f"email:{auth_email}"
-    elif client_id:
-        ident = f"cid:{client_id}"
-    else:
-        ident = f"ip:{ip or 'unknown'}"
-
-    # init deques
-    if ident not in _RATE_SHORT:
-        _RATE_SHORT[ident] = deque()
-    if ident not in _RATE_DAY:
-        _RATE_DAY[ident] = deque()
-
-    short_q = _RATE_SHORT[ident]
-    day_q = _RATE_DAY[ident]
-
-    # prune
     while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
         short_q.popleft()
     while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
@@ -449,7 +514,6 @@ def _rate_check(ip: str):
     short_remaining = max(0, short_limit - len(short_q))
     day_remaining = max(0, day_limit - len(day_q))
 
-    # blocked
     if short_remaining <= 0 or day_remaining <= 0:
         retry_after = 1
         if short_remaining <= 0 and short_q:
@@ -459,29 +523,24 @@ def _rate_check(ip: str):
 
         headers = {
             "Retry-After": str(retry_after),
+            "X-RateLimit-Plan": "paid" if is_paid else "free",
             "X-RateLimit-Limit-60s": str(short_limit),
             "X-RateLimit-Remaining-60s": str(short_remaining),
             "X-RateLimit-Limit-24h": str(day_limit),
             "X-RateLimit-Remaining-24h": str(day_remaining),
-            "X-FXCO-Tier": tier,
         }
-        if tier == "trial" and trial_end:
-            headers["X-FXCO-Trial-Ends"] = str(trial_end)
         return False, retry_after, headers
 
-    # allow: record
     short_q.append(now)
     day_q.append(now)
 
     headers = {
+        "X-RateLimit-Plan": "paid" if is_paid else "free",
         "X-RateLimit-Limit-60s": str(short_limit),
         "X-RateLimit-Remaining-60s": str(short_remaining - 1),
         "X-RateLimit-Limit-24h": str(day_limit),
         "X-RateLimit-Remaining-24h": str(day_remaining - 1),
-        "X-FXCO-Tier": tier,
     }
-    if tier == "trial" and trial_end:
-        headers["X-FXCO-Trial-Ends"] = str(trial_end)
     return True, 0, headers
 
 
@@ -492,96 +551,163 @@ def _rate_check(ip: str):
 def index():
     return jsonify({"ok": True, "service": "fxco-pilot-backend", "hint": "Use /health and /api/analyze"}), 200
 
+
 @app.get("/health")
 def health():
-    return jsonify({"ok": True}), 200
+    return jsonify(
+        {
+            "ok": True,
+            "supabase_ok": _sb_ok(),
+            "resend_ok": _resend_ok(),
+            "require_payment": _require_payment(),
+        }
+    ), 200
 
 
 # ==========================
-# Auth endpoints (Resend OTP)
+# Auth (trial) endpoints
 # ==========================
 @app.post("/api/auth/start")
 def auth_start():
     """
-    POST JSON: { email }
-    Sends OTP to email.
+    POST { email }
+    - sends OTP via Resend
+    - stores OTP hash + expiry in Supabase
+    - anti-spam: only 1 OTP per email per 60s
     """
+    if not _sb_ok():
+        return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
+    if not _resend_ok():
+        return jsonify({"ok": False, "error": "Resend not configured on server."}), 500
+    if not AUTH_SIGNING_SECRET:
+        return jsonify({"ok": False, "error": "Missing AUTH_SIGNING_SECRET on server."}), 500
+
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
-
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
 
-    if not RESEND_API_KEY or not RESEND_FROM:
-        return jsonify({"ok": False, "error": "Email service not configured on server."}), 500
+    # If trial already exists and still active -> don't spam OTP, just say ok
+    active, trial_ends = _trial_active(email)
+    if active:
+        return jsonify({"ok": True, "already_active": True, "trial_ends": trial_ends}), 200
 
-    code = f"{int.from_bytes(os.urandom(3), 'big') % 1000000:06d}"
-    exp = _now() + OTP_TTL_SECONDS
-    _OTP[email] = {"code": code, "exp": exp, "attempts": 0}
+    # OTP resend cooldown
+    otp_row = _sb_select_one("fxco_otps", {"email": email})
+    if otp_row:
+        sent_at = _parse_iso(str(otp_row.get("sent_at") or ""))
+        if sent_at:
+            if (_utc_now_dt() - sent_at) < timedelta(seconds=60):
+                return jsonify({"ok": True, "cooldown": 60}), 200
 
-    ok, err = _resend_send_otp(email, code)
+    code = _otp_code()
+    code_hash = _otp_hash(email, code)
+    expires = _utc_now_dt() + timedelta(minutes=10)
+
+    # upsert OTP row
+    _sb_upsert(
+        "fxco_otps",
+        {
+            "email": email,
+            "code_hash": code_hash,
+            "expires_at": _dt_to_iso(expires),
+            "sent_at": _dt_to_iso(_utc_now_dt()),
+            "attempts": 0,
+        },
+        conflict="email",
+    )
+
+    subject = "Your FXCO-PILOT verification code"
+    html = f"""
+      <div style="font-family:Arial,sans-serif;line-height:1.5">
+        <h2>FXCO-PILOT • Email Verification</h2>
+        <p>Your 6-digit code is:</p>
+        <div style="font-size:28px;font-weight:800;letter-spacing:4px;padding:12px 16px;background:#111827;color:#fff;display:inline-block;border-radius:12px">
+          {code}
+        </div>
+        <p style="margin-top:14px">This code expires in <b>10 minutes</b>.</p>
+        <p style="opacity:.7">If you didn’t request this, you can ignore this email.</p>
+      </div>
+    """
+
+    ok, msg = _send_email_resend(email, subject, html)
     if not ok:
-        return jsonify({"ok": False, "error": err or "Failed to send OTP."}), 502
+        return jsonify({"ok": False, "error": f"Failed to send email: {msg}"}), 502
 
-    return jsonify({"ok": True, "message": "OTP sent.", "ttl_seconds": OTP_TTL_SECONDS}), 200
+    return jsonify({"ok": True}), 200
 
 
 @app.post("/api/auth/verify")
 def auth_verify():
     """
-    POST JSON: { email, code }
-    Verifies OTP and returns signed token.
-    Also starts/returns the 14-day trial window.
+    POST { email, code }
+    - verifies OTP
+    - creates trial if not existing
+    - returns { token, trial_ends }
     """
+    if not _sb_ok():
+        return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
+    if not AUTH_SIGNING_SECRET:
+        return jsonify({"ok": False, "error": "Missing AUTH_SIGNING_SECRET on server."}), 500
+
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     code = (data.get("code") or "").strip()
-
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
     if not re.fullmatch(r"\d{6}", code or ""):
         return jsonify({"ok": False, "error": "Invalid code format."}), 400
 
-    row = _OTP.get(email)
-    if not row:
-        return jsonify({"ok": False, "error": "No OTP request found. Please request a new code."}), 400
+    otp_row = _sb_select_one("fxco_otps", {"email": email})
+    if not otp_row:
+        return jsonify({"ok": False, "error": "No OTP found. Please request a new code."}), 400
 
-    if _now() > float(row.get("exp") or 0):
-        _OTP.pop(email, None)
+    expires_at = _parse_iso(str(otp_row.get("expires_at") or ""))
+    if not expires_at or _utc_now_dt() > expires_at:
         return jsonify({"ok": False, "error": "Code expired. Please request a new code."}), 400
 
-    row["attempts"] = int(row.get("attempts") or 0) + 1
-    if row["attempts"] > 8:
-        _OTP.pop(email, None)
+    attempts = int(otp_row.get("attempts") or 0)
+    if attempts >= 8:
         return jsonify({"ok": False, "error": "Too many attempts. Please request a new code."}), 429
 
-    if code != (row.get("code") or ""):
+    expected_hash = str(otp_row.get("code_hash") or "")
+    got_hash = _otp_hash(email, code)
+
+    if not expected_hash or not hmac.compare_digest(expected_hash, got_hash):
+        _sb_update("fxco_otps", {"email": email}, {"attempts": attempts + 1})
         return jsonify({"ok": False, "error": "Incorrect code."}), 400
 
-    # success
-    _OTP.pop(email, None)
+    # If trial already exists, keep existing end (don’t reset abuse)
+    trial_row = _trial_row(email)
+    if trial_row:
+        te = _parse_iso(str(trial_row.get("trial_ends") or ""))
+        if te:
+            trial_ends_epoch = int(te.timestamp())
+        else:
+            trial_ends_epoch = 0
+    else:
+        te = _utc_now_dt() + timedelta(days=_trial_days())
+        trial_ends_epoch = int(te.timestamp())
+        cid = _get_client_id_header() or None
+        ip = _client_ip()
 
-    trial = _ensure_trial(email)
-    trial_active, trial_end, _ = _trial_status(email)
+        _sb_upsert(
+            "fxco_trials",
+            {
+                "email": email,
+                "trial_ends": _dt_to_iso(te),
+                "created_at": _dt_to_iso(_utc_now_dt()),
+                "last_client_id": cid,
+                "last_ip": ip,
+            },
+            conflict="email",
+        )
 
-    # token (24h)
-    iat = int(_now())
-    exp = iat + 24 * 60 * 60
-    token = _sign_token({"email": email, "iat": iat, "exp": exp})
+    # OTP consumed (optional: delete; we just expire it immediately)
+    _sb_update("fxco_otps", {"email": email}, {"expires_at": _dt_to_iso(_utc_now_dt())})
 
-    if not token:
-        return jsonify({"ok": False, "error": "AUTH_SIGNING_SECRET missing on server."}), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "token": token,
-            "email": email,
-            "trial_active": trial_active,
-            "trial_ends": trial_end,
-            "trial_days": _trial_days(),
-        }
-    ), 200
+    token = _make_token(email, trial_ends_epoch)
+    return jsonify({"ok": True, "token": token, "trial_ends": trial_ends_epoch}), 200
 
 
 # ==========================
@@ -589,10 +715,6 @@ def auth_verify():
 # ==========================
 @app.get("/api/paystack/config")
 def paystack_config():
-    """
-    REQUIRED:
-      If require_payment=1/true AND secret missing => ok:false + error.
-    """
     enabled = _require_payment()
 
     if enabled and not PAYSTACK_SECRET_KEY:
@@ -622,11 +744,6 @@ def paystack_config():
 
 @app.post("/api/paystack/init")
 def paystack_init():
-    """
-    Creates Paystack hosted checkout session.
-    Expects JSON: { "email": "user@email.com" }
-    Returns: { ok, authorization_url, reference }
-    """
     if not _require_payment():
         return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
 
@@ -642,15 +759,12 @@ def paystack_init():
     if not client_id:
         client_id = "ip:" + _client_ip()
 
-    amount = int(_paystack_amount_minor())
-    currency = PAYSTACK_CURRENCY
-
     callback_url = _ensure_paystack_success_param(_callback_url())
 
     payload = {
         "email": email,
-        "amount": amount,
-        "currency": currency,
+        "amount": int(_paystack_amount_minor()),
+        "currency": PAYSTACK_CURRENCY,
         "callback_url": callback_url,
         "metadata": {
             "fxco_client_id": client_id,
@@ -670,24 +784,14 @@ def paystack_init():
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack init failed."}), 502
 
-        auth_url = (j.get("data") or {}).get("authorization_url")
-        reference = (j.get("data") or {}).get("reference")
-
-        if reference:
-            _PENDING_REF[reference] = {"client_id": client_id, "created": _now()}
-
-        return jsonify({"ok": True, "authorization_url": auth_url, "reference": reference}), 200
+        data = j.get("data") or {}
+        return jsonify({"ok": True, "authorization_url": data.get("authorization_url"), "reference": data.get("reference")}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.get("/api/paystack/verify")
 def paystack_verify():
-    """
-    Verifies a Paystack reference and unlocks access for mapped client_id.
-    Query: ?reference=xxxx
-    Returns: { ok, paid, reference, paid_until }
-    """
     if not _require_payment():
         return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
 
@@ -701,7 +805,6 @@ def paystack_verify():
     try:
         r = requests.get(f"{PAYSTACK_BASE}/transaction/verify/{reference}", headers=_paystack_headers(), timeout=15)
         j = r.json()
-
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack verify failed."}), 502
 
@@ -710,23 +813,17 @@ def paystack_verify():
         currency = (data.get("currency") or "").upper()
         amount = int(data.get("amount") or 0)
 
-        expected_amount = int(_paystack_amount_minor())
-        expected_currency = PAYSTACK_CURRENCY
-
-        paid = (status == "success") and (currency == expected_currency) and (amount >= expected_amount)
+        paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
 
         meta = data.get("metadata") or {}
         client_id = (meta.get("fxco_client_id") or "").strip()
-
         if not client_id:
-            pending = _PENDING_REF.get(reference) or {}
-            client_id = pending.get("client_id", "")
+            client_id = _get_client_id_header() or ("ip:" + _client_ip())
 
         if paid and client_id:
-            paid_until = _now() + _access_days() * 24 * 60 * 60
-            _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": reference, "updated": _now()}
-            _PENDING_REF.pop(reference, None)
-            return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": int(paid_until)}), 200
+            paid_until = int(_now() + _access_days() * 24 * 60 * 60)
+            _set_paid_access(client_id, paid_until, reference)
+            return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": paid_until}), 200
 
         return jsonify({"ok": True, "paid": False, "reference": reference}), 200
 
@@ -735,10 +832,11 @@ def paystack_verify():
 
 
 # ==========================
-# FX helpers
+# Helpers (existing)
 # ==========================
 def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
+
 
 def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
     txt = (signal_text or "").upper()
@@ -762,6 +860,7 @@ def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
         return "BTCUSD"
     return "EURUSD"
 
+
 def _to_float(v):
     if v is None:
         return None
@@ -777,6 +876,7 @@ def _to_float(v):
         return float(m.group(0))
     except Exception:
         return None
+
 
 def _parse_targets(val):
     if val is None:
@@ -797,6 +897,7 @@ def _parse_targets(val):
         except Exception:
             pass
     return out
+
 
 def calculate_rr(entry, stop, targets):
     entry_f = _to_float(entry)
@@ -825,11 +926,7 @@ def td_price(symbol: str):
         return cached
 
     try:
-        r = requests.get(
-            f"{TD_BASE}/price",
-            params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY},
-            timeout=10,
-        )
+        r = requests.get(f"{TD_BASE}/price", params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}, timeout=10)
         data = r.json()
         if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
@@ -862,12 +959,7 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
     try:
         r = requests.get(
             f"{TD_BASE}/time_series",
-            params={
-                "symbol": symbol,
-                "interval": interval,
-                "outputsize": limit,
-                "apikey": TWELVE_DATA_API_KEY,
-            },
+            params={"symbol": symbol, "interval": interval, "outputsize": limit, "apikey": TWELVE_DATA_API_KEY},
             timeout=12,
         )
         data = r.json()
@@ -890,8 +982,7 @@ def structure_from_candles(values):
     if not values or len(values) < 40:
         return {"structure": "unclear", "broken": False, "details": "Not enough candle data."}
 
-    vals = list(reversed(values))  # oldest -> newest
-
+    vals = list(reversed(values))
     try:
         closes = [float(v["close"]) for v in vals]
         highs = [float(v["high"]) for v in vals]
@@ -1039,8 +1130,32 @@ def _get_payload_fields():
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
     ip = _client_ip()
+    client_id = _get_client_id_header() or ("ip:" + ip)
 
-    ok, retry_after, rl_headers = _rate_check(ip)
+    # Determine trial status from token
+    token = (request.headers.get("X-FXCO-Auth") or "").strip()
+    token_payload = _verify_token(token) if token else None
+
+    trial_active = False
+    trial_ends_epoch = 0
+    if token_payload and isinstance(token_payload, dict):
+        email = str(token_payload.get("email") or "").strip().lower()
+        trial_ends_epoch = int(token_payload.get("trial_ends") or 0)
+        # Always confirm server-side (Supabase) so localStorage can't fake it
+        active, te = _trial_active(email)
+        trial_active = active
+        trial_ends_epoch = te or trial_ends_epoch
+
+    paid_active = _is_client_unlocked(client_id)
+
+    # Gate: if require_payment, allow only (paid OR trial)
+    if _require_payment() and not paid_active and not trial_active:
+        return jsonify({"error": "Access locked. Start free trial (verify email) or unlock via Pricing."}), 402
+
+    # Identity for rate limiting (not IP-only)
+    identity_key = f"cid:{client_id}"
+    # Apply PAID limits only if paid; trial uses FREE limits
+    ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
     if not ok:
         resp = jsonify(
             {
@@ -1051,36 +1166,22 @@ def analyze():
         resp.status_code = 429
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    # OPTIONAL: test mode
+    # OPTIONAL: test mode (cheap)
     if request.args.get("test") == "1":
-        resp = jsonify({"ok": True, "mode": "rate_limit_test", "note": "No OpenAI call made."})
-        resp.status_code = 200
+        resp = jsonify({"ok": True, "mode": "rate_limit_test"})
         for k, v in rl_headers.items():
             resp.headers[k] = v
-        return resp
-
-    client_id = _get_client_id_header() or ("ip:" + ip)
-    auth_email = _get_auth_email()
-    trial_active, trial_end, trial_started = _trial_status(auth_email)
-
-    # Gate logic:
-    # If payment required: allow if PAID OR TRIAL_ACTIVE. Otherwise 402.
-    if _require_payment():
-        if not _is_client_unlocked(client_id) and not trial_active:
-            msg = "Payment required. Trial ended or not verified. Please unlock via Paystack."
-            # Give a more helpful hint if they never verified email
-            if not auth_email:
-                msg = "Verify your email to start free trial, or unlock via Paystack."
-            resp = jsonify({"error": msg})
-            resp.status_code = 402
-            for k, v in rl_headers.items():
-                resp.headers[k] = v
-            return resp
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
+        return resp, 200
 
     # Parse payload
     pair_type, timeframe, signal_text = _get_payload_fields()
+
     missing = []
     if not pair_type:
         missing.append("pair_type")
@@ -1094,12 +1195,19 @@ def analyze():
             {
                 "error": "Missing required fields.",
                 "missing": missing,
+                "expected_any_of": {
+                    "pair_type": ["pair_type", "pairType"],
+                    "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    "signal_input": ["signal_input", "signal", "signalText"],
+                },
                 "received_content_type": request.headers.get("Content-Type", ""),
             }
         )
         resp.status_code = 400
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
     oa = _get_openai_client()
@@ -1108,8 +1216,11 @@ def analyze():
         resp.status_code = 500
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
+    # Optional image (FormData only)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -1117,6 +1228,7 @@ def analyze():
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
+
     live_snapshot = td_price(symbol)
     candles_snapshot = td_candles(symbol, interval="5min", limit=120)
 
@@ -1166,6 +1278,7 @@ Return ONLY valid JSON that matches this schema (no markdown):
   "verdict": "string",
   "guidance": ["string","string","string"]
 }}
+
 Rules:
 - Output MUST be raw JSON only.
 - entry/stop_loss/targets MUST be numeric-like.
@@ -1241,6 +1354,8 @@ Rules:
         resp = jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
     except json.JSONDecodeError:
@@ -1248,6 +1363,8 @@ Rules:
         resp.status_code = 502
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
     except Exception as e:
         msg = str(e)
@@ -1258,6 +1375,8 @@ Rules:
         resp.status_code = status
         for k, v in rl_headers.items():
             resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
 
