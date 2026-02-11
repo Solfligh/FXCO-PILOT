@@ -225,64 +225,19 @@
       margin-bottom: 10px;
     }
 
-    .decision {
-      padding: 12px;
-      font-size: 20px;
-      font-weight: 700;
-      border-radius: 12px;
-      text-align: center;
-      margin: 12px 0 16px;
-    }
-
-    .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
-    .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
-    .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
-
-    .confidence {
-      margin-bottom: 18px;
-      padding: 12px 12px;
-      border-radius: 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .confidence-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
-      color: #cbd5e1;
-      font-size: 12px;
-    }
-
-    .confidence-top .label {
+    .hint-pill {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      opacity: 0.9;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: #cbd5e1;
+      font-size: 12px;
+      line-height: 1.6;
     }
-
-    .confidence-top .value { font-weight: 700; color: #ffffff; }
-
-    .confidence-track {
-      height: 10px;
-      width: 100%;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-
-    .confidence-fill {
-      height: 100%;
-      width: 0%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
-      transition: width 450ms ease;
-    }
+    .hint-pill strong { color: #ffffff; }
 
     .consent-row {
       display: flex;
@@ -548,6 +503,7 @@
     </div>
 
     <div class="topbar-right">
+      <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
       <!-- Removed Unlock button (not needed anymore) -->
@@ -599,11 +555,21 @@
     </div>
 
     <div class="section">
-      <div class="title-small">AI Trade Decision & Analysis</div>
-      <div id="result" class="output-box">Awaiting analysis...</div>
+      <div class="title-small">Validation Status</div>
+      <div id="result" class="output-box">
+        <div class="hint-pill">
+          <div>✅</div>
+          <div>
+            <strong>Reports now open in a dedicated page.</strong><br/>
+            Run analysis to generate a professional validation report.
+          </div>
+        </div>
+      </div>
 
-      <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
-      <div id="history" class="output-box" style="min-height:120px;"></div>
+      <div class="title-small" style="margin-top:20px;">Recent Reports (local)</div>
+      <div id="history" class="output-box" style="min-height:120px;">
+        <div style="opacity:0.9;">No reports yet.</div>
+      </div>
     </div>
   </div>
 
@@ -719,7 +685,7 @@
     <div class="legal-modal-content">
       <div class="legal-callout">
         <p style="margin:0;">
-          <strong>Free Trial:</strong> Verify your email to start your 14-day trial. This helps stop spam and keeps the service stable.
+          <strong>Free Trial:</strong> Verify your email to start your 14-day trial.
         </p>
       </div>
 
@@ -764,104 +730,10 @@
 
     function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
-    function renderConfidenceBar(percent) {
-      const p = clamp(Number(percent ?? 0), 0, 100);
-      return `
-        <div class="confidence" aria-label="AI confidence score">
-          <div class="confidence-top">
-            <div class="label">AI Confidence</div>
-            <div class="value">${p}%</div>
-          </div>
-          <div class="confidence-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
-            <div class="confidence-fill" style="width:${p}%"></div>
-          </div>
-        </div>
-      `;
-    }
-
-    function renderDecisionBadge(decision) {
-      const d = (decision || "NEUTRAL").toUpperCase();
-      if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
-      if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
-      return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
-    }
-
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
       }[m]));
-    }
-
-    function renderWarningsBlock(warnings) {
-      const w = Array.isArray(warnings) ? warnings.filter(Boolean).slice(0, 6) : [];
-      if (!w.length) return "";
-      return `
-        <div class="warn-callout">
-          <strong>Trade Invalidation Warnings:</strong>
-          <ul class="fx-ul" style="margin-top:10px;">
-            ${w.map(x => `<li>${esc(x)}</li>`).join("")}
-          </ul>
-        </div>
-      `;
-    }
-
-    function renderAnalysisFromJSON(a) {
-      const bias = a.bias || "Unclear";
-      const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
-      const strength = (typeof a.strength === "number") ? a.strength : "";
-      const clarity = (typeof a.clarity === "number") ? a.clarity : "";
-      const sc = a.signal_check || {};
-      const mc = a.market_context || {};
-
-      const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
-      const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 6) : [];
-      const invalidations = a.invalidation_warnings || [];
-
-      return `
-        ${renderConfidenceBar(confidence)}
-
-        <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
-          ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
-          ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
-        </div>
-
-        <div class="fx-section-title">Signal Check</div>
-        <div class="fx-kv">
-          • <b>Direction:</b> ${esc(sc.direction)}<br/>
-          • <b>Entry:</b> ${esc(sc.entry)}<br/>
-          • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
-          • <b>Targets:</b> ${esc(Array.isArray(sc.targets) ? sc.targets.join(", ") : sc.targets)}<br/>
-          • <b>Approx RR:</b> ${esc(sc.rr)}
-        </div>
-
-        <div class="fx-section-title">Market Context</div>
-        <div class="fx-kv">
-          • <b>Structure:</b> ${esc(mc.structure)}<br/>
-          • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
-          • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
-          • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
-        </div>
-
-        ${renderDecisionBadge(a.decision)}
-
-        ${renderWarningsBlock(invalidations)}
-
-        ${why.length ? `
-          <div class="fx-section-title">Why This Trade?</div>
-          <ul class="fx-ul">
-            ${why.map(r => `<li>${esc(r)}</li>`).join("")}
-          </ul>
-        ` : ""}
-
-        ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
-
-        ${guidance.length ? `
-          <div class="fx-section-title">Guidance</div>
-          <ul class="fx-ul">
-            ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
-          </ul>
-        ` : ""}
-      `;
     }
 
     /* Per-session client id */
@@ -880,6 +752,78 @@
       }
     }
     const FXCO_CLIENT_ID = getOrCreateClientId();
+
+    /* Report storage */
+    const REPORT_KEY = "fxcoReport";
+    const REPORTS_LIST_KEY = "fxco_reports_list_v1"; // local history list
+
+    function hasLastReport() {
+      try { return !!sessionStorage.getItem(REPORT_KEY); } catch { return false; }
+    }
+
+    function goToLastReport() {
+      window.location.href = "/result.html";
+    }
+
+    function updateViewReportButton() {
+      const btn = document.getElementById("viewReportBtn");
+      if (!btn) return;
+      btn.style.display = hasLastReport() ? "inline-flex" : "none";
+    }
+
+    function addToLocalReportsList(report) {
+      try {
+        const raw = localStorage.getItem(REPORTS_LIST_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        const safeList = Array.isArray(list) ? list : [];
+
+        const item = {
+          ts: Date.now(),
+          pairType: report?.pair_type || report?.pairType || "",
+          timeframe: report?.timeframe || "",
+          signal: report?.signal_input || report?.signal || "",
+          decision: report?.analysis?.decision || report?.decision || report?.analysis?.verdict || ""
+        };
+
+        safeList.unshift(item);
+        const trimmed = safeList.slice(0, 8); // keep last 8
+        localStorage.setItem(REPORTS_LIST_KEY, JSON.stringify(trimmed));
+      } catch {}
+    }
+
+    function renderLocalHistory() {
+      const box = document.getElementById("history");
+      if (!box) return;
+
+      let raw = "";
+      try { raw = localStorage.getItem(REPORTS_LIST_KEY) || ""; } catch {}
+
+      let list = [];
+      try { list = raw ? JSON.parse(raw) : []; } catch { list = []; }
+      if (!Array.isArray(list) || list.length === 0) {
+        box.innerHTML = '<div style="opacity:0.9;">No reports yet.</div>';
+        return;
+      }
+
+      box.innerHTML = list.map((r) => {
+        const dt = new Date(r.ts || Date.now()).toLocaleString();
+        const decision = esc(r.decision || "—");
+        const meta = `${esc(r.pairType || "—")} • ${esc(r.timeframe || "—")}`;
+        const sig = esc((r.signal || "").slice(0, 120));
+        return `
+          <div style="border-bottom:1px solid rgba(255,255,255,0.08);padding:12px 0;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+              <div style="font-weight:800;color:#fff;">${meta}</div>
+              <div style="opacity:0.85;font-size:11px;white-space:nowrap;">${esc(dt)}</div>
+            </div>
+            <div style="margin-top:6px;opacity:0.9;font-size:12px;line-height:1.6;">
+              <b>Decision:</b> ${decision}<br/>
+              <b>Signal:</b> ${sig}${(r.signal||"").length>120 ? "…" : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
 
     /* Auth storage */
     const AUTH_TOKEN_KEY = "fxco_auth_token_v1";
@@ -1471,29 +1415,35 @@
 
         const data = await res.json();
 
-        if (data && data.analysis) {
-          const html = renderAnalysisFromJSON(data.analysis);
-          document.getElementById("result").innerHTML = html;
+        // Normalize a report object that result.html can read nicely
+        const reportPayload = {
+          pair_type: pairType,
+          timeframe: timeframe,
+          signal_input: signal,
+          analysis: data?.analysis || null,
+          raw: data || null,
+          generated_at: Date.now()
+        };
 
-          const historyBox = document.getElementById("history");
-          historyBox.innerHTML =
-            `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                ${html}
-             </div>` + historyBox.innerHTML;
+        // Store for result page
+        try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
 
-          btn.disabled = false;
-          applyPaymentGateUI();
-          return;
-        }
+        // Store a lightweight local history list (so homepage still shows activity)
+        addToLocalReportsList(reportPayload);
+        renderLocalHistory();
 
-        const text = (data && data.result) ? String(data.result) : "No result returned.";
-        document.getElementById("result").innerHTML = esc(text).replace(/\n/g, "<br/>");
-        btn.disabled = false;
-        applyPaymentGateUI();
+        // Update CTA
+        document.getElementById("result").innerHTML =
+          "<div class='hint-pill'><div>📄</div><div><strong>Report generated.</strong><br/>Opening your validation report…</div></div>";
+
+        updateViewReportButton();
+
+        // Redirect to professional report page
+        window.location.href = "/result.html";
 
       } catch (err) {
         document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+          "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
         btn.disabled = false;
         applyPaymentGateUI();
       }
@@ -1504,6 +1454,8 @@
     loadPaystackConfig();
     verifyPaystackIfReturned();
     updateTrialButton();
+    renderLocalHistory();
+    updateViewReportButton();
   </script>
 </body>
 </html>
