@@ -59,7 +59,6 @@
       padding: 28px 18px 60px;
     }
 
-    /* Top bar */
     .topbar{
       display:flex;
       align-items:center;
@@ -130,7 +129,6 @@
       box-shadow: 0 16px 40px rgba(11,18,32,.20);
     }
 
-    /* Hero */
     .hero{
       margin-top: 10px;
       border-radius: var(--radius);
@@ -223,7 +221,6 @@
       letter-spacing: .2px;
     }
 
-    /* Layout below */
     .grid{
       display:grid;
       grid-template-columns: .95fr 1.05fr;
@@ -306,13 +303,12 @@
       line-height: 1.75;
       color: #0b1220;
       font-size: 13px;
-      white-space: pre-wrap;   /* keeps paragraphs if you send plain text */
+      white-space: pre-wrap;
       word-break: break-word;
     }
 
     .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
 
-    /* Footer note */
     .foot{
       margin-top: 12px;
       color: var(--muted);
@@ -322,7 +318,6 @@
       padding: 10px 6px 0;
     }
 
-    /* Print */
     @media print{
       .topbar .actions{ display:none; }
       body{ background: #fff; }
@@ -333,7 +328,6 @@
 
 <body>
   <div class="wrap">
-    <!-- Topbar -->
     <div class="topbar">
       <div class="brand">
         <div class="mark"></div>
@@ -351,7 +345,6 @@
       </div>
     </div>
 
-    <!-- Hero / Summary -->
     <section class="hero">
       <div class="heroGrid">
         <div>
@@ -396,7 +389,6 @@
       </div>
     </section>
 
-    <!-- Details -->
     <div class="grid">
       <section class="card">
         <h3>Key Checks</h3>
@@ -428,7 +420,6 @@
     }
 
     function setVerdict(v){
-      const badge = document.getElementById("verdictBadge");
       const dot = document.getElementById("verdictDot");
       const text = document.getElementById("verdictText");
 
@@ -437,13 +428,13 @@
       let label = "NO VERDICT";
       let dotColor = "rgba(15,23,42,.35)";
 
-      if (verdict.includes("approve") || verdict.includes("valid") || verdict.includes("green") || verdict.includes("ok")){
+      if (verdict.includes("approve") || verdict.includes("valid") || verdict.includes("green") || verdict.includes("take") || verdict.includes("yes") || verdict.includes("ok")){
         label = "APPROVED";
         dotColor = "rgba(34,197,94,.95)";
-      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("yellow")){
+      } else if (verdict.includes("caution") || verdict.includes("warn") || verdict.includes("yellow") || verdict.includes("reduce")){
         label = "CAUTION";
         dotColor = "rgba(245,158,11,.95)";
-      } else if (verdict.includes("reject") || verdict.includes("avoid") || verdict.includes("red") || verdict.includes("no")){
+      } else if (verdict.includes("reject") || verdict.includes("avoid") || verdict.includes("red") || verdict.includes("no") || verdict.includes("don't")){
         label = "REJECTED";
         dotColor = "rgba(239,68,68,.95)";
       }
@@ -460,35 +451,157 @@
       return "chip";
     }
 
+    function escHtml(s){
+      return String(s ?? "").replace(/[&<>"']/g, m => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+      }[m]));
+    }
+
     function addRow(container, key, val, chip){
       const el = document.createElement("div");
       el.className = "row";
       el.innerHTML = `
         <div class="left">
-          <p class="key">${key}</p>
-          <p class="val">${val}</p>
+          <p class="key">${escHtml(key)}</p>
+          <p class="val">${escHtml(val)}</p>
         </div>
-        ${chip ? `<span class="${chipClass(chip)}">${chip}</span>` : ""}
+        ${chip ? `<span class="${chipClass(chip)}">${escHtml(chip)}</span>` : ""}
       `;
       container.appendChild(el);
     }
 
-    function nowStamp(){
-      const d = new Date();
+    function stampFrom(ts){
+      if (!ts) {
+        const d = new Date();
+        return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+      }
+      const n = Number(ts);
+      const d = isFinite(n) ? new Date(n) : new Date();
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
     }
 
-    function parseReport(raw){
-      // raw can be anything. We normalize.
-      // Expected: { verdict, analysis, pair, side, risk, snapshot?, checks? }
-      const r = raw || {};
+    function pick(obj, keys){
+      for (const k of keys){
+        if (obj && obj[k] !== undefined && obj[k] !== null && String(obj[k]).trim() !== "") return obj[k];
+      }
+      return "";
+    }
 
-      // Some backends return { result: "..."} or { analysis: "..."}.
-      // Some might return a single string. Handle both.
-      if (typeof r === "string") {
-        return { verdict: "", analysis: r };
+    function normalizeFromIndexPayload(payload){
+      // Handles your new index.html payload:
+      // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
+      const p = payload || {};
+      const a = (p.analysis && typeof p.analysis === "object") ? p.analysis : {};
+
+      const verdict =
+        pick(a, ["verdict","decision","final_verdict","recommendation"]) ||
+        pick(p, ["verdict","decision","status"]) ||
+        "";
+
+      const direction =
+        pick(a, ["direction","bias","side"]) ||
+        "";
+
+      const risk =
+        pick(a, ["risk","risk_level","riskLevel","risk_summary"]) ||
+        "";
+
+      // Pair display: prefer symbol in analysis if present, else pair_type
+      const pair =
+        pick(a, ["pair","symbol","instrument"]) ||
+        pick(p, ["pair","pair_type"]) ||
+        "";
+
+      // Snapshot: try common shapes
+      const entry = pick(a, ["entry","entry_price"]);
+      const sl = pick(a, ["stop_loss","sl"]);
+      const tp = pick(a, ["take_profit","tp","target","targets"]);
+      const rr = pick(a, ["rr","risk_reward","riskReward","approx_rr"]);
+
+      const snapshot = {};
+
+      if (pair) snapshot["Pair Type"] = pick(p, ["pair_type"]) || pair;
+      if (pick(p, ["timeframe"])) snapshot["Timeframe"] = p.timeframe;
+      if (direction) snapshot["Direction"] = direction;
+      if (entry) snapshot["Entry"] = entry;
+      if (sl) snapshot["Stop Loss"] = sl;
+      if (tp) snapshot["Take Profit / Targets"] = tp;
+      if (rr) snapshot["Approx R:R"] = rr;
+
+      // Confidence / strength / clarity if present
+      const conf = pick(a, ["confidence","ai_confidence","score"]);
+      const strength = pick(a, ["strength"]);
+      const clarity = pick(a, ["clarity"]);
+      if (conf) snapshot["AI Confidence"] = conf;
+      if (strength) snapshot["Strength"] = strength;
+      if (clarity) snapshot["Clarity"] = clarity;
+
+      // Build checks list from known fields if present
+      let checks = [];
+      const maybeChecks = pick(a, ["checks","key_checks","rules"]);
+      if (Array.isArray(maybeChecks)) checks = maybeChecks;
+
+      // If analysis includes "market_context" object, turn it into checks
+      const ctx = a.market_context && typeof a.market_context === "object" ? a.market_context : null;
+      if (ctx) {
+        const ctxPairs = Object.entries(ctx).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
+        for (const [k,v] of ctxPairs) {
+          checks.push({ label: "Context • " + String(k).replace(/_/g," "), detail: String(v), level: "" });
+        }
       }
 
+      // If analysis includes "why" or "reasons" array/string
+      const why = pick(a, ["why","reasons","why_this_trade"]);
+      if (Array.isArray(why)) {
+        for (const s of why) checks.push({ label: "Why", detail: String(s), level: "" });
+      } else if (typeof why === "string" && why.trim()) {
+        // split bullets if present
+        const lines = why.split("\n").map(x => x.trim()).filter(Boolean);
+        if (lines.length > 1) {
+          for (const line of lines) checks.push({ label: "Why", detail: line.replace(/^[-•]\s*/,""), level: "" });
+        } else {
+          checks.push({ label: "Why", detail: why.trim(), level: "" });
+        }
+      }
+
+      // Reasoning text: prefer longform fields
+      const analysisText =
+        pick(a, ["reasoning","analysis_text","analysis","summary","verdict_explanation"]) ||
+        (typeof p.raw === "object" ? pick(p.raw, ["reasoning","analysis","summary","message"]) : "") ||
+        "";
+
+      // If still empty, show the user's original signal (so page isn't blank)
+      const fallbackText =
+        (pick(p, ["signal_input"]) ? "Signal:\n" + p.signal_input : "") ||
+        "";
+
+      return {
+        verdict,
+        analysis: analysisText || fallbackText,
+        pair,
+        side: direction,
+        risk,
+        snapshot,
+        checks,
+        generated_at: pick(p, ["generated_at"]) || Date.now(),
+        raw: payload
+      };
+    }
+
+    function parseReport(raw){
+      // raw can be JSON string or object
+      const r = raw || {};
+
+      if (typeof r === "string") {
+        return { verdict: "", analysis: r, pair: "", side: "", risk: "", snapshot: {}, checks: [], generated_at: Date.now(), raw: r };
+      }
+
+      // If it looks like the new payload (from index.html), normalize it
+      if (r && (r.pair_type !== undefined || r.signal_input !== undefined || (r.analysis && typeof r.analysis === "object"))) {
+        return normalizeFromIndexPayload(r);
+      }
+
+      // Otherwise: old generic format
       const verdict = r.verdict ?? r.decision ?? r.status ?? "";
       const analysis = r.analysis ?? r.reasoning ?? r.result ?? r.message ?? "";
 
@@ -505,22 +618,18 @@
 
       const checks = r.checks ?? r.key_checks ?? r.rules ?? [];
 
-      return { verdict, analysis, pair, side, risk, snapshot, checks, raw: r };
+      return { verdict, analysis, pair, side, risk, snapshot, checks, generated_at: r.generated_at || Date.now(), raw: r };
     }
 
     function render(report){
-      // Meta
-      document.getElementById("metaLine").textContent = `Generated — ${nowStamp()}`;
+      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at)}`;
 
-      // KPIs
       document.getElementById("kpiPair").textContent = fmt(report.pair);
       document.getElementById("kpiSide").textContent = safeUpper(report.side);
       document.getElementById("kpiRisk").textContent = fmt(report.risk);
 
-      // Verdict
       setVerdict(report.verdict);
 
-      // Snapshot block
       const snapshotList = document.getElementById("snapshotList");
       snapshotList.innerHTML = "";
 
@@ -535,13 +644,10 @@
         }
       }
 
-      // Checks
       const checksList = document.getElementById("checksList");
       checksList.innerHTML = "";
 
-      // checks can be array of strings OR array of objects
       const checks = Array.isArray(report.checks) ? report.checks : [];
-
       if (checks.length === 0){
         addRow(checksList, "Checks", "No structured checks returned. Displaying AI reasoning instead.", "");
       } else {
@@ -557,12 +663,10 @@
         }
       }
 
-      // Analysis
       const analysisBox = document.getElementById("analysisBox");
       const text = (typeof report.analysis === "string") ? report.analysis.trim() : "";
       analysisBox.textContent = text || "No analysis text returned.";
 
-      // Copy payload (summary)
       window.__fxco_copy = {
         verdict: report.verdict,
         pair: report.pair,
@@ -572,8 +676,32 @@
       };
     }
 
-    // Actions
-    document.getElementById("btnBack").addEventListener("click", () => history.back());
+    function getStoredReportRaw(){
+      // 1) sessionStorage current run
+      try {
+        const s = sessionStorage.getItem("fxcoReport");
+        if (s) return s;
+      } catch {}
+
+      // 2) localStorage fallback (persisted)
+      try {
+        const l = localStorage.getItem("fxcoReport_last_v1");
+        if (l) return l;
+      } catch {}
+
+      return "";
+    }
+
+    function goBackSmart(){
+      // If user landed directly with no history, go home
+      if (window.history.length <= 1) {
+        window.location.href = "/";
+        return;
+      }
+      history.back();
+    }
+
+    document.getElementById("btnBack").addEventListener("click", goBackSmart);
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
 
@@ -600,23 +728,25 @@ ${fmt(d.analysis)}`.trim();
       }
     });
 
-    // Load report from sessionStorage
     (function init(){
-      const raw = sessionStorage.getItem("fxcoReport");
+      const raw = getStoredReportRaw();
+
       if (!raw){
-        // Make it still look pro if user landed here directly
         render(parseReport({
           verdict: "No report",
           analysis: "No validation data was found. Go back and analyze a trade to generate a new report.",
           pair: "—",
           side: "—",
-          risk: "—"
+          risk: "—",
+          generated_at: Date.now()
         }));
         return;
       }
 
       try{
         const parsed = JSON.parse(raw);
+        // Ensure sessionStorage is hydrated (useful for consistency)
+        try { sessionStorage.setItem("fxcoReport", JSON.stringify(parsed)); } catch {}
         render(parseReport(parsed));
       } catch(e){
         // If it wasn't JSON, render as text
