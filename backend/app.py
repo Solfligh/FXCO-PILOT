@@ -31,7 +31,7 @@ app = Flask(__name__)
 #
 # Callback URL (where Paystack redirects after payment):
 #   PAYSTACK_CALLBACK_URL=https://YOUR-FRONTEND-DOMAIN/
-#   Example: https://fxco-pilot.vercel.app/
+#   Example: https://fxco-pilot.solfightech.org/
 #
 # Optional:
 #   PAYSTACK_ACCESS_DAYS=30                   # how long to unlock after payment (default 30)
@@ -161,8 +161,9 @@ PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
 
 PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
 
-# ₦10,000/month => 10000 NGN major => 1,000,000 kobo minor
+
 def _paystack_amount_minor():
+    # ₦10,000/month => 10000 NGN major => 1,000,000 kobo minor
     try:
         major = int((os.getenv("PAYSTACK_AMOUNT_NGN", "10000") or "10000").strip())
     except Exception:
@@ -226,23 +227,49 @@ def _paystack_headers():
 
 
 def _paystack_ok_enabled():
+    """
+    If payment is not required => OK.
+    If payment is required => need secret key.
+    """
     if not _require_payment():
         return True
     return bool(PAYSTACK_SECRET_KEY)
 
 
 def _callback_url():
-    # Paystack redirect url after payment
-    # Best: set PAYSTACK_CALLBACK_URL to your deployed frontend
+    """
+    Paystack redirect url after payment.
+
+    BEST: set PAYSTACK_CALLBACK_URL to your deployed frontend domain
+      e.g. https://fxco-pilot.solfightech.org/
+
+    We will NOT guess incorrectly if you set the env.
+    """
     cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
     if cb:
         return cb
+
     # fallback: origin header (works if same origin / proxied)
     origin = (request.headers.get("Origin") or "").strip()
     if origin:
         return origin
+
     # fallback: just host_url (backend) - not ideal but better than nothing
     return request.host_url.rstrip("/")
+
+
+def _ensure_paystack_success_param(url: str) -> str:
+    """
+    Ensures `paystack=success` is present, preserving existing query params.
+    Works whether url ends with / or has ? already.
+    """
+    u = (url or "").strip()
+    if not u:
+        return u
+    if "paystack=success" in u:
+        return u
+    sep = "&" if "?" in u else "?"
+    return f"{u}{sep}paystack=success"
 
 
 def _email_ok(email: str) -> bool:
@@ -286,8 +313,24 @@ def health():
 def paystack_config():
     """
     Frontend calls this to show pricing + decide whether to lock analysis.
+    REQUIRED CHANGE:
+      If require_payment=1 AND secret is missing => ok:false + error field.
     """
     enabled = _require_payment()
+
+    if enabled and not PAYSTACK_SECRET_KEY:
+        return jsonify(
+            {
+                "ok": False,
+                "require_payment": True,
+                "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
+                "currency": PAYSTACK_CURRENCY,
+                "amount": _paystack_amount_minor(),  # still show price
+                "public_key": PAYSTACK_PUBLIC_KEY or None,
+                "access_days": _access_days(),
+            }
+        ), 200
+
     ok = _paystack_ok_enabled()
     return jsonify(
         {
@@ -307,6 +350,9 @@ def paystack_init():
     Creates a Paystack hosted checkout session.
     Expects JSON: { "email": "user@email.com" }
     Returns: { ok, authorization_url, reference }
+
+    REQUIRED CHANGE:
+      callback_url must use PAYSTACK_CALLBACK_URL and ensure paystack=success is present.
     """
     if not _require_payment():
         return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
@@ -327,9 +373,8 @@ def paystack_init():
     amount = _paystack_amount_minor()
     currency = PAYSTACK_CURRENCY
 
-    # Paystack callback: we append query params expected by your frontend
-    cb = _callback_url().rstrip("/")
-    callback_url = f"{cb}/?paystack=success"
+    # ✅ FIXED callback: always prefer env, preserve existing params, ensure paystack=success exists
+    callback_url = _ensure_paystack_success_param(_callback_url())
 
     payload = {
         "email": email,
@@ -344,7 +389,12 @@ def paystack_init():
     }
 
     try:
-        r = requests.post(f"{PAYSTACK_BASE}/transaction/initialize", headers=_paystack_headers(), data=json.dumps(payload), timeout=15)
+        r = requests.post(
+            f"{PAYSTACK_BASE}/transaction/initialize",
+            headers=_paystack_headers(),
+            data=json.dumps(payload),
+            timeout=15,
+        )
         j = r.json()
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack init failed."}), 502
@@ -407,7 +457,6 @@ def paystack_verify():
             days = _access_days()
             paid_until = _now() + days * 24 * 60 * 60
             _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": reference, "updated": _now()}
-            # no longer pending
             _PENDING_REF.pop(reference, None)
             return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": int(paid_until)}), 200
 
@@ -765,11 +814,14 @@ def analyze():
                 cache_key = f"ps_verify::{ref}"
                 cached = _cache_get(cache_key)
                 if cached is None:
-                    # try verify with paystack quickly
                     try:
-                        vr = requests.get(f"{PAYSTACK_BASE}/transaction/verify/{ref}", headers=_paystack_headers(), timeout=12)
+                        vr = requests.get(
+                            f"{PAYSTACK_BASE}/transaction/verify/{ref}",
+                            headers=_paystack_headers(),
+                            timeout=12,
+                        )
                         vj = vr.json()
-                        _cache_set(cache_key, vj, ttl=30)  # short cache
+                        _cache_set(cache_key, vj, ttl=30)
                         cached = vj
                     except Exception:
                         cached = None
@@ -781,7 +833,6 @@ def analyze():
                     amount = int(data.get("amount") or 0)
                     paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= _paystack_amount_minor())
                     if paid:
-                        # unlock this client for N days
                         paid_until = _now() + _access_days() * 24 * 60 * 60
                         _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": ref, "updated": _now()}
 
