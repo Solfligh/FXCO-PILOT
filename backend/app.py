@@ -838,6 +838,26 @@ def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
 
 
+# ✅ FIX: TwelveData symbol formatter
+def td_symbol(s: str) -> str:
+    """
+    TwelveData commonly expects slash-format for FX/Metals/Crypto pairs, e.g. EUR/USD.
+    Your internal normalization removes the slash (EURUSD). Convert ONLY for TwelveData calls.
+    """
+    raw = (s or "").upper().strip()
+
+    # If already provided as EUR/USD, keep it
+    if "/" in raw:
+        return raw
+
+    sym = _norm_symbol(raw)
+
+    # Convert 6-letter pairs -> XXX/YYY
+    if re.fullmatch(r"[A-Z]{6}", sym):
+        return f"{sym[:3]}/{sym[3:]}"
+    return sym
+
+
 def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
     txt = (signal_text or "").upper()
 
@@ -919,7 +939,9 @@ def td_price(symbol: str):
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
-    symbol = _norm_symbol(symbol or "EURUSD")
+    # ✅ FIX: use TwelveData symbol format (EUR/USD)
+    symbol = td_symbol(symbol or "EURUSD")
+
     cache_key = f"td_price::{symbol}"
     cached = _cache_get(cache_key)
     if cached is not None:
@@ -947,7 +969,9 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
-    symbol = _norm_symbol(symbol or "EURUSD")
+    # ✅ FIX: use TwelveData symbol format (EUR/USD)
+    symbol = td_symbol(symbol or "EURUSD")
+
     interval = (interval or "5min").strip()
     limit = int(limit or 120)
 
