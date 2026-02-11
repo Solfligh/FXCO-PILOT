@@ -198,6 +198,7 @@
       background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
     }
 
+    /* rate limit + pay hint line */
     .rate-hint {
       margin-top: 10px;
       font-size: 12px;
@@ -376,6 +377,253 @@
     }
 
     .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
+
+    .legal-callout {
+      border: 1px solid rgba(251,191,36,0.22);
+      background: rgba(251,191,36,0.08);
+      padding: 14px;
+      border-radius: 14px;
+      margin: 12px 0;
+    }
+
+    .legal-callout strong { color: #fbbf24; }
+
+    .fx-ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    /* Pricing modal styles */
+    .pricing-card {
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .price-row {
+      display:flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .price {
+      font-size: 28px;
+      font-weight: 900;
+      color: #ffffff;
+    }
+    .per {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+    .pill {
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      font-size: 12px;
+      border: 1px solid rgba(0,212,106,0.35);
+      background: rgba(0,212,106,0.12);
+      color: #b8ffdd;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+    .muted { opacity: 0.85; }
+    .small { font-size: 12px; line-height: 1.6; }
+
+    /* Auth (OTP) modal bits */
+    .auth-row {
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin-top: 10px;
+    }
+    .auth-row .topbtn { flex: 1; }
+    .auth-status {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #ffd86b;
+      opacity: 0.95;
+      display:none;
+    }
+    .auth-ok { color: #b8ffdd; }
+    .auth-danger { color: #ff9aa2; }
+
+    /* ✅ Institutional Verdict Preview modal */
+    .preview-backdrop {
+      display:none;
+      position: fixed;
+      inset: 0;
+      z-index: 2147483646;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(6px);
+    }
+
+    .preview-modal{
+      display:none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2147483647;
+      width: min(760px, 92vw);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      box-shadow: 0 18px 70px rgba(0,0,0,0.70);
+      overflow: hidden;
+      background: rgba(18,20,28,0.95);
+      color: #e5e7eb;
+    }
+
+    .preview-head{
+      padding: 16px 18px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .preview-title{
+      display:flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .preview-title b{
+      font-size: 13px;
+      letter-spacing: .2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .preview-title span{
+      font-size: 12px;
+      color: rgba(203,213,225,0.9);
+    }
+
+    .preview-body{
+      padding: 16px 18px 18px;
+    }
+
+    .decision-banner{
+      border-radius: 16px;
+      padding: 14px 14px;
+      border: 1px solid rgba(255,255,255,0.10);
+      display:flex;
+      gap: 12px;
+      align-items:flex-start;
+    }
+
+    .decision-icon{
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight: 900;
+      font-size: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      flex: 0 0 auto;
+    }
+
+    .decision-text b{
+      display:block;
+      font-size: 13px;
+      letter-spacing: .25px;
+    }
+    .decision-text p{
+      margin: 6px 0 0;
+      font-size: 12px;
+      line-height: 1.55;
+      color: rgba(226,232,240,0.95);
+    }
+
+    .dec-ok{
+      background: rgba(34,197,94,0.14);
+      border-color: rgba(34,197,94,0.25);
+    }
+    .dec-ok .decision-icon{ background: rgba(34,197,94,0.22); color: #bbf7d0; }
+
+    .dec-cond{
+      background: rgba(245,158,11,0.14);
+      border-color: rgba(245,158,11,0.26);
+    }
+    .dec-cond .decision-icon{ background: rgba(245,158,11,0.20); color: #fde68a; }
+
+    .dec-wait{
+      background: rgba(148,163,184,0.12);
+      border-color: rgba(148,163,184,0.22);
+    }
+    .dec-wait .decision-icon{ background: rgba(148,163,184,0.18); color: #e2e8f0; }
+
+    .dec-bad{
+      background: rgba(239,68,68,0.12);
+      border-color: rgba(239,68,68,0.24);
+    }
+    .dec-bad .decision-icon{ background: rgba(239,68,68,0.16); color: #fecaca; }
+
+    .preview-grid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    @media(max-width: 640px){
+      .preview-grid{ grid-template-columns: 1fr; }
+    }
+
+    .preview-kpi{
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.04);
+      padding: 12px;
+    }
+    .preview-kpi .k{
+      font-size: 11px;
+      color: rgba(203,213,225,0.85);
+      margin-bottom: 6px;
+      font-weight: 700;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .preview-kpi .v{
+      font-size: 14px;
+      font-weight: 900;
+      color: #fff;
+    }
+    .preview-kpi .s{
+      margin-top: 6px;
+      font-size: 11px;
+      color: rgba(203,213,225,0.85);
+      line-height: 1.4;
+    }
+
+    .preview-actions{
+      display:flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .preview-actions .topbtn{ padding: 10px 12px; border-radius: 12px; }
+
+    @media(max-width: 900px){
+      .container { flex-direction: column; margin: 20px; padding: 25px; }
+      .sessions span { margin-right: 10px; }
+      .topbar { padding: 12px 16px; }
+    }
+
+    @media(max-width: 620px){
+      .sessions { display:none; }
+    }
   </style>
 </head>
 
@@ -438,6 +686,7 @@
 
       <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
       <div id="rateHint" class="rate-hint"></div>
+
       <div id="payHint" class="rate-hint" style="display:none;"></div>
     </div>
 
@@ -495,9 +744,9 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
+      <div class="legal-callout">
         <p style="margin:0;">
-          <strong style="color:#fbbf24;">Trading Risk Notice:</strong> Trading financial instruments involves significant risk and may not be suitable for everyone.
+          <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
           You can lose part or all of your capital.
         </p>
       </div>
@@ -530,7 +779,7 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="pricing-card" style="border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.06); border-radius: 16px; padding: 16px;">
+      <div class="pricing-card">
         <div class="pill">One Plan • Full Access</div>
         <h2 style="margin-top:12px;">Stop second-guessing trades.</h2>
         <p class="muted small" style="margin-top:8px;">
@@ -538,15 +787,15 @@
           Pay once per month, use it every day.
         </p>
 
-        <div class="price-row" style="display:flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 10px;">
+        <div class="price-row">
           <div>
-            <div class="price" id="pricingAmount" style="font-size: 28px; font-weight: 900; color:#fff;">₦10,000</div>
-            <div class="per" id="pricingPer" style="font-size: 12px; opacity: 0.85;">per month</div>
+            <div class="price" id="pricingAmount">₦10,000</div>
+            <div class="per" id="pricingPer">per month</div>
           </div>
           <div class="pill" id="pricingStatus">Checking access…</div>
         </div>
 
-        <ul style="margin-top:12px; padding-left: 18px; color:#cbd5e1; font-size: 13px; line-height: 1.6;">
+        <ul class="fx-ul" style="margin-top:12px;">
           <li>Unlimited AI trade validations</li>
           <li>Structure + liquidity context</li>
           <li>Confidence scoring + invalidation warnings</li>
@@ -570,16 +819,16 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
+      <div class="legal-callout">
         <p style="margin:0;">
-          <strong style="color:#fbbf24;">Free Trial:</strong> Verify your email to start your 14-day trial.
+          <strong>Free Trial:</strong> Verify your email to start your 14-day trial.
         </p>
       </div>
 
       <label>Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
 
-      <div class="auth-row" style="display:flex; gap:10px; align-items:center; margin-top: 10px;">
+      <div class="auth-row">
         <button class="topbtn primary" onclick="authSendCode()">Send code</button>
         <button class="topbtn" onclick="authPasteSavedEmail()">Use saved</button>
       </div>
@@ -589,7 +838,7 @@
       <label>6-digit code</label>
       <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" />
 
-      <div class="auth-row" style="display:flex; gap:10px; align-items:center; margin-top: 10px;">
+      <div class="auth-row">
         <button class="topbtn primary" onclick="authVerifyCode()">Verify & Start Trial</button>
         <button class="topbtn" onclick="authLogout()">Sign out</button>
       </div>
@@ -598,6 +847,55 @@
 
       <div class="small muted" style="margin-top:12px;">
         Tip: After verifying, you can analyze right away. If your trial ends, you can unlock via Pricing.
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Institutional Verdict Preview -->
+  <div id="previewBackdrop" class="preview-backdrop"></div>
+  <div id="previewModal" class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+    <div class="preview-head">
+      <div class="preview-title">
+        <b id="previewTitle">Institutional Verdict Preview</b>
+        <span id="previewMeta">—</span>
+      </div>
+      <button class="legal-close" onclick="closePreview()">Close</button>
+    </div>
+
+    <div class="preview-body">
+      <div id="previewBanner" class="decision-banner dec-wait">
+        <div class="decision-icon" id="previewIcon">⏸</div>
+        <div class="decision-text">
+          <b id="previewTier">WAIT (EDGE NOT CLEAR)</b>
+          <p id="previewWhy">Loading…</p>
+        </div>
+      </div>
+
+      <div class="preview-grid">
+        <div class="preview-kpi">
+          <div class="k">Edge Score</div>
+          <div class="v" id="previewScore">—</div>
+          <div class="s" id="previewBasis">—</div>
+        </div>
+        <div class="preview-kpi">
+          <div class="k">Confidence</div>
+          <div class="v" id="previewConf">—</div>
+          <div class="s" id="previewSC">Strength: — • Clarity: —</div>
+        </div>
+        <div class="preview-kpi">
+          <div class="k">R:R + Risk</div>
+          <div class="v" id="previewRR">—</div>
+          <div class="s" id="previewRiskFlags">—</div>
+        </div>
+      </div>
+
+      <div class="preview-actions">
+        <button class="topbtn" onclick="closePreview()">Stay Here</button>
+        <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
+      </div>
+
+      <div class="small muted" style="margin-top:10px; color: rgba(203,213,225,0.85);">
+        Desk rule: we don’t auto-approve borderline setups. Always confirm with your chart.
       </div>
     </div>
   </div>
@@ -614,6 +912,8 @@
     }
     updateClock();
     setInterval(updateClock, 1000);
+
+    function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n || 0))); }
 
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, m => ({
@@ -639,32 +939,14 @@
     const FXCO_CLIENT_ID = getOrCreateClientId();
 
     /* Report storage */
-    const REPORT_KEY = "fxcoReport";                 // sessionStorage
-    const REPORT_LAST_KEY = "fxcoReport_last_v1";    // localStorage (persists refresh/new tab)
+    const REPORT_KEY = "fxcoReport";
     const REPORTS_LIST_KEY = "fxco_reports_list_v1"; // local history list
 
-    function getLastReportRaw() {
-      try {
-        const s = sessionStorage.getItem(REPORT_KEY);
-        if (s) return s;
-      } catch {}
-      try {
-        const l = localStorage.getItem(REPORT_LAST_KEY);
-        if (l) return l;
-      } catch {}
-      return "";
-    }
-
     function hasLastReport() {
-      return !!getLastReportRaw();
+      try { return !!sessionStorage.getItem(REPORT_KEY); } catch { return false; }
     }
 
     function goToLastReport() {
-      // Re-hydrate sessionStorage from localStorage so result.html can read it
-      const raw = getLastReportRaw();
-      if (raw) {
-        try { sessionStorage.setItem(REPORT_KEY, raw); } catch {}
-      }
       window.location.href = "/result.html";
     }
 
@@ -977,9 +1259,9 @@
       const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
       const termsHtml = `
-        <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
+        <div class="legal-callout">
           <p style="margin:0;">
-            <strong style="color:#fbbf24;">Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
+            <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
             It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
             <br/><br/>
             <strong>AI Confidence is not a guarantee.</strong>
@@ -1056,14 +1338,8 @@
     }
     document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
 
-    function closeAuth() {
-      document.getElementById("authBackdrop").style.display = "none";
-      document.getElementById("authModal").style.display = "none";
-      setAuthStatus("", "");
-    }
-
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); }
+      if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); closePreview(); }
     });
 
     /* Paystack */
@@ -1103,6 +1379,7 @@
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
+
       if (statusEl) {
         statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
       }
@@ -1113,7 +1390,9 @@
 
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
-        if (accepted) setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
+        if (accepted) {
+          setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
+        }
         return;
       }
 
@@ -1184,6 +1463,95 @@
       } finally {
         applyPaymentGateUI();
       }
+    }
+
+    /* ✅ Institutional scoring helpers (preview) */
+    function parseRR(rr){
+      if (rr === null || rr === undefined) return null;
+      if (typeof rr === "number" && isFinite(rr)) return rr;
+      const s = String(rr);
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return isFinite(n) ? n : null;
+    }
+
+    function computeInstitutionalVerdict(analysis){
+      const a = analysis || {};
+      const conf = clamp(a.confidence, 0, 100);
+      const str = clamp(a.strength, 0, 10);
+      const clr = clamp(a.clarity, 0, 10);
+      const rr = parseRR(a?.signal_check?.rr);
+      const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+
+      let score =
+        (conf * 0.50) +
+        ((str / 10) * 100 * 0.20) +
+        ((clr / 10) * 100 * 0.20) +
+        (rrScore * 0.10);
+
+      const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const invCount = inv.length;
+      if (invCount >= 1) score -= 14;
+      if (invCount >= 2) score -= 10;
+
+      const hardNoApprove =
+        (conf < 55) ||
+        (rr !== null && rr < 1.5) ||
+        (invCount >= 1);
+
+      score = clamp(score, 0, 100);
+
+      let tier = "WAIT";
+      if (score >= 78 && !hardNoApprove) tier = "APPROVED";
+      else if (score >= 62) tier = "CONDITIONAL";
+      else if (score >= 48) tier = "WAIT";
+      else tier = "REJECTED";
+
+      const reasons = [];
+      reasons.push(`Confidence ${Math.round(conf)}%`);
+      if (rr !== null) reasons.push(`RR ${rr.toFixed(2)}`);
+      reasons.push(`Strength ${Math.round(str)}/10`);
+      reasons.push(`Clarity ${Math.round(clr)}/10`);
+      if (invCount) reasons.push(`${invCount} invalidation warning${invCount>1?"s":""}`);
+
+      const why =
+        tier === "APPROVED"
+          ? "Clean enough for desk-grade execution — only if your chart confirms the setup and risk is defined."
+          : tier === "CONDITIONAL"
+          ? "Edge exists but isn’t clean. Require confirmation, reduce size, and tighten risk before entry."
+          : tier === "WAIT"
+          ? "Edge is not clear. Wait for better structure, better price, or stronger alignment."
+          : "Low edge or elevated invalidation risk. Avoid unless your chart clearly disproves the risk flags.";
+
+      const action =
+        tier === "APPROVED"
+          ? "Proceed with strict risk rules."
+          : tier === "CONDITIONAL"
+          ? "Proceed only with conditions (confirm + smaller risk)."
+          : tier === "WAIT"
+          ? "No trade now. Set alert + reassess."
+          : "Stand down. Find higher-quality setup.";
+
+      return { tier, score: Math.round(score), conf: Math.round(conf), str: Math.round(str), clr: Math.round(clr), rr, invCount, why, action, reasons };
+    }
+
+    /* ✅ Preview modal controls */
+    function openPreview() {
+      document.getElementById("previewBackdrop").style.display = "block";
+      document.getElementById("previewModal").style.display = "block";
+      document.body.style.overflow = "hidden";
+    }
+    function closePreview() {
+      document.getElementById("previewBackdrop").style.display = "none";
+      document.getElementById("previewModal").style.display = "none";
+      document.body.style.overflow = "";
+    }
+    document.getElementById("previewBackdrop").addEventListener("click", closePreview);
+
+    function openFullReport(){
+      closePreview();
+      window.location.href = "/result.html";
     }
 
     /* Analyze */
@@ -1318,6 +1686,7 @@
 
         const data = await res.json();
 
+        // Store for result page (same key)
         const reportPayload = {
           pair_type: pairType,
           timeframe: timeframe,
@@ -1326,29 +1695,93 @@
           raw: data || null,
           generated_at: Date.now()
         };
-
-        // Store for report page
         try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
-        try { localStorage.setItem(REPORT_LAST_KEY, JSON.stringify(reportPayload)); } catch {}
 
         addToLocalReportsList(reportPayload);
         renderLocalHistory();
-
-        document.getElementById("result").innerHTML =
-          "<div class='hint-pill'><div>📄</div><div><strong>Report generated.</strong><br/>Opening your validation report…</div></div>";
-
         updateViewReportButton();
 
-        window.location.href = "/result.html";
-        return;
+        // ✅ Institutional preview (computed here, not trusted from backend)
+        const v = computeInstitutionalVerdict(reportPayload.analysis || {});
+
+        // Update in-page status area + "Open report" button
+        const tierColor =
+          v.tier === "APPROVED" ? "#00d46a" :
+          v.tier === "CONDITIONAL" ? "#fbbf24" :
+          v.tier === "WAIT" ? "#94a3b8" :
+          "#ff5a5f";
+
+        document.getElementById("result").innerHTML = `
+          <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:14px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+              <div style="font-weight:900;color:${tierColor};letter-spacing:0.2px;">
+                ${esc(v.tier)} • Edge Score ${esc(v.score)}/100
+              </div>
+              <div style="opacity:0.85;font-size:12px;">
+                Confidence ${esc(v.conf)}% ${v.rr !== null ? `• RR ${esc(v.rr.toFixed(2))}` : ""}
+              </div>
+            </div>
+            <div style="margin-top:8px;color:#e5e7eb;font-size:12px;line-height:1.6;">
+              ${esc(v.why)}<br/>
+              <span style="opacity:0.9;">${esc(v.action)}</span>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+              <button class="topbtn" onclick="openPreview()">View Preview</button>
+              <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
+            </div>
+          </div>
+        `;
+
+        // Fill preview modal content and open it
+        document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
+
+        const banner = document.getElementById("previewBanner");
+        banner.classList.remove("dec-ok","dec-cond","dec-wait","dec-bad");
+
+        if (v.tier === "APPROVED"){
+          banner.classList.add("dec-ok");
+          document.getElementById("previewIcon").textContent = "✓";
+          document.getElementById("previewTier").textContent = "APPROVED (DESK-GRADE)";
+        } else if (v.tier === "CONDITIONAL"){
+          banner.classList.add("dec-cond");
+          document.getElementById("previewIcon").textContent = "!";
+          document.getElementById("previewTier").textContent = "CONDITIONAL (CONFIRM FIRST)";
+        } else if (v.tier === "WAIT"){
+          banner.classList.add("dec-wait");
+          document.getElementById("previewIcon").textContent = "⏸";
+          document.getElementById("previewTier").textContent = "WAIT (EDGE NOT CLEAR)";
+        } else {
+          banner.classList.add("dec-bad");
+          document.getElementById("previewIcon").textContent = "×";
+          document.getElementById("previewTier").textContent = "REJECTED (DO NOT EXECUTE)";
+        }
+
+        document.getElementById("previewWhy").textContent = `${v.why} ${v.action}`;
+        document.getElementById("previewScore").textContent = `${v.score}/100`;
+        document.getElementById("previewBasis").textContent = v.reasons.join(" • ");
+        document.getElementById("previewConf").textContent = `${v.conf}%`;
+        document.getElementById("previewSC").textContent = `Strength: ${v.str}/10 • Clarity: ${v.clr}/10`;
+        document.getElementById("previewRR").textContent = v.rr !== null ? `RR ${v.rr.toFixed(2)}` : "RR —";
+        document.getElementById("previewRiskFlags").textContent = v.invCount ? `${v.invCount} invalidation warning(s)` : "No invalidation warnings";
+
+        openPreview();
 
       } catch (err) {
         document.getElementById("result").innerHTML =
           "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
         btn.disabled = false;
         applyPaymentGateUI();
+      } finally {
+        // re-enable only if allowed
+        if (!rateTimer) {
+          applyPaymentGateUI();
+        }
       }
     }
+
+    /* Close preview exposed globally */
+    window.closePreview = closePreview;
+    window.openFullReport = openFullReport;
 
     initConsentGate();
     showRiskModalIfNeeded();
