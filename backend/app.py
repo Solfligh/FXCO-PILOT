@@ -90,7 +90,6 @@ def _dt_to_iso(dt: datetime) -> str:
 
 def _parse_iso(dt_str: str) -> Optional[datetime]:
     try:
-        # Supabase returns ISO timestamps; Python can parse most of them
         return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except Exception:
         return None
@@ -151,14 +150,9 @@ def _sb_headers():
 
 
 def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
-    """
-    Select first row matching filters, or None.
-    """
     if not _sb_ok():
         return None
-
     params = {k: f"eq.{v}" for k, v in filters.items()}
-    # limit=1
     try:
         r = requests.get(
             f"{SUPABASE_URL}/rest/v1/{table}",
@@ -177,9 +171,6 @@ def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
 
 
 def _sb_upsert(table: str, row: dict, conflict: str) -> bool:
-    """
-    Upsert by conflict column.
-    """
     if not _sb_ok():
         return False
     try:
@@ -307,7 +298,6 @@ def _verify_token(token: str) -> Optional[dict]:
             return None
         return payload
     except Exception:
-        # ✅ FIX: must return None (your pasted version had invalid syntax here)
         return None
 
 
@@ -324,13 +314,11 @@ def _email_ok(email: str) -> bool:
 
 
 def _otp_code() -> str:
-    # 6-digit numeric code
     n = int.from_bytes(os.urandom(4), "big") % 1000000
     return f"{n:06d}"
 
 
 def _otp_hash(email: str, code: str) -> str:
-    # stable per email+code (prevents rainbow reuse)
     key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
     msg = (email.strip().lower() + ":" + code.strip()).encode("utf-8")
     return hashlib.sha256(hmac.new(key, msg, hashlib.sha256).digest()).hexdigest()
@@ -341,9 +329,6 @@ def _trial_row(email: str) -> Optional[dict]:
 
 
 def _trial_active(email: str) -> Tuple[bool, int]:
-    """
-    Returns (active, trial_ends_epoch)
-    """
     row = _trial_row(email)
     if not row:
         return False, 0
@@ -367,7 +352,6 @@ PAYSTACK_BASE = "https://api.paystack.co"
 
 
 def _require_payment():
-    # support BOTH env names
     v = (os.getenv("PAYSTACK_REQUIRE_PAYMENT", "") or os.getenv("REQUIRE_PAYMENT", "1") or "1").strip().lower()
     return v in ("1", "true", "yes", "y", "on")
 
@@ -380,11 +364,6 @@ def _access_days():
 
 
 def _paystack_amount_minor():
-    """
-    Supports:
-      - PAYSTACK_AMOUNT=1000000 (minor units)
-      - PAYSTACK_AMOUNT_NGN=10000 (major NGN)
-    """
     amt_minor = (os.getenv("PAYSTACK_AMOUNT", "") or "").strip()
     if amt_minor:
         try:
@@ -392,7 +371,6 @@ def _paystack_amount_minor():
         except Exception:
             pass
 
-    # fallback to NGN major
     try:
         major = int((os.getenv("PAYSTACK_AMOUNT_NGN", "10000") or "10000").strip())
     except Exception:
@@ -468,7 +446,7 @@ def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
 
 
 # ==========================
-# Rate limiting (in-memory, but keyed by client id when possible)
+# Rate limiting (in-memory)
 # ==========================
 def _env_int(name: str, default: int) -> int:
     try:
@@ -490,10 +468,6 @@ _RATE_DAY = {}
 
 
 def _rate_check(identity_key: str, is_paid: bool):
-    """
-    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
-    Limits depend on paid status.
-    """
     now = _now()
 
     short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
@@ -570,12 +544,6 @@ def health():
 # ==========================
 @app.post("/api/auth/start")
 def auth_start():
-    """
-    POST { email }
-    - sends OTP via Resend
-    - stores OTP hash + expiry in Supabase
-    - anti-spam: only 1 OTP per email per 60s
-    """
     if not _sb_ok():
         return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
     if not _resend_ok():
@@ -588,12 +556,10 @@ def auth_start():
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
 
-    # If trial already exists and still active -> don't spam OTP, just say ok
     active, trial_ends = _trial_active(email)
     if active:
         return jsonify({"ok": True, "already_active": True, "trial_ends": trial_ends}), 200
 
-    # OTP resend cooldown
     otp_row = _sb_select_one("fxco_otps", {"email": email})
     if otp_row:
         sent_at = _parse_iso(str(otp_row.get("sent_at") or ""))
@@ -605,7 +571,6 @@ def auth_start():
     code_hash = _otp_hash(email, code)
     expires = _utc_now_dt() + timedelta(minutes=10)
 
-    # upsert OTP row
     _sb_upsert(
         "fxco_otps",
         {
@@ -640,12 +605,6 @@ def auth_start():
 
 @app.post("/api/auth/verify")
 def auth_verify():
-    """
-    POST { email, code }
-    - verifies OTP
-    - creates trial if not existing
-    - returns { token, trial_ends }
-    """
     if not _sb_ok():
         return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
     if not AUTH_SIGNING_SECRET:
@@ -678,7 +637,6 @@ def auth_verify():
         _sb_update("fxco_otps", {"email": email}, {"attempts": attempts + 1})
         return jsonify({"ok": False, "error": "Incorrect code."}), 400
 
-    # If trial already exists, keep existing end (don’t reset abuse)
     trial_row = _trial_row(email)
     if trial_row:
         te = _parse_iso(str(trial_row.get("trial_ends") or ""))
@@ -704,7 +662,6 @@ def auth_verify():
             conflict="email",
         )
 
-    # OTP consumed (optional: delete; we just expire it immediately)
     _sb_update("fxco_otps", {"email": email}, {"expires_at": _dt_to_iso(_utc_now_dt())})
 
     token = _make_token(email, trial_ends_epoch)
@@ -839,21 +796,12 @@ def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
 
 
-# ✅ FIX: TwelveData symbol formatter
 def td_symbol(s: str) -> str:
-    """
-    TwelveData commonly expects slash-format for FX pairs, e.g. EUR/USD.
-    Your internal normalization removes the slash (EURUSD). Convert ONLY for TwelveData calls.
-    """
     raw = (s or "").upper().strip()
-
-    # If already provided as EUR/USD, keep it
     if "/" in raw:
         return raw
 
     sym = _norm_symbol(raw)
-
-    # Convert 6-letter pairs -> XXX/YYY
     if re.fullmatch(r"[A-Z]{6}", sym):
         return f"{sym[:3]}/{sym[3:]}"
     return sym
@@ -940,7 +888,6 @@ def td_price(symbol: str):
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
-    # ✅ FIX: use TwelveData symbol format (EUR/USD)
     symbol = td_symbol(symbol or "EURUSD")
 
     cache_key = f"td_price::{symbol}"
@@ -970,7 +917,6 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
-    # ✅ FIX: use TwelveData symbol format (EUR/USD)
     symbol = td_symbol(symbol or "EURUSD")
 
     interval = (interval or "5min").strip()
@@ -1060,7 +1006,7 @@ def compute_confidence(analysis):
             score += 6
 
     liquidity = (mc.get("liquidity") or "").lower()
-    if any(x in liquidity for x in ["liquidity", "sweep", "grab", "equal"]):
+    if any(x in liquidity for x in ["sweep", "grab", "equal", "liquidity"]):
         score += 20
     elif liquidity:
         score += 10
@@ -1095,7 +1041,7 @@ def build_why_this_trade(analysis):
         reasons.append(f"Risk/Reward (TP1): RR ≈ {rr}.")
     if sc.get("entry") and sc.get("stop_loss"):
         reasons.append("Defined entry and stop loss reduces ambiguity.")
-    return reasons[:5]
+    return reasons[:6]
 
 
 def build_invalidation_warnings(analysis, live_snapshot=None):
@@ -1114,16 +1060,16 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     if live_snapshot and live_snapshot.get("ok"):
         price = live_snapshot.get("price")
         sl = _to_float(sc.get("stop_loss"))
-        if sl is not None:
+        if sl is not None and isinstance(price, (int, float)):
             if "long" in bias and price <= sl:
                 warnings.append("Live price has hit SL => invalidated.")
             if "short" in bias and price >= sl:
                 warnings.append("Live price has hit SL => invalidated.")
 
     if ("long" in bias and "bearish" in struct.lower()) or ("short" in bias and "bullish" in struct.lower()):
-        warnings.append("Structure is against your bias (structure broken).")
+        warnings.append("Structure is against your bias (structure conflict).")
 
-    return warnings[:8]
+    return warnings[:10]
 
 
 def _pick_first(data: dict, keys: list[str]) -> str:
@@ -1150,6 +1096,218 @@ def _get_payload_fields():
 
 
 # ==========================
+# Institutional decision system
+# ==========================
+def _as_text(v) -> str:
+    return (str(v or "")).strip()
+
+
+def _institutional_score(analysis: dict) -> int:
+    """
+    Deterministic 0-100 score.
+    - Structure 0-25
+    - Liquidity 0-25
+    - Alignment 0-20
+    - Signal quality 0-15
+    - Risk plan 0-15
+    """
+    mc = analysis.get("market_context", {}) or {}
+    sc = analysis.get("signal_check", {}) or {}
+
+    structure = _as_text(mc.get("structure")).lower()
+    liquidity = _as_text(mc.get("liquidity")).lower()
+    alignment = _as_text(mc.get("timeframe_alignment")).lower()
+    momentum = _as_text(mc.get("momentum")).lower()
+
+    rr = sc.get("rr")
+    direction = _as_text(sc.get("direction")).lower()
+
+    score = 0
+
+    # Structure 0–25
+    if any(x in structure for x in ["bullish", "bearish", "trend", "clean"]):
+        score += 20
+    elif any(x in structure for x in ["range", "sideways", "chop", "unclear"]):
+        score += 10
+    elif structure:
+        score += 12
+
+    # Liquidity 0–25
+    if any(x in liquidity for x in ["sweep", "grab", "raid", "liquidity taken", "stop run"]):
+        score += 20
+    elif any(x in liquidity for x in ["good", "ok", "healthy"]):
+        score += 16
+    elif liquidity:
+        score += 10
+
+    # Alignment 0–20
+    if any(x in alignment for x in ["aligned", "strong", "yes"]):
+        score += 16
+    elif any(x in alignment for x in ["mixed", "conflict", "partial"]):
+        score += 9
+    elif alignment:
+        score += 8
+
+    # Signal quality 0–15
+    if direction in ("long", "short"):
+        score += 8
+    if sc.get("targets"):
+        score += 3
+    if any(x in momentum for x in ["strong", "impulsive"]):
+        score += 4
+    elif momentum:
+        score += 2
+
+    # Risk plan 0–15
+    if isinstance(rr, (int, float)):
+        if rr >= 2.5:
+            score += 15
+        elif rr >= 2.0:
+            score += 12
+        elif rr >= 1.5:
+            score += 9
+        elif rr >= 1.2:
+            score += 5
+        else:
+            score += 2
+    if sc.get("entry") is not None:
+        score += 2
+    if sc.get("stop_loss") is not None:
+        score += 2
+
+    return max(0, min(100, int(round(score))))
+
+
+def institutional_decision_engine(analysis: dict) -> dict:
+    """
+    Hard blocks => tiered institutional decision.
+    Output fields:
+      decision_tier, decision_label, score, confidence,
+      hard_blocks, conditions, rationale, reasoning_text
+    """
+    hard_blocks = []
+    conditions = []
+    rationale = []
+
+    mc = analysis.get("market_context", {}) or {}
+    sc = analysis.get("signal_check", {}) or {}
+
+    bias = _as_text(analysis.get("bias")).lower()
+    structure = _as_text(mc.get("structure")).lower()
+    liquidity = _as_text(mc.get("liquidity")).lower()
+    alignment = _as_text(mc.get("timeframe_alignment")).lower()
+
+    rr = sc.get("rr")
+
+    # --- HARD GUARDS (auto NO TRADE) ---
+    if sc.get("entry") is None:
+        hard_blocks.append("Missing entry level.")
+    if sc.get("stop_loss") is None:
+        hard_blocks.append("Missing stop loss.")
+    if not sc.get("targets"):
+        hard_blocks.append("Missing targets / take-profit levels.")
+    if isinstance(rr, (int, float)) and rr < 1.5:
+        hard_blocks.append(f"Risk:Reward too low (RR≈{rr}). Minimum is 1.5 for execution.")
+
+    if any(x in structure for x in ["unclear", "chop", "choppy", "no structure"]):
+        hard_blocks.append("Market structure is unclear/choppy.")
+
+    if any(x in liquidity for x in ["thin", "poor", "unknown", "low liquidity"]):
+        hard_blocks.append("Liquidity conditions are poor/unclear.")
+
+    # Bias vs structure conflict (strong guard)
+    if ("long" in bias and "bearish" in structure) or ("short" in bias and "bullish" in structure):
+        hard_blocks.append("Bias conflicts with structure (HTF/LTF conflict).")
+
+    # Include invalidation warnings from earlier logic if they look critical
+    inv = analysis.get("invalidation_warnings") or []
+    if isinstance(inv, list):
+        critical = [w for w in inv if any(k in _as_text(w).lower() for k in ["hit sl", "invalidated", "structure conflict"])]
+        if critical:
+            hard_blocks.append("Critical invalidation risk detected (see invalidation warnings).")
+
+    # --- SCORE + CONFIDENCE ---
+    score = _institutional_score(analysis)
+    confidence = analysis.get("confidence")
+    if not isinstance(confidence, (int, float)):
+        confidence = 0
+    confidence = int(max(0, min(100, confidence)))
+
+    # --- CONDITIONS (if not blocked) ---
+    if not hard_blocks:
+        if any(x in alignment for x in ["mixed", "conflict", "partial"]):
+            conditions.append("Wait for clearer timeframe alignment before executing.")
+        if isinstance(rr, (int, float)) and rr < 2.0:
+            conditions.append("Improve RR (aim ≥ 2.0) by refining entry or targets.")
+        if any(x in structure for x in ["range", "sideways"]):
+            conditions.append("Range conditions: wait for sweep + reclaim or breakout + retest.")
+        if not conditions and confidence < 65:
+            conditions.append("Confidence is moderate: execute only with a clean trigger (confirm candle / reclaim).")
+
+        # rationale bullets (short)
+        why = analysis.get("why_this_trade") or []
+        if isinstance(why, list):
+            for x in why[:6]:
+                t = _as_text(x)
+                if t:
+                    rationale.append(t)
+
+    # --- TIERS ---
+    # EXECUTE requires both high score and adequate confidence.
+    if hard_blocks:
+        decision_tier = "DO_NOT_TRADE"
+        decision_label = "AVOID TRADE"
+    else:
+        if score >= 75 and confidence >= 65:
+            decision_tier = "EXECUTE"
+            decision_label = "TAKE TRADE"
+        elif score >= 60 or confidence >= 55:
+            decision_tier = "EXECUTE_IF"
+            decision_label = "TAKE IF..."
+        elif score >= 45:
+            decision_tier = "WAIT"
+            decision_label = "WAIT"
+        else:
+            decision_tier = "DO_NOT_TRADE"
+            decision_label = "AVOID TRADE"
+
+    # --- REASONING TEXT (always non-empty) ---
+    verdict_text = _as_text(analysis.get("verdict"))
+    guidance = analysis.get("guidance") or []
+    guidance_lines = []
+    if isinstance(guidance, list):
+        for g in guidance[:6]:
+            gg = _as_text(g)
+            if gg:
+                guidance_lines.append(f"- {gg}")
+
+    if verdict_text:
+        reasoning_text = verdict_text
+        if guidance_lines:
+            reasoning_text += "\n\nExecution Notes:\n" + "\n".join(guidance_lines)
+    else:
+        # fallback
+        if guidance_lines:
+            reasoning_text = "Execution Notes:\n" + "\n".join(guidance_lines)
+        else:
+            reasoning_text = "No narrative was returned by the model. (Backend fallback summary applied.)"
+
+    analysis["decision_tier"] = decision_tier
+    analysis["decision_label"] = decision_label
+    analysis["score"] = score
+    analysis["confidence"] = confidence
+    analysis["hard_blocks"] = hard_blocks[:10]
+    analysis["conditions"] = conditions[:12]
+    analysis["rationale"] = rationale[:10]
+    analysis["reasoning_text"] = reasoning_text
+
+    # Keep your legacy decision field for backward compatibility
+    analysis["decision"] = decision_label
+
+    return analysis
+
+
+# ==========================
 # Analyze endpoint (trial OR paid)
 # ==========================
 @app.route("/api/analyze", methods=["POST"])
@@ -1157,7 +1315,6 @@ def analyze():
     ip = _client_ip()
     client_id = _get_client_id_header() or ("ip:" + ip)
 
-    # Determine trial status from token
     token = (request.headers.get("X-FXCO-Auth") or "").strip()
     token_payload = _verify_token(token) if token else None
 
@@ -1166,28 +1323,19 @@ def analyze():
     if token_payload and isinstance(token_payload, dict):
         email = str(token_payload.get("email") or "").strip().lower()
         trial_ends_epoch = int(token_payload.get("trial_ends") or 0)
-        # Always confirm server-side (Supabase) so localStorage can't fake it
         active, te = _trial_active(email)
         trial_active = active
         trial_ends_epoch = te or trial_ends_epoch
 
     paid_active = _is_client_unlocked(client_id)
 
-    # Gate: if require_payment, allow only (paid OR trial)
     if _require_payment() and not paid_active and not trial_active:
         return jsonify({"error": "Access locked. Start free trial (verify email) or unlock via Pricing."}), 402
 
-    # Identity for rate limiting (not IP-only)
     identity_key = f"cid:{client_id}"
-    # Apply PAID limits only if paid; trial uses FREE limits
     ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
     if not ok:
-        resp = jsonify(
-            {
-                "error": "Too many requests. Please slow down.",
-                "retry_after_seconds": retry_after,
-            }
-        )
+        resp = jsonify({"error": "Too many requests. Please slow down.", "retry_after_seconds": retry_after})
         resp.status_code = 429
         for k, v in rl_headers.items():
             resp.headers[k] = v
@@ -1195,7 +1343,6 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    # OPTIONAL: test mode (cheap)
     if request.args.get("test") == "1":
         resp = jsonify({"ok": True, "mode": "rate_limit_test"})
         for k, v in rl_headers.items():
@@ -1204,7 +1351,6 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp, 200
 
-    # Parse payload
     pair_type, timeframe, signal_text = _get_payload_fields()
 
     missing = []
@@ -1245,7 +1391,6 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    # Optional image (FormData only)
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
@@ -1261,14 +1406,16 @@ def analyze():
     if candles_snapshot.get("ok") and candles_snapshot.get("values"):
         struct_info = structure_from_candles(candles_snapshot["values"])
 
-    live_context = "Live data unavailable."
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
     else:
         live_context = f"Live data error: {live_snapshot.get('error', 'unknown')}"
 
+    # IMPORTANT: Make the model output fields that our report page can always show.
     base_prompt = f"""
 You are FX CO-PILOT — an institutional-grade trade validation engine.
+
+You do NOT predict price. You evaluate execution quality: structure, liquidity, alignment, and risk plan.
 
 User Context:
 - Pair type: {pair_type}
@@ -1279,9 +1426,9 @@ User Context:
 Live Market:
 - Symbol: {symbol}
 - {live_context}
-- 5min Structure (heuristic from candles): {struct_info.get('structure')} ({struct_info.get('details')})
+- 5min Structure (heuristic): {struct_info.get('structure')} ({struct_info.get('details')})
 
-Return ONLY valid JSON that matches this schema (no markdown):
+Return ONLY valid JSON (no markdown) that matches EXACTLY this schema:
 
 {{
   "bias": "Long|Short|Neutral|Unclear",
@@ -1289,7 +1436,7 @@ Return ONLY valid JSON that matches this schema (no markdown):
   "clarity": 0,
   "signal_check": {{
     "direction": "Long|Short|Neutral|Unclear",
-    "entry": "number or a single price",
+    "entry": "number",
     "stop_loss": "number",
     "targets": [number]
   }},
@@ -1299,19 +1446,20 @@ Return ONLY valid JSON that matches this schema (no markdown):
     "momentum": "string",
     "timeframe_alignment": "string"
   }},
-  "decision": "TAKE TRADE|NEUTRAL|AVOID TRADE",
-  "verdict": "string",
+  "verdict": "A short narrative paragraph explaining the trade quality and why it is (or isn't) executable.",
   "guidance": ["string","string","string"]
 }}
 
 Rules:
 - Output MUST be raw JSON only.
-- entry/stop_loss/targets MUST be numeric-like.
-- If uncertain, choose NEUTRAL.
+- entry/stop_loss must be numeric-like strings that can be parsed.
+- targets must be an array of numeric-like values.
+- If uncertain, keep bias Neutral/Unclear and write a cautious verdict.
+- verdict must NEVER be empty.
 """
 
     messages = [
-        {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON."},
+        {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON. No markdown."},
         {"role": "user", "content": base_prompt},
     ]
 
@@ -1320,7 +1468,7 @@ Rules:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure/liquidity/trend."},
+                    {"type": "text", "text": "Here is the user's chart screenshot. Use it to refine structure/liquidity/alignment."},
                     {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_base64}"}},
                 ],
             }
@@ -1358,23 +1506,18 @@ Rules:
                 "momentum": mc.get("momentum") or "",
                 "timeframe_alignment": mc.get("timeframe_alignment") or "",
             },
-            "decision": analysis_obj.get("decision") or "NEUTRAL",
-            "verdict": analysis_obj.get("verdict") or "",
+            "verdict": analysis_obj.get("verdict") or "No verdict returned.",
             "guidance": analysis_obj.get("guidance") or [],
             "live_snapshot": live_snapshot,
         }
 
-        d = str(analysis.get("decision") or "NEUTRAL").upper()
-        if "TAKE" in d:
-            analysis["decision"] = "TAKE TRADE"
-        elif "AVOID" in d:
-            analysis["decision"] = "AVOID TRADE"
-        else:
-            analysis["decision"] = "NEUTRAL"
-
+        # Enrichment
         analysis["confidence"] = compute_confidence(analysis)
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
+
+        # Institutional decision + stable report fields
+        analysis = institutional_decision_engine(analysis)
 
         resp = jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
         for k, v in rl_headers.items():
