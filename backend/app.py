@@ -307,6 +307,7 @@ def _verify_token(token: str) -> Optional[dict]:
             return None
         return payload
     except Exception:
+        # ✅ FIX: must return None (your pasted version had invalid syntax here)
         return None
 
 
@@ -841,7 +842,7 @@ def _norm_symbol(s: str) -> str:
 # ✅ FIX: TwelveData symbol formatter
 def td_symbol(s: str) -> str:
     """
-    TwelveData commonly expects slash-format for FX/Metals/Crypto pairs, e.g. EUR/USD.
+    TwelveData commonly expects slash-format for FX pairs, e.g. EUR/USD.
     Your internal normalization removes the slash (EURUSD). Convert ONLY for TwelveData calls.
     """
     raw = (s or "").upper().strip()
