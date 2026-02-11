@@ -198,7 +198,6 @@
       background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
     }
 
-    /* rate limit + pay hint line */
     .rate-hint {
       margin-top: 10px;
       font-size: 12px;
@@ -277,16 +276,6 @@
       color: #ffd86b;
       display: none;
     }
-
-    .warn-callout {
-      border: 1px solid rgba(251,191,36,0.22);
-      background: rgba(251,191,36,0.08);
-      padding: 14px;
-      border-radius: 14px;
-      margin: 12px 0 16px;
-      color: #f8fafc;
-    }
-    .warn-callout strong { color: #fbbf24; }
 
     .fx-disclaimer {
       position: fixed;
@@ -387,105 +376,6 @@
     }
 
     .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
-
-    .legal-callout {
-      border: 1px solid rgba(251,191,36,0.22);
-      background: rgba(251,191,36,0.08);
-      padding: 14px;
-      border-radius: 14px;
-      margin: 12px 0;
-    }
-
-    .legal-callout strong { color: #fbbf24; }
-
-    .fx-section-title {
-      margin: 14px 0 6px;
-      font-weight: 800;
-      color: #ffffff;
-      font-size: 13px;
-      letter-spacing: 0.2px;
-    }
-
-    .fx-kv {
-      margin: 8px 0;
-      color: #cbd5e1;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    .fx-ul {
-      margin: 8px 0 0;
-      padding-left: 18px;
-      color: #cbd5e1;
-      font-size: 13px;
-      line-height: 1.6;
-    }
-
-    /* Pricing modal styles */
-    .pricing-card {
-      border: 1px solid rgba(255,255,255,0.10);
-      background: rgba(255,255,255,0.06);
-      border-radius: 16px;
-      padding: 16px;
-    }
-    .price-row {
-      display:flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .price {
-      font-size: 28px;
-      font-weight: 900;
-      color: #ffffff;
-    }
-    .per {
-      font-size: 12px;
-      opacity: 0.85;
-    }
-    .pill {
-      display:inline-flex;
-      gap:8px;
-      align-items:center;
-      font-size: 12px;
-      border: 1px solid rgba(0,212,106,0.35);
-      background: rgba(0,212,106,0.12);
-      color: #b8ffdd;
-      padding: 6px 10px;
-      border-radius: 999px;
-      font-weight: 800;
-    }
-    .muted { opacity: 0.85; }
-    .small { font-size: 12px; line-height: 1.6; }
-
-    /* Auth (OTP) modal bits */
-    .auth-row {
-      display:flex;
-      gap:10px;
-      align-items:center;
-      margin-top: 10px;
-    }
-    .auth-row .topbtn { flex: 1; }
-    .auth-status {
-      margin-top: 10px;
-      font-size: 12px;
-      color: #ffd86b;
-      opacity: 0.95;
-      display:none;
-    }
-    .auth-ok { color: #b8ffdd; }
-    .auth-danger { color: #ff9aa2; }
-
-    @media(max-width: 900px){
-      .container { flex-direction: column; margin: 20px; padding: 25px; }
-      .sessions span { margin-right: 10px; }
-      .topbar { padding: 12px 16px; }
-    }
-
-    @media(max-width: 620px){
-      .sessions { display:none; }
-    }
   </style>
 </head>
 
@@ -506,7 +396,6 @@
       <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
-      <!-- Removed Unlock button (not needed anymore) -->
     </div>
   </div>
 
@@ -549,8 +438,6 @@
 
       <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
       <div id="rateHint" class="rate-hint"></div>
-
-      <!-- payment hint -->
       <div id="payHint" class="rate-hint" style="display:none;"></div>
     </div>
 
@@ -608,9 +495,9 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="legal-callout">
+      <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
         <p style="margin:0;">
-          <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
+          <strong style="color:#fbbf24;">Trading Risk Notice:</strong> Trading financial instruments involves significant risk and may not be suitable for everyone.
           You can lose part or all of your capital.
         </p>
       </div>
@@ -643,7 +530,7 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="pricing-card">
+      <div class="pricing-card" style="border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.06); border-radius: 16px; padding: 16px;">
         <div class="pill">One Plan • Full Access</div>
         <h2 style="margin-top:12px;">Stop second-guessing trades.</h2>
         <p class="muted small" style="margin-top:8px;">
@@ -651,15 +538,15 @@
           Pay once per month, use it every day.
         </p>
 
-        <div class="price-row">
+        <div class="price-row" style="display:flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 10px;">
           <div>
-            <div class="price" id="pricingAmount">₦10,000</div>
-            <div class="per" id="pricingPer">per month</div>
+            <div class="price" id="pricingAmount" style="font-size: 28px; font-weight: 900; color:#fff;">₦10,000</div>
+            <div class="per" id="pricingPer" style="font-size: 12px; opacity: 0.85;">per month</div>
           </div>
           <div class="pill" id="pricingStatus">Checking access…</div>
         </div>
 
-        <ul class="fx-ul" style="margin-top:12px;">
+        <ul style="margin-top:12px; padding-left: 18px; color:#cbd5e1; font-size: 13px; line-height: 1.6;">
           <li>Unlimited AI trade validations</li>
           <li>Structure + liquidity context</li>
           <li>Confidence scoring + invalidation warnings</li>
@@ -683,16 +570,16 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="legal-callout">
+      <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
         <p style="margin:0;">
-          <strong>Free Trial:</strong> Verify your email to start your 14-day trial.
+          <strong style="color:#fbbf24;">Free Trial:</strong> Verify your email to start your 14-day trial.
         </p>
       </div>
 
       <label>Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
 
-      <div class="auth-row">
+      <div class="auth-row" style="display:flex; gap:10px; align-items:center; margin-top: 10px;">
         <button class="topbtn primary" onclick="authSendCode()">Send code</button>
         <button class="topbtn" onclick="authPasteSavedEmail()">Use saved</button>
       </div>
@@ -702,7 +589,7 @@
       <label>6-digit code</label>
       <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" />
 
-      <div class="auth-row">
+      <div class="auth-row" style="display:flex; gap:10px; align-items:center; margin-top: 10px;">
         <button class="topbtn primary" onclick="authVerifyCode()">Verify & Start Trial</button>
         <button class="topbtn" onclick="authLogout()">Sign out</button>
       </div>
@@ -728,8 +615,6 @@
     updateClock();
     setInterval(updateClock, 1000);
 
-    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
-
     function esc(s) {
       return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
@@ -754,14 +639,32 @@
     const FXCO_CLIENT_ID = getOrCreateClientId();
 
     /* Report storage */
-    const REPORT_KEY = "fxcoReport";
+    const REPORT_KEY = "fxcoReport";                 // sessionStorage
+    const REPORT_LAST_KEY = "fxcoReport_last_v1";    // localStorage (persists refresh/new tab)
     const REPORTS_LIST_KEY = "fxco_reports_list_v1"; // local history list
 
+    function getLastReportRaw() {
+      try {
+        const s = sessionStorage.getItem(REPORT_KEY);
+        if (s) return s;
+      } catch {}
+      try {
+        const l = localStorage.getItem(REPORT_LAST_KEY);
+        if (l) return l;
+      } catch {}
+      return "";
+    }
+
     function hasLastReport() {
-      try { return !!sessionStorage.getItem(REPORT_KEY); } catch { return false; }
+      return !!getLastReportRaw();
     }
 
     function goToLastReport() {
+      // Re-hydrate sessionStorage from localStorage so result.html can read it
+      const raw = getLastReportRaw();
+      if (raw) {
+        try { sessionStorage.setItem(REPORT_KEY, raw); } catch {}
+      }
       window.location.href = "/result.html";
     }
 
@@ -1074,9 +977,9 @@
       const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
       const termsHtml = `
-        <div class="legal-callout">
+        <div class="legal-callout" style="border: 1px solid rgba(251,191,36,0.22); background: rgba(251,191,36,0.08); padding: 14px; border-radius: 14px; margin: 12px 0;">
           <p style="margin:0;">
-            <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
+            <strong style="color:#fbbf24;">Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
             It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
             <br/><br/>
             <strong>AI Confidence is not a guarantee.</strong>
@@ -1153,6 +1056,12 @@
     }
     document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
 
+    function closeAuth() {
+      document.getElementById("authBackdrop").style.display = "none";
+      document.getElementById("authModal").style.display = "none";
+      setAuthStatus("", "");
+    }
+
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); }
     });
@@ -1194,7 +1103,6 @@
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
-
       if (statusEl) {
         statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
       }
@@ -1203,12 +1111,9 @@
       if (!btn) return;
       if (rateTimer) return;
 
-      // If require payment, allow analysis during trial OR paid.
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
-        if (accepted) {
-          setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
-        }
+        if (accepted) setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
         return;
       }
 
@@ -1287,7 +1192,6 @@
       if (!accepted) { setAnalyzeEnabled(false); return; }
       if (rateTimer) return;
 
-      // Gate: if require payment, allow if (paid OR trialActive)
       const trialActive = getAuthToken() && isTrialActiveLocal();
       if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
         openAuth();
@@ -1339,7 +1243,6 @@
 
         const ct = res.headers.get("content-type") || "";
 
-        // cache trial end from headers if backend provides it (nice-to-have)
         const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
         if (trialEndsHdr) {
           const n = Number(trialEndsHdr);
@@ -1415,7 +1318,6 @@
 
         const data = await res.json();
 
-        // Normalize a report object that result.html can read nicely
         const reportPayload = {
           pair_type: pairType,
           timeframe: timeframe,
@@ -1425,21 +1327,20 @@
           generated_at: Date.now()
         };
 
-        // Store for result page
+        // Store for report page
         try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
+        try { localStorage.setItem(REPORT_LAST_KEY, JSON.stringify(reportPayload)); } catch {}
 
-        // Store a lightweight local history list (so homepage still shows activity)
         addToLocalReportsList(reportPayload);
         renderLocalHistory();
 
-        // Update CTA
         document.getElementById("result").innerHTML =
           "<div class='hint-pill'><div>📄</div><div><strong>Report generated.</strong><br/>Opening your validation report…</div></div>";
 
         updateViewReportButton();
 
-        // Redirect to professional report page
         window.location.href = "/result.html";
+        return;
 
       } catch (err) {
         document.getElementById("result").innerHTML =
