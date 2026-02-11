@@ -4,6 +4,7 @@ import os
 import re
 import time
 from collections import deque
+from random import randint
 
 import requests
 from flask import Flask, jsonify, request
@@ -20,23 +21,24 @@ app = Flask(__name__)
 # Twelve Data:
 #   TWELVE_DATA_API_KEY=...
 #
-# Paystack (REQUIRED if you enable require_payment):
+# Paystack:
 #   PAYSTACK_SECRET_KEY=sk_live_or_test_xxx
 #   PAYSTACK_PUBLIC_KEY=pk_live_or_test_xxx   # optional (hosted checkout doesn't need it)
 #
 # Pricing:
-#   PAYSTACK_AMOUNT_NGN=10000                 # NGN major (₦10,000/month)
+#   PAYSTACK_AMOUNT_NGN=10000
 #   PAYSTACK_CURRENCY=NGN
-#   PAYSTACK_REQUIRE_PAYMENT=1                # 1 to gate /api/analyze behind payment; 0 to disable
-#
-# Callback URL (where Paystack redirects after payment):
+#   PAYSTACK_REQUIRE_PAYMENT=1                # 1/true to gate analyze after trial ends
 #   PAYSTACK_CALLBACK_URL=https://YOUR-FRONTEND-DOMAIN/
-#   Example: https://fxco-pilot.solfightech.org/
+#   PAYSTACK_ACCESS_DAYS=30
 #
-# Optional:
-#   PAYSTACK_ACCESS_DAYS=30                   # how long to unlock after payment (default 30)
+# Trial (Resend):
+#   RESEND_API_KEY=...
+#   RESEND_FROM_EMAIL="FXCO-PILOT <no-reply@yourdomain.com>"
+#   TRIAL_DAYS=14
+#   TRIAL_OTP_TTL_SECONDS=600                 # 10 minutes default
 #
-# Optional (rate limits):
+# Rate limit overrides (optional):
 #   FREE_LIMIT_60S=5
 #   FREE_LIMIT_24H=50
 #   PAID_LIMIT_60S=60
@@ -62,132 +64,6 @@ def _cache_set(key, value, ttl=60):
 
 
 # ==========================
-# Rate limiting (in-memory)
-#   - Free limits (defaults): 5 requests / 60s, 50 requests / 24h
-#   - Paid limits (defaults): 60 requests / 60s, 2000 requests / 24h
-# Applied ONLY to /api/analyze
-# ==========================
-_SHORT_WINDOW_SECONDS = 60
-_DAY_WINDOW_SECONDS = 24 * 60 * 60
-
-# key: bucket_key -> deque[timestamps]
-_RATE_SHORT = {}
-_RATE_DAY = {}
-
-
-def _client_ip():
-    """
-    Try to get the real client IP behind proxies.
-    X-Forwarded-For is usually: "client, proxy1, proxy2"
-    """
-    xff = request.headers.get("X-Forwarded-For", "").strip()
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.remote_addr or "unknown"
-
-
-def _env_int(name: str, default: int, min_v: int = 1, max_v: int = 10_000_000) -> int:
-    try:
-        v = int((os.getenv(name, str(default)) or str(default)).strip())
-        v = max(min_v, min(max_v, v))
-        return v
-    except Exception:
-        return default
-
-
-def _rate_limits_for_request(ip: str):
-    """
-    Decide which limits apply (paid vs free), without frontend changes.
-    Uses your existing _is_client_unlocked(client_id).
-    Returns:
-      (bucket_key, short_limit, day_limit, is_paid)
-    """
-    # If payment gate is enabled and the user is unlocked -> treat as paid
-    client_id = _get_client_id_header() or ("ip:" + ip)
-    paid = False
-    try:
-        paid = bool(_is_client_unlocked(client_id))
-    except Exception:
-        paid = False
-
-    if paid:
-        short_limit = _env_int("PAID_LIMIT_60S", 60)
-        day_limit = _env_int("PAID_LIMIT_24H", 2000)
-    else:
-        short_limit = _env_int("FREE_LIMIT_60S", 5)
-        day_limit = _env_int("FREE_LIMIT_24H", 50)
-
-    # Use a stable per-user bucket key:
-    # - Prefer client_id if present (your frontend already sends X-FXCO-Client)
-    # - Fallback to IP (keeps behavior sane even without header)
-    bucket_key = client_id if client_id else ("ip:" + ip)
-
-    return bucket_key, short_limit, day_limit, paid
-
-
-def _rate_check(ip: str):
-    """
-    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
-
-    ✅ Updated:
-      - Detects paid status via _is_client_unlocked(client_id)
-      - Applies different limits automatically (no frontend change)
-      - Rate limiting key uses client_id when available (better than raw IP)
-    """
-    now = time.time()
-
-    bucket_key, short_limit, day_limit, is_paid = _rate_limits_for_request(ip)
-
-    if bucket_key not in _RATE_SHORT:
-        _RATE_SHORT[bucket_key] = deque()
-    if bucket_key not in _RATE_DAY:
-        _RATE_DAY[bucket_key] = deque()
-
-    short_q = _RATE_SHORT[bucket_key]
-    day_q = _RATE_DAY[bucket_key]
-
-    # prune old entries
-    while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
-        short_q.popleft()
-    while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
-        day_q.popleft()
-
-    short_remaining = max(0, short_limit - len(short_q))
-    day_remaining = max(0, day_limit - len(day_q))
-
-    # blocked
-    if short_remaining <= 0 or day_remaining <= 0:
-        retry_after = 1
-        if short_remaining <= 0 and short_q:
-            retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now - short_q[0])) + 1)
-        if day_remaining <= 0 and day_q:
-            retry_after = max(retry_after, int(_DAY_WINDOW_SECONDS - (now - day_q[0])) + 1)
-
-        headers = {
-            "Retry-After": str(retry_after),
-            "X-RateLimit-Tier": "paid" if is_paid else "free",
-            "X-RateLimit-Limit-60s": str(short_limit),
-            "X-RateLimit-Remaining-60s": str(short_remaining),
-            "X-RateLimit-Limit-24h": str(day_limit),
-            "X-RateLimit-Remaining-24h": str(day_remaining),
-        }
-        return False, retry_after, headers
-
-    # allow: record
-    short_q.append(now)
-    day_q.append(now)
-
-    headers = {
-        "X-RateLimit-Tier": "paid" if is_paid else "free",
-        "X-RateLimit-Limit-60s": str(short_limit),
-        "X-RateLimit-Remaining-60s": str(short_remaining - 1),
-        "X-RateLimit-Limit-24h": str(day_limit),
-        "X-RateLimit-Remaining-24h": str(day_remaining - 1),
-    }
-    return True, 0, headers
-
-
-# ==========================
 # OpenAI client (lazy init)
 # ==========================
 def _get_openai_client():
@@ -209,8 +85,13 @@ TD_BASE = "https://api.twelvedata.com"
 # ==========================
 PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
 PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
-
 PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
+PAYSTACK_BASE = "https://api.paystack.co"
+
+# pending reference -> client_id (mapping after verify)
+_PENDING_REF = {}  # ref -> {"client_id": str, "created": epoch}
+# access client_id -> paid_until_epoch
+_ACCESS = {}  # client_id -> {"paid_until": epoch, "last_ref": str, "updated": epoch}
 
 
 def _paystack_amount_minor():
@@ -234,29 +115,11 @@ def _access_days():
         return 30
 
 
-PAYSTACK_BASE = "https://api.paystack.co"
-
-# We store:
-#  - pending reference -> client_id (for mapping after verify)
-#  - access client_id -> paid_until_epoch
-_PENDING_REF = {}  # ref -> {"client_id": str, "created": epoch}
-_ACCESS = {}       # client_id -> {"paid_until": epoch, "last_ref": str, "updated": epoch}
-
-
-def _get_client_id_header():
-    # your frontend already sends X-FXCO-Client to /api/analyze; we reuse it for payments
-    cid = (request.headers.get("X-FXCO-Client") or "").strip()
-    if cid:
-        return cid[:128]
-    return ""
-
-
 def _now():
     return time.time()
 
 
 def _cleanup_payment_state():
-    # prevent memory growth
     now = _now()
     # pending refs expire after 24h
     for ref in list(_PENDING_REF.keys()):
@@ -278,40 +141,24 @@ def _paystack_headers():
 
 
 def _paystack_ok_enabled():
-    """
-    If payment is not required => OK.
-    If payment is required => need secret key.
-    """
+    # If payment not required => OK
+    # If required => need secret key
     if not _require_payment():
         return True
     return bool(PAYSTACK_SECRET_KEY)
 
 
 def _callback_url():
-    """
-    Paystack redirect url after payment.
-
-    BEST: set PAYSTACK_CALLBACK_URL to your deployed frontend domain
-      e.g. https://fxco-pilot.solfightech.org/
-    """
     cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
     if cb:
         return cb
-
-    # fallback: origin header (works if same origin / proxied)
     origin = (request.headers.get("Origin") or "").strip()
     if origin:
         return origin
-
-    # fallback: just host_url (backend) - not ideal but better than nothing
     return request.host_url.rstrip("/")
 
 
 def _ensure_paystack_success_param(url: str) -> str:
-    """
-    Ensures `paystack=success` is present, preserving existing query params.
-    Works whether url ends with / or has ? already.
-    """
     u = (url or "").strip()
     if not u:
         return u
@@ -321,6 +168,45 @@ def _ensure_paystack_success_param(url: str) -> str:
     return f"{u}{sep}paystack=success"
 
 
+# ==========================
+# Trial via Resend (in-memory)
+# ==========================
+RESEND_API_KEY = (os.getenv("RESEND_API_KEY", "") or "").strip()
+RESEND_FROM_EMAIL = (os.getenv("RESEND_FROM_EMAIL", "") or "").strip()
+
+
+def _trial_days():
+    try:
+        return max(1, int((os.getenv("TRIAL_DAYS", "14") or "14").strip()))
+    except Exception:
+        return 14
+
+
+def _otp_ttl():
+    try:
+        return max(60, int((os.getenv("TRIAL_OTP_TTL_SECONDS", "600") or "600").strip()))
+    except Exception:
+        return 600
+
+
+# email -> { trial_until, started, verified }
+_TRIAL = {}
+# email -> { code, expires, created }
+_TRIAL_OTP = {}
+# client_id -> verified email
+_CLIENT_EMAIL = {}
+
+
+def _cleanup_trial_state():
+    now = _now()
+    # OTP expiry cleanup
+    for email in list(_TRIAL_OTP.keys()):
+        if now > float((_TRIAL_OTP[email] or {}).get("expires", 0)):
+            _TRIAL_OTP.pop(email, None)
+    # trial cleanup (optional) - keep records to prevent re-trials
+    # We intentionally DO NOT delete expired trials, so the same email can't restart.
+
+
 def _email_ok(email: str) -> bool:
     if not email:
         return False
@@ -328,6 +214,86 @@ def _email_ok(email: str) -> bool:
     if len(email) > 254:
         return False
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
+
+
+def _send_resend_email(to_email: str, subject: str, html: str):
+    if not RESEND_API_KEY:
+        raise RuntimeError("Missing RESEND_API_KEY on server.")
+    if not RESEND_FROM_EMAIL:
+        raise RuntimeError("Missing RESEND_FROM_EMAIL on server.")
+
+    r = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        data=json.dumps(
+            {
+                "from": RESEND_FROM_EMAIL,
+                "to": [to_email],
+                "subject": subject,
+                "html": html,
+            }
+        ),
+        timeout=15,
+    )
+    # Resend returns JSON with id on success. If error, it also returns JSON.
+    j = r.json() if r.content else {}
+    if r.status_code >= 400:
+        msg = (j.get("message") or j.get("error") or f"Resend error (HTTP {r.status_code})")
+        raise RuntimeError(msg)
+    return j
+
+
+def _trial_active_for_email(email: str) -> bool:
+    _cleanup_trial_state()
+    if not email:
+        return False
+    row = _TRIAL.get(email)
+    if not row:
+        return False
+    return _now() < float(row.get("trial_until", 0))
+
+
+def _trial_status(email: str):
+    row = _TRIAL.get(email) or {}
+    return {
+        "email": email or None,
+        "verified": bool(row.get("verified")),
+        "trial_until": int(row.get("trial_until") or 0) if row.get("trial_until") else 0,
+        "trial_active": _trial_active_for_email(email),
+        "trial_days": _trial_days(),
+    }
+
+
+# ==========================
+# Client identifiers
+# ==========================
+def _client_ip():
+    """
+    Try to get the real client IP behind proxies.
+    X-Forwarded-For is usually: "client, proxy1, proxy2"
+    """
+    xff = request.headers.get("X-Forwarded-For", "").strip()
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
+def _get_client_id_header():
+    cid = (request.headers.get("X-FXCO-Client") or "").strip()
+    if cid:
+        return cid[:128]
+    return ""
+
+
+def _client_id_fallback(ip: str) -> str:
+    # stable fallback if frontend doesn't send X-FXCO-Client
+    return "ip:" + (ip or "unknown")
+
+
+def _client_verified_email(client_id: str) -> str:
+    if not client_id:
+        return ""
+    return (_CLIENT_EMAIL.get(client_id) or "").strip().lower()
 
 
 def _is_client_unlocked(client_id: str) -> bool:
@@ -340,6 +306,112 @@ def _is_client_unlocked(client_id: str) -> bool:
     if not row:
         return False
     return _now() < float(row.get("paid_until", 0))
+
+
+# ==========================
+# Rate limiting (in-memory)
+#   - FREE + TRIAL: same limits
+#   - PAID: higher limits
+# Key: verified email -> else client_id -> else ip
+# Applied ONLY to /api/analyze
+# ==========================
+_RATE_SHORT = {}  # key -> deque[timestamps]
+_RATE_DAY = {}  # key -> deque[timestamps]
+
+
+def _env_int(name: str, default: int, minv: int = 1, maxv: int = 10_000_000) -> int:
+    try:
+        v = int((os.getenv(name, str(default)) or str(default)).strip())
+        v = max(minv, min(maxv, v))
+        return v
+    except Exception:
+        return default
+
+
+def _limits_for_user(is_paid: bool):
+    free_60 = _env_int("FREE_LIMIT_60S", 5, minv=1, maxv=1000000)
+    free_24 = _env_int("FREE_LIMIT_24H", 50, minv=1, maxv=10000000)
+
+    paid_60 = _env_int("PAID_LIMIT_60S", 60, minv=1, maxv=1000000)
+    paid_24 = _env_int("PAID_LIMIT_24H", 2000, minv=1, maxv=10000000)
+
+    # Trial uses FREE limits (per your request)
+    if is_paid:
+        return 60, paid_60, 24 * 60 * 60, paid_24
+
+    return 60, free_60, 24 * 60 * 60, free_24
+
+
+def _rate_check(ip: str, client_id: str):
+    """
+    Returns: (ok: bool, retry_after_seconds: int, headers: dict)
+
+    - Detects PAID status via _is_client_unlocked(client_id)
+    - Applies limits automatically (no frontend change)
+    - Uses key priority: verified_email -> client_id -> ip
+    """
+    now = time.time()
+
+    cid = (client_id or "").strip()
+    if not cid:
+        cid = _client_id_fallback(ip)
+
+    verified_email = _client_verified_email(cid)
+    key = verified_email or cid or (ip or "unknown")
+
+    is_paid = _is_client_unlocked(cid)
+
+    short_window, short_limit, day_window, day_limit = _limits_for_user(is_paid)
+
+    if key not in _RATE_SHORT:
+        _RATE_SHORT[key] = deque()
+    if key not in _RATE_DAY:
+        _RATE_DAY[key] = deque()
+
+    short_q = _RATE_SHORT[key]
+    day_q = _RATE_DAY[key]
+
+    # prune old
+    while short_q and (now - short_q[0]) >= short_window:
+        short_q.popleft()
+    while day_q and (now - day_q[0]) >= day_window:
+        day_q.popleft()
+
+    short_remaining = max(0, short_limit - len(short_q))
+    day_remaining = max(0, day_limit - len(day_q))
+
+    # blocked
+    if short_remaining <= 0 or day_remaining <= 0:
+        retry_after = 1
+        if short_remaining <= 0 and short_q:
+            retry_after = max(retry_after, int(short_window - (now - short_q[0])) + 1)
+        if day_remaining <= 0 and day_q:
+            retry_after = max(retry_after, int(day_window - (now - day_q[0])) + 1)
+
+        headers = {
+            "Retry-After": str(retry_after),
+            "X-RateLimit-Key": "email" if verified_email else ("client" if cid else "ip"),
+            "X-RateLimit-Plan": "paid" if is_paid else "free",
+            "X-RateLimit-Limit-60s": str(short_limit),
+            "X-RateLimit-Remaining-60s": str(short_remaining),
+            "X-RateLimit-Limit-24h": str(day_limit),
+            "X-RateLimit-Remaining-24h": str(day_remaining),
+        }
+        return False, retry_after, headers
+
+    # allow: record
+    short_q.append(now)
+    day_q.append(now)
+
+    headers = {
+        "X-RateLimit-Key": "email" if verified_email else ("client" if cid else "ip"),
+        "X-RateLimit-Plan": "paid" if is_paid else "free",
+        "X-RateLimit-Limit-60s": str(short_limit),
+        "X-RateLimit-Remaining-60s": str(short_remaining - 1),
+        "X-RateLimit-Limit-24h": str(day_limit),
+        "X-RateLimit-Remaining-24h": str(day_remaining - 1),
+    }
+    return True, 0, headers
 
 
 # ==========================
@@ -356,14 +428,128 @@ def health():
 
 
 # ==========================
+# Trial endpoints (Resend)
+# ==========================
+@app.post("/api/trial/start")
+def trial_start():
+    """
+    Starts email verification (OTP). Does NOT create/extend a trial if the email already had one.
+    Expects JSON: { "email": "user@email.com" }
+    """
+    _cleanup_trial_state()
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    if not _email_ok(email):
+        return jsonify({"ok": False, "error": "Invalid email."}), 400
+
+    # If trial already exists (active or expired), do not allow restarting.
+    if email in _TRIAL:
+        s = _trial_status(email)
+        return jsonify(
+            {
+                "ok": True,
+                "already_started": True,
+                "message": "Trial already exists for this email.",
+                "trial": s,
+            }
+        ), 200
+
+    # Generate OTP
+    code = f"{randint(0, 999999):06d}"
+    expires = _now() + _otp_ttl()
+    _TRIAL_OTP[email] = {"code": code, "expires": expires, "created": _now()}
+
+    # Send via Resend
+    try:
+        subject = "Your FXCO-PILOT verification code"
+        html = f"""
+        <div style="font-family:Arial,sans-serif;line-height:1.6">
+          <h2>FXCO-PILOT Email Verification</h2>
+          <p>Your code is:</p>
+          <div style="font-size:28px;font-weight:800;letter-spacing:6px;margin:12px 0">{code}</div>
+          <p>This code expires in {int(_otp_ttl() / 60)} minutes.</p>
+          <p style="opacity:0.8">If you didn’t request this, you can ignore this email.</p>
+        </div>
+        """
+        _send_resend_email(email, subject, html)
+    except Exception as e:
+        # cleanup otp if sending failed
+        _TRIAL_OTP.pop(email, None)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+    return jsonify({"ok": True, "sent": True, "email": email}), 200
+
+
+@app.post("/api/trial/verify")
+def trial_verify():
+    """
+    Verifies OTP and activates 14-day trial for that email (one-time only).
+    Also binds email -> client_id (X-FXCO-Client) so /api/analyze doesn't need new headers.
+    Expects JSON: { "email": "...", "code": "123456" }
+    """
+    _cleanup_trial_state()
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    code = (data.get("code") or "").strip()
+
+    if not _email_ok(email):
+        return jsonify({"ok": False, "error": "Invalid email."}), 400
+    if not re.fullmatch(r"\d{6}", code or ""):
+        return jsonify({"ok": False, "error": "Invalid code format."}), 400
+
+    # If trial already exists, don't extend. But still bind email to client_id.
+    if email in _TRIAL:
+        client_id = _get_client_id_header()
+        if client_id:
+            _CLIENT_EMAIL[client_id] = email
+        return jsonify({"ok": True, "verified": True, "already_started": True, "trial": _trial_status(email)}), 200
+
+    row = _TRIAL_OTP.get(email) or {}
+    if not row:
+        return jsonify({"ok": False, "error": "No pending code for this email. Start again."}), 400
+    if _now() > float(row.get("expires", 0)):
+        _TRIAL_OTP.pop(email, None)
+        return jsonify({"ok": False, "error": "Code expired. Start again."}), 400
+    if str(row.get("code") or "") != code:
+        return jsonify({"ok": False, "error": "Incorrect code."}), 400
+
+    # Activate trial (one-time)
+    days = _trial_days()
+    trial_until = _now() + days * 24 * 60 * 60
+    _TRIAL[email] = {"trial_until": trial_until, "started": _now(), "verified": True}
+
+    # Bind verified email to client_id so /api/analyze can identify them automatically
+    client_id = _get_client_id_header()
+    if client_id:
+        _CLIENT_EMAIL[client_id] = email
+
+    # consume otp
+    _TRIAL_OTP.pop(email, None)
+
+    return jsonify({"ok": True, "verified": True, "trial": _trial_status(email)}), 200
+
+
+@app.get("/api/trial/status")
+def trial_status():
+    """
+    Optional helper for UI: shows trial status for current client_id (if verified).
+    """
+    ip = _client_ip()
+    client_id = _get_client_id_header() or _client_id_fallback(ip)
+    email = _client_verified_email(client_id)
+    return jsonify({"ok": True, "client_id": client_id, "trial": _trial_status(email)}), 200
+
+
+# ==========================
 # Paystack endpoints
 # ==========================
 @app.get("/api/paystack/config")
 def paystack_config():
     """
-    Frontend calls this to show pricing + decide whether to lock analysis.
-    REQUIRED CHANGE:
-      If require_payment=1 AND secret is missing => ok:false + error field.
+    REQUIRED:
+      If require_payment=1 AND secret missing => ok:false + error field.
     """
     enabled = _require_payment()
 
@@ -374,21 +560,22 @@ def paystack_config():
                 "require_payment": True,
                 "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
                 "currency": PAYSTACK_CURRENCY,
-                "amount": _paystack_amount_minor(),  # still show price
+                "amount": _paystack_amount_minor(),
                 "public_key": PAYSTACK_PUBLIC_KEY or None,
                 "access_days": _access_days(),
+                "trial_days": _trial_days(),
             }
         ), 200
 
-    ok = _paystack_ok_enabled()
     return jsonify(
         {
-            "ok": ok,
+            "ok": True,
             "require_payment": enabled,
             "currency": PAYSTACK_CURRENCY,
-            "amount": _paystack_amount_minor(),  # minor units
+            "amount": _paystack_amount_minor(),
             "public_key": PAYSTACK_PUBLIC_KEY or None,
             "access_days": _access_days(),
+            "trial_days": _trial_days(),
         }
     ), 200
 
@@ -400,8 +587,7 @@ def paystack_init():
     Expects JSON: { "email": "user@email.com" }
     Returns: { ok, authorization_url, reference }
 
-    REQUIRED CHANGE:
-      callback_url must use PAYSTACK_CALLBACK_URL and ensure paystack=success is present.
+    Callback uses PAYSTACK_CALLBACK_URL and ensures paystack=success exists.
     """
     if not _require_payment():
         return jsonify({"ok": False, "error": "Payment gate is disabled on server."}), 400
@@ -414,15 +600,12 @@ def paystack_init():
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
 
-    client_id = _get_client_id_header()
-    if not client_id:
-        # fallback: lock to IP if client id not provided
-        client_id = "ip:" + _client_ip()
+    ip = _client_ip()
+    client_id = _get_client_id_header() or _client_id_fallback(ip)
 
     amount = _paystack_amount_minor()
     currency = PAYSTACK_CURRENCY
 
-    # ✅ FIXED callback: always prefer env, preserve existing params, ensure paystack=success exists
     callback_url = _ensure_paystack_success_param(_callback_url())
 
     payload = {
@@ -493,12 +676,10 @@ def paystack_verify():
 
         paid = (status == "success") and (currency == expected_currency) and (amount >= expected_amount)
 
-        # Determine client_id:
         meta = data.get("metadata") or {}
         client_id = (meta.get("fxco_client_id") or "").strip()
 
         if not client_id:
-            # fallback to pending map
             pending = _PENDING_REF.get(reference) or {}
             client_id = pending.get("client_id", "")
 
@@ -804,12 +985,6 @@ def _pick_first(data: dict, keys: list[str]) -> str:
 
 
 def _get_payload_fields():
-    """
-    Accepts:
-      - multipart/form-data (FormData)
-      - application/x-www-form-urlencoded
-      - application/json
-    """
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
@@ -825,18 +1000,19 @@ def _get_payload_fields():
 
 
 # ==========================
-# Analyze endpoint (with Paystack gate)
+# Analyze endpoint (Trial + Paystack gate)
 # ==========================
 @app.route("/api/analyze", methods=["POST"])
 def analyze():
-    # Rate limit ONLY this endpoint
     ip = _client_ip()
-    ok, retry_after, rl_headers = _rate_check(ip)
+    client_id = _get_client_id_header() or _client_id_fallback(ip)
+
+    # Rate limit ONLY this endpoint (auto paid/free)
+    ok, retry_after, rl_headers = _rate_check(ip, client_id)
     if not ok:
         resp = jsonify(
             {
                 "error": "Too many requests. Please slow down.",
-                "limits": {"per_60s": int(rl_headers.get("X-RateLimit-Limit-60s", "0")), "per_24h": int(rl_headers.get("X-RateLimit-Limit-24h", "0"))},
                 "retry_after_seconds": retry_after,
             }
         )
@@ -853,44 +1029,26 @@ def analyze():
             resp.headers[k] = v
         return resp
 
-    # Paystack gate: require valid unlock if enabled
+    # Trial + Paystack gate
+    # If PAYSTACK_REQUIRE_PAYMENT is ON:
+    #   allow if trial is active OR client is paid
     if _require_payment():
-        client_id = _get_client_id_header() or ("ip:" + ip)
-        if not _is_client_unlocked(client_id):
-            # If frontend provided a paystack ref header, attempt one quick verify (cached)
-            ref = (request.headers.get("X-FXCO-Paystack-Ref") or "").strip()
-            if ref:
-                cache_key = f"ps_verify::{ref}"
-                cached = _cache_get(cache_key)
-                if cached is None:
-                    try:
-                        vr = requests.get(
-                            f"{PAYSTACK_BASE}/transaction/verify/{ref}",
-                            headers=_paystack_headers(),
-                            timeout=12,
-                        )
-                        vj = vr.json()
-                        _cache_set(cache_key, vj, ttl=30)
-                        cached = vj
-                    except Exception:
-                        cached = None
+        email = _client_verified_email(client_id)
+        trial_ok = _trial_active_for_email(email)
+        paid_ok = _is_client_unlocked(client_id)
 
-                if cached and cached.get("status"):
-                    data = cached.get("data") or {}
-                    status = (data.get("status") or "").lower()
-                    currency = (data.get("currency") or "").upper()
-                    amount = int(data.get("amount") or 0)
-                    paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= _paystack_amount_minor())
-                    if paid:
-                        paid_until = _now() + _access_days() * 24 * 60 * 60
-                        _ACCESS[client_id] = {"paid_until": paid_until, "last_ref": ref, "updated": _now()}
-
-            if not _is_client_unlocked(client_id):
-                resp = jsonify({"error": "Payment required. Please unlock access via Paystack."})
-                resp.status_code = 402
-                for k, v in rl_headers.items():
-                    resp.headers[k] = v
-                return resp
+        if not trial_ok and not paid_ok:
+            resp = jsonify(
+                {
+                    "error": "Access blocked. Trial ended or not verified. Please pay with Paystack to continue.",
+                    "trial": _trial_status(email),
+                    "paid": False,
+                }
+            )
+            resp.status_code = 402
+            for k, v in rl_headers.items():
+                resp.headers[k] = v
+            return resp
 
     # Parse payload
     pair_type, timeframe, signal_text = _get_payload_fields()
