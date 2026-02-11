@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FXCO-Pilot — Trade Validation Report</title>
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
@@ -16,31 +15,22 @@
       --bg2:#ffffff;
       --ink:#0b1220;
       --muted:#5c667a;
-
       --card:#ffffff;
       --line:rgba(15, 23, 42, .10);
       --shadow: 0 18px 60px rgba(15, 23, 42, .08);
       --shadow2: 0 10px 30px rgba(15, 23, 42, .08);
-
       --radius: 18px;
       --radius2: 14px;
 
-      /* Verdict colors */
-      --okBg: rgba(34,197,94,.14);
-      --okLine: rgba(34,197,94,.30);
-      --okInk: #166534;
+      --green:#22c55e;
+      --red:#ef4444;
+      --amber:#f59e0b;
+      --slate:#64748b;
 
-      --condBg: rgba(245,158,11,.14);
-      --condLine: rgba(245,158,11,.32);
-      --condInk: #92400e;
-
-      --waitBg: rgba(100,116,139,.14);
-      --waitLine: rgba(100,116,139,.28);
-      --waitInk: #334155;
-
-      --badBg: rgba(239,68,68,.12);
-      --badLine: rgba(239,68,68,.30);
-      --badInk: #991b1b;
+      --greenBg: rgba(34,197,94,.10);
+      --redBg: rgba(239,68,68,.10);
+      --amberBg: rgba(245,158,11,.10);
+      --slateBg: rgba(100,116,139,.10);
 
       --btn:#0b1220;
       --btnInk:#ffffff;
@@ -50,7 +40,6 @@
 
     * { box-sizing: border-box; }
     html, body { height: 100%; }
-
     body{
       margin:0;
       font-family: Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
@@ -66,10 +55,9 @@
     .wrap{
       max-width: 1120px;
       margin: 0 auto;
-      padding: 28px 18px 60px;
+      padding: 28px 18px 70px;
     }
 
-    /* Top bar */
     .topbar{
       display:flex;
       align-items:center;
@@ -98,7 +86,7 @@
       font-size: 14px;
       margin:0;
       letter-spacing: .2px;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1.1;
     }
     .brand p{
@@ -123,7 +111,7 @@
       padding: 10px 12px;
       border-radius: 12px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       box-shadow: 0 10px 22px rgba(15,23,42,.06);
       cursor: pointer;
       transition: transform .12s ease, box-shadow .12s ease;
@@ -140,11 +128,10 @@
       box-shadow: 0 16px 40px rgba(11,18,32,.20);
     }
 
-    /* Hero */
     .hero{
       margin-top: 10px;
       border-radius: var(--radius);
-      background: rgba(255,255,255,.80);
+      background: rgba(255,255,255,.82);
       border: 1px solid rgba(255,255,255,.55);
       box-shadow: var(--shadow);
       padding: 18px;
@@ -173,7 +160,7 @@
       margin:0;
       font-size: 18px;
       letter-spacing: .2px;
-      font-weight: 600;
+      font-weight: 700;
     }
 
     .sub{
@@ -183,74 +170,93 @@
       line-height: 1.6;
     }
 
-    /* Institutional decision banner */
+    /* Decision Banner */
     .decisionBanner{
       margin-top: 12px;
       border-radius: 16px;
-      padding: 14px 14px;
       border: 1px solid var(--line);
+      padding: 12px 14px;
       display:flex;
       align-items:flex-start;
+      justify-content: space-between;
       gap: 12px;
-      box-shadow: var(--shadow2);
-      background: rgba(255,255,255,.75);
+      flex-wrap: wrap;
     }
-    .bannerIcon{
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
+
+    .decisionLeft{
+      display:flex;
+      align-items:flex-start;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .seal{
+      width: 40px; height: 40px;
+      border-radius: 14px;
       display:flex;
       align-items:center;
       justify-content:center;
       font-weight: 900;
-      border: 1px solid rgba(255,255,255,.65);
-      box-shadow: 0 10px 22px rgba(15,23,42,.08);
+      font-size: 14px;
       flex: 0 0 auto;
+      border: 1px solid rgba(15,23,42,.12);
     }
-    .bannerTitle{
+
+    .decisionTitle{
       margin:0;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: .2px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: .25px;
     }
-    .bannerSub{
-      margin:4px 0 0;
-      color: rgba(2,6,23,.75);
+
+    .decisionMeta{
+      margin: 3px 0 0;
       font-size: 12px;
-      line-height: 1.55;
+      color: var(--muted);
+      line-height: 1.5;
     }
 
-    .b-ok{ background: var(--okBg); border-color: var(--okLine); }
-    .b-ok .bannerIcon{ background: rgba(34,197,94,.22); color: var(--okInk); }
-    .b-ok .bannerTitle{ color: var(--okInk); }
+    .pillRow{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items:center;
+      justify-content:flex-end;
+    }
 
-    .b-cond{ background: var(--condBg); border-color: var(--condLine); }
-    .b-cond .bannerIcon{ background: rgba(245,158,11,.22); color: var(--condInk); }
-    .b-cond .bannerTitle{ color: var(--condInk); }
+    .pill{
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(15,23,42,.12);
+      background: rgba(255,255,255,.7);
+      white-space: nowrap;
+    }
 
-    .b-wait{ background: var(--waitBg); border-color: var(--waitLine); }
-    .b-wait .bannerIcon{ background: rgba(100,116,139,.22); color: var(--waitInk); }
-    .b-wait .bannerTitle{ color: var(--waitInk); }
+    .pill.good{ color: var(--green); background: var(--greenBg); border-color: rgba(34,197,94,.25); }
+    .pill.warn{ color: var(--amber); background: var(--amberBg); border-color: rgba(245,158,11,.25); }
+    .pill.bad{ color: var(--red); background: var(--redBg); border-color: rgba(239,68,68,.25); }
+    .pill.neutral{ color: var(--slate); background: var(--slateBg); border-color: rgba(100,116,139,.25); }
 
-    .b-bad{ background: var(--badBg); border-color: var(--badLine); }
-    .b-bad .bannerIcon{ background: rgba(239,68,68,.18); color: var(--badInk); }
-    .b-bad .bannerTitle{ color: var(--badInk); }
-
-    /* KPI cards */
+    /* KPIs */
     .kpis{
       display:grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
       margin-top: 12px;
     }
-    @media (max-width: 700px){
+    @media (max-width: 900px){
+      .kpis{ grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px){
       .kpis{ grid-template-columns: 1fr; }
     }
 
     .kpi{
       border-radius: var(--radius2);
       border: 1px solid var(--line);
-      background: rgba(255,255,255,.65);
+      background: rgba(255,255,255,.68);
       padding: 12px;
       box-shadow: var(--shadow2);
     }
@@ -258,29 +264,59 @@
       color: var(--muted);
       font-size: 11px;
       margin:0 0 6px;
-      font-weight: 500;
+      font-weight: 600;
+      letter-spacing: .2px;
+      text-transform: uppercase;
     }
     .kpi .value{
       margin:0;
       font-size: 14px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: .2px;
-    }
-    .kpi .mini{
-      margin-top: 6px;
-      font-size: 11px;
-      color: var(--muted);
-      line-height: 1.5;
+      word-break: break-word;
     }
 
-    /* Layout below */
+    /* Confidence bar */
+    .barWrap{
+      margin-top: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.65);
+      padding: 10px 12px;
+    }
+    .barTop{
+      display:flex;
+      justify-content:space-between;
+      gap: 10px;
+      align-items:center;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .track{
+      margin-top: 8px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.08);
+      overflow:hidden;
+      border: 1px solid rgba(15,23,42,.08);
+    }
+    .fill{
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(239,68,68,.9), rgba(245,158,11,.9), rgba(34,197,94,.9));
+      transition: width 400ms ease;
+    }
+
+    /* Below layout */
     .grid{
       display:grid;
-      grid-template-columns: .95fr 1.05fr;
+      grid-template-columns: 1fr 1fr;
       gap: 14px;
       margin-top: 14px;
     }
-    @media (max-width: 900px){
+    @media (max-width: 980px){
       .grid{ grid-template-columns: 1fr; }
     }
 
@@ -296,7 +332,7 @@
     .card h3{
       margin:0 0 10px;
       font-size: 14px;
-      font-weight: 700;
+      font-weight: 900;
       letter-spacing: .2px;
     }
 
@@ -308,7 +344,7 @@
 
     .row{
       border: 1px solid var(--line);
-      background: rgba(255,255,255,.65);
+      background: rgba(255,255,255,.68);
       border-radius: 14px;
       padding: 12px;
       display:flex;
@@ -322,34 +358,20 @@
       font-size: 11px;
       color: var(--muted);
       margin:0 0 4px;
-      font-weight: 600;
+      font-weight: 800;
       letter-spacing: .2px;
       text-transform: uppercase;
     }
     .row .val{
       margin:0;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 700;
       word-wrap: break-word;
     }
 
-    .chip{
-      border-radius: 999px;
-      padding: 7px 10px;
-      font-size: 11px;
-      font-weight: 800;
-      border: 1px solid var(--line);
-      white-space: nowrap;
-      background: rgba(241,245,249,.9);
-      color: #0b1220;
-    }
-    .chip.good{ background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.22); color: var(--okInk); }
-    .chip.warn{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.26); color: var(--condInk); }
-    .chip.bad{ background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.22); color: var(--badInk); }
-
     .analysis{
       border: 1px solid var(--line);
-      background: rgba(255,255,255,.65);
+      background: rgba(255,255,255,.68);
       border-radius: 14px;
       padding: 14px;
       line-height: 1.75;
@@ -362,7 +384,7 @@
     .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
 
     .foot{
-      margin-top: 12px;
+      margin-top: 14px;
       color: var(--muted);
       font-size: 11px;
       line-height: 1.6;
@@ -380,7 +402,6 @@
 
 <body>
   <div class="wrap">
-    <!-- Topbar -->
     <div class="topbar">
       <div class="brand">
         <div class="mark"></div>
@@ -398,7 +419,6 @@
       </div>
     </div>
 
-    <!-- Hero -->
     <section class="hero">
       <div class="heroGrid">
         <div>
@@ -409,35 +429,54 @@
             </div>
           </div>
 
-          <!-- Institutional decision banner -->
-          <div id="decisionBanner" class="decisionBanner b-wait">
-            <div class="bannerIcon" id="bannerIcon">⏸</div>
-            <div>
-              <p class="bannerTitle" id="bannerTitle">WAIT (INSUFFICIENT EDGE)</p>
-              <p class="bannerSub" id="bannerSub">Loading institutional verdict…</p>
+          <!-- Big decision banner -->
+          <div class="decisionBanner" id="decisionBanner">
+            <div class="decisionLeft">
+              <div class="seal" id="seal">—</div>
+              <div style="min-width:0">
+                <p class="decisionTitle" id="decisionTitle">—</p>
+                <p class="decisionMeta" id="decisionMeta">—</p>
+              </div>
+            </div>
+
+            <div class="pillRow">
+              <span class="pill" id="pillTier">Tier —</span>
+              <span class="pill neutral" id="pillScore">Score —</span>
+              <span class="pill neutral" id="pillConfidence">Confidence —</span>
             </div>
           </div>
 
           <div class="kpis">
             <div class="kpi">
-              <p class="label">Instrument</p>
+              <p class="label">Pair</p>
               <p class="value" id="kpiPair">—</p>
-              <div class="mini" id="kpiTf">Timeframe: —</div>
             </div>
             <div class="kpi">
-              <p class="label">Direction</p>
+              <p class="label">Timeframe</p>
+              <p class="value" id="kpiTf">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Direction / Bias</p>
               <p class="value" id="kpiSide">—</p>
-              <div class="mini" id="kpiBias">Bias: —</div>
             </div>
             <div class="kpi">
-              <p class="label">Edge Score</p>
-              <p class="value" id="kpiScore">—</p>
-              <div class="mini" id="kpiParts">Confidence: — • RR: —</div>
+              <p class="label">R:R (approx)</p>
+              <p class="value" id="kpiRR">—</p>
+            </div>
+          </div>
+
+          <div class="barWrap" aria-label="Confidence">
+            <div class="barTop">
+              <span>AI Confidence</span>
+              <span id="confText">—%</span>
+            </div>
+            <div class="track">
+              <div class="fill" id="confFill"></div>
             </div>
           </div>
 
           <p class="muted" style="margin: 12px 2px 0;">
-            Desk rule: we do not “approve” trades on borderline confidence. This report is decision support — not a signal.
+            Institutional-style output: **guards first**, then **score**, then **tier**. This is decision support — not a signal.
           </p>
         </div>
 
@@ -450,19 +489,28 @@
       </div>
     </section>
 
-    <!-- Details -->
     <div class="grid">
       <section class="card">
-        <h3>Key Checks</h3>
-        <div class="list" id="checksList"></div>
+        <h3>Blocks & Conditions</h3>
+        <div class="list" id="blocksList"></div>
         <p class="muted" style="margin: 12px 2px 0;">
-          Tip: If any invalidation appears, treat it as a desk-level risk flag unless your chart disproves it.
+          Red items = execution blocked. Yellow items = “execute only if…” conditions.
         </p>
       </section>
 
       <section class="card">
         <h3>AI Reasoning</h3>
         <div class="analysis" id="analysisBox">Loading…</div>
+      </section>
+
+      <section class="card">
+        <h3>Key Checks</h3>
+        <div class="list" id="checksList"></div>
+      </section>
+
+      <section class="card">
+        <h3>Signal</h3>
+        <div class="analysis" id="signalBox">—</div>
       </section>
     </div>
 
@@ -477,367 +525,222 @@
       return String(v);
     }
 
-    function esc(s){
-      return String(s ?? "").replace(/[&<>"']/g, m => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-      }[m]));
-    }
+    function safeUpper(v){ return fmt(v).toUpperCase(); }
 
-    function safeUpper(v){
-      const x = fmt(v);
-      if (x === "—") return "—";
-      return x.toUpperCase();
-    }
+    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
-    function nowStamp(ts){
-      const d = ts ? new Date(ts) : new Date();
+    function nowStamp(){
+      const d = new Date();
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+    }
+
+    function pillToneForTier(tier){
+      const t = (tier||"").toUpperCase();
+      if (t === "EXECUTE") return "good";
+      if (t === "EXECUTE_IF") return "warn";
+      if (t === "WAIT") return "neutral";
+      if (t === "DO_NOT_TRADE") return "bad";
+      return "neutral";
+    }
+
+    function setDecisionUI(tier, label, meta, score, confidence){
+      const seal = document.getElementById("seal");
+      const title = document.getElementById("decisionTitle");
+      const metaEl = document.getElementById("decisionMeta");
+      const pillTier = document.getElementById("pillTier");
+      const pillScore = document.getElementById("pillScore");
+      const pillConf = document.getElementById("pillConfidence");
+
+      const T = (tier||"").toUpperCase();
+      const tone = pillToneForTier(T);
+
+      const sealMap = {
+        EXECUTE: "GO",
+        EXECUTE_IF: "IF",
+        WAIT: "WAIT",
+        DO_NOT_TRADE: "NO"
+      };
+
+      const toneMap = {
+        good: { bg:"rgba(34,197,94,.12)", fg:"rgba(34,197,94,.95)" },
+        warn: { bg:"rgba(245,158,11,.12)", fg:"rgba(245,158,11,.95)" },
+        bad: { bg:"rgba(239,68,68,.12)", fg:"rgba(239,68,68,.95)" },
+        neutral: { bg:"rgba(100,116,139,.12)", fg:"rgba(100,116,139,.95)" }
+      };
+
+      const colors = toneMap[tone] || toneMap.neutral;
+
+      seal.textContent = sealMap[T] || "—";
+      seal.style.background = colors.bg;
+      seal.style.color = colors.fg;
+
+      title.textContent = label || "—";
+      metaEl.textContent = meta || "—";
+
+      pillTier.className = "pill " + tone;
+      pillTier.textContent = "Tier: " + (T || "—");
+
+      pillScore.className = "pill " + (score >= 75 ? "good" : score >= 60 ? "warn" : score >= 45 ? "neutral" : "bad");
+      pillScore.textContent = "Score: " + (Number.isFinite(score) ? score : "—");
+
+      pillConf.className = "pill " + (confidence >= 70 ? "good" : confidence >= 55 ? "warn" : confidence >= 40 ? "neutral" : "bad");
+      pillConf.textContent = "Confidence: " + (Number.isFinite(confidence) ? confidence + "%" : "—%");
     }
 
     function chipClass(level){
       const v = (level || "").toLowerCase();
-      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok") || v.includes("aligned")) return "chip good";
-      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("moderate")) return "chip warn";
-      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("risk") || v.includes("invalidation")) return "chip bad";
-      return "chip";
+      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "pill good";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("conditional")) return "pill warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("block") || v.includes("risk")) return "pill bad";
+      return "pill neutral";
     }
 
-    function addRow(container, key, val, chip){
+    function addRow(container, key, val, chipText){
       const el = document.createElement("div");
       el.className = "row";
       el.innerHTML = `
         <div class="left">
-          <p class="key">${esc(key)}</p>
-          <p class="val">${esc(val)}</p>
+          <p class="key">${key}</p>
+          <p class="val">${val}</p>
         </div>
-        ${chip ? `<span class="${chipClass(chip)}">${esc(chip)}</span>` : ""}
+        ${chipText ? `<span class="${chipClass(chipText)}">${chipText}</span>` : ""}
       `;
       container.appendChild(el);
     }
 
-    function parseRR(rr){
-      // rr could be number, "2.64", "RR ≈ 2.6", etc.
-      if (rr === null || rr === undefined) return null;
-      if (typeof rr === "number" && isFinite(rr)) return rr;
-      const s = String(rr);
-      const m = s.match(/(\d+(\.\d+)?)/);
-      if (!m) return null;
-      const n = Number(m[1]);
-      return isFinite(n) ? n : null;
-    }
-
-    // Normalize payload from index.html
-    function normalize(raw){
-      // index.html stores:
-      // { pair_type, timeframe, signal_input, analysis: { decision, confidence, strength, clarity, signal_check, market_context, invalidation_warnings, why_this_trade, guidance, verdict } , generated_at }
+    function parseReport(raw){
+      // Expected storage from index.html:
+      // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
       const r = raw || {};
-      const a = r.analysis || {};
+      if (typeof r === "string"){
+        return { pair_type:"", timeframe:"", signal_input:"", analysis:{ reasoning_text: r } };
+      }
 
-      const pair = r.pair_type || r.pairType || a.pair || a.symbol || a.instrument || "";
-      const timeframe = r.timeframe || a.timeframe || "";
-      const signal = r.signal_input || r.signal || "";
-
-      const confidence = (typeof a.confidence === "number") ? a.confidence : Number(a.confidence || 0);
-      const strength = (typeof a.strength === "number") ? a.strength : Number(a.strength || 0);
-      const clarity = (typeof a.clarity === "number") ? a.clarity : Number(a.clarity || 0);
-
-      const sc = a.signal_check || {};
-      const mc = a.market_context || {};
-
-      const direction = sc.direction || a.direction || a.side || a.bias || "";
-      const entry = sc.entry || "";
-      const stop = sc.stop_loss || sc.sl || "";
-      const targets = Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || "");
-      const rr = parseRR(sc.rr);
-
-      const invalidations = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
-      const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean) : [];
-      const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean) : [];
-
-      const verdictText = a.verdict || a.decision || ""; // keep raw, but we won’t trust it for the institutional verdict
-
-      const generatedAt = r.generated_at ? new Date(r.generated_at).getTime() : Date.now();
-
+      const analysis = r.analysis || r.result || r.raw?.analysis || {};
       return {
-        pair, timeframe, signal,
-        confidence: isFinite(confidence) ? confidence : 0,
-        strength: isFinite(strength) ? strength : 0,
-        clarity: isFinite(clarity) ? clarity : 0,
-        direction,
-        entry, stop, targets, rr,
-        mc,
-        invalidations,
-        why,
-        guidance,
-        verdictText,
-        raw: r,
-        generatedAt
+        pair_type: r.pair_type || r.pairType || "",
+        timeframe: r.timeframe || "",
+        signal_input: r.signal_input || r.signal || "",
+        analysis: analysis || {},
+        raw: r.raw || r
       };
     }
 
-    // Institutional-level decision rules
-    function institutionalVerdict(n){
-      // Score components (0..100)
-      const conf = clamp(n.confidence, 0, 100);
+    function render(report){
+      document.getElementById("metaLine").textContent = `Generated — ${nowStamp()}`;
 
-      // strength/clarity expected 0..10
-      const str = clamp(n.strength, 0, 10);
-      const clr = clamp(n.clarity, 0, 10);
+      const a = report.analysis || {};
+      const sc = a.signal_check || {};
+      const mc = a.market_context || {};
 
-      // RR usually ~1..4+. Map 1.0 -> 0, 2.0 -> 50, 3.0 -> 80, 4.0 -> 100
-      const rr = (n.rr === null || n.rr === undefined) ? null : Math.max(0, Number(n.rr));
-      const rrScore = rr === null ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+      const tier = a.decision_tier || "";
+      const label = a.decision || a.decision_label || a.verdict || "—";
+      const score = Number.isFinite(Number(a.score)) ? Number(a.score) : (Number.isFinite(Number(a.strength)) ? Number(a.strength) : NaN);
+      const confidence = Number.isFinite(Number(a.confidence)) ? Number(a.confidence) : 0;
 
-      // Weighted score (conservative desk-style)
-      let score =
-        (conf * 0.50) +
-        ((str / 10) * 100 * 0.20) +
-        ((clr / 10) * 100 * 0.20) +
-        (rrScore * 0.10);
+      const metaBits = [];
+      if (mc.structure) metaBits.push("Structure: " + fmt(mc.structure));
+      if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
+      if (mc.timeframe_alignment) metaBits.push("Alignment: " + fmt(mc.timeframe_alignment));
+      const meta = metaBits.length ? metaBits.join(" • ") : "No market-context metadata returned.";
 
-      // Penalties
-      const invCount = Array.isArray(n.invalidations) ? n.invalidations.length : 0;
-      if (invCount >= 1) score -= 14;
-      if (invCount >= 2) score -= 10;
+      setDecisionUI(tier, label, meta, Number.isFinite(score) ? Math.round(score) : NaN, Math.round(confidence));
 
-      // Hard guards (institutional)
-      // 1) If confidence < 55 => cannot be approved
-      // 2) If RR exists and < 1.5 => cannot be approved
-      // 3) If invalidations exist => cannot be approved (max CONDITIONAL)
-      const hardNoApprove =
-        (conf < 55) ||
-        (rr !== null && rr < 1.5) ||
-        (invCount >= 1);
+      // KPIs
+      document.getElementById("kpiPair").textContent = fmt(report.pair_type);
+      document.getElementById("kpiTf").textContent = fmt(report.timeframe);
+      document.getElementById("kpiSide").textContent = safeUpper(sc.direction || a.bias || "—");
+      document.getElementById("kpiRR").textContent = fmt(sc.rr || "—");
 
-      score = clamp(score, 0, 100);
+      // Confidence bar
+      const c = clamp(Number(confidence) || 0, 0, 100);
+      document.getElementById("confText").textContent = c + "%";
+      requestAnimationFrame(() => { document.getElementById("confFill").style.width = c + "%"; });
 
-      // Tiering (desk-like)
-      // APPROVED: strong edge + clean
-      // CONDITIONAL: edge exists but needs conditions (size down / wait trigger / confirm)
-      // WAIT: insufficient edge / mixed context
-      // REJECTED: low edge or major invalidation risk
-      let tier = "WAIT";
-      if (score >= 78 && !hardNoApprove) tier = "APPROVED";
-      else if (score >= 62) tier = "CONDITIONAL";
-      else if (score >= 48) tier = "WAIT";
-      else tier = "REJECTED";
-
-      // Build message
-      const reasons = [];
-      reasons.push(`Confidence ${Math.round(conf)}%`);
-      if (n.rr !== null) reasons.push(`RR ${Number(n.rr).toFixed(2)}`);
-      if (isFinite(n.strength)) reasons.push(`Strength ${Math.round(str)}/10`);
-      if (isFinite(n.clarity)) reasons.push(`Clarity ${Math.round(clr)}/10`);
-      if (invCount) reasons.push(`${invCount} invalidation warning${invCount>1?"s":""}`);
-
-      const why =
-        tier === "APPROVED"
-          ? "Conditions look aligned. Execute only if your chart matches this setup and risk is defined."
-          : tier === "CONDITIONAL"
-          ? "Edge exists but it’s not clean enough for automatic approval. Tighten risk, wait for trigger, or reduce size."
-          : tier === "WAIT"
-          ? "Insufficient edge for a professional entry. Wait for clearer structure or better pricing."
-          : "Low edge or elevated invalidation risk. Stand down unless your chart clearly disproves the risks.";
-
-      // Desk-style action guidance (1-liner)
-      const action =
-        tier === "APPROVED"
-          ? "Proceed only with strict risk rules."
-          : tier === "CONDITIONAL"
-          ? "Proceed only with conditions: confirmation + reduced risk."
-          : tier === "WAIT"
-          ? "No trade now. Set alerts and reassess."
-          : "Avoid. Look for a higher-quality setup.";
-
-      return { tier, score: Math.round(score), why, action, reasons, conf: Math.round(conf) };
-    }
-
-    function clamp(n, min, max){ return Math.max(min, Math.min(max, Number(n || 0))); }
-
-    function paintBanner(v){
-      const banner = document.getElementById("decisionBanner");
-      const icon = document.getElementById("bannerIcon");
-      const title = document.getElementById("bannerTitle");
-      const sub = document.getElementById("bannerSub");
-
-      const tier = v.tier;
-
-      banner.classList.remove("b-ok","b-cond","b-wait","b-bad");
-
-      if (tier === "APPROVED"){
-        banner.classList.add("b-ok");
-        icon.textContent = "✓";
-        title.textContent = "APPROVED (DESK-GRADE)";
-      } else if (tier === "CONDITIONAL"){
-        banner.classList.add("b-cond");
-        icon.textContent = "!";
-        title.textContent = "CONDITIONAL (CONFIRM FIRST)";
-      } else if (tier === "WAIT"){
-        banner.classList.add("b-wait");
-        icon.textContent = "⏸";
-        title.textContent = "WAIT (EDGE NOT CLEAR)";
+      // Snapshot
+      const snapshotList = document.getElementById("snapshotList");
+      snapshotList.innerHTML = "";
+      const snapshot = {
+        "Entry": sc.entry || "",
+        "Stop Loss": sc.stop_loss || "",
+        "Targets": Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || ""),
+        "Approx RR": sc.rr || "",
+        "Bias": a.bias || ""
+      };
+      const snapEntries = Object.entries(snapshot).filter(([k,v]) => String(v||"").trim() !== "");
+      if (!snapEntries.length){
+        addRow(snapshotList, "Snapshot", "No snapshot fields returned.", "");
       } else {
-        banner.classList.add("b-bad");
-        icon.textContent = "×";
-        title.textContent = "REJECTED (DO NOT EXECUTE)";
+        snapEntries.forEach(([k,v]) => addRow(snapshotList, k, fmt(v), ""));
       }
 
-      const line = `${v.why} ${v.action}`;
-      sub.textContent = line;
-    }
+      // Blocks & Conditions
+      const blocksList = document.getElementById("blocksList");
+      blocksList.innerHTML = "";
 
-    function renderChecks(n){
+      const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
+      const conditions = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
+      const invalids = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const rationale = Array.isArray(a.rationale) ? a.rationale.filter(Boolean) : [];
+
+      if (hardBlocks.length){
+        hardBlocks.slice(0, 8).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
+      }
+      if (conditions.length){
+        conditions.slice(0, 10).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "CONDITIONAL"));
+      }
+      if (!hardBlocks.length && !conditions.length){
+        addRow(blocksList, "Status", "No blocks or conditions returned.", "OK");
+      }
+
+      if (invalids.length){
+        invalids.slice(0, 8).forEach(x => addRow(blocksList, "INVALIDATION", fmt(x), "WARN"));
+      }
+
+      if (rationale.length){
+        rationale.slice(0, 8).forEach(x => addRow(blocksList, "Rationale", fmt(x), "GOOD"));
+      }
+
+      // Key Checks (show structured sections if present)
       const checksList = document.getElementById("checksList");
       checksList.innerHTML = "";
 
-      // Use market_context as structured checks
-      const mc = n.mc || {};
-      const entries = [];
+      const checks = [];
+      if (mc.structure) checks.push({ label:"Structure", detail: mc.structure, level: "" });
+      if (mc.liquidity) checks.push({ label:"Liquidity", detail: mc.liquidity, level: "" });
+      if (mc.momentum) checks.push({ label:"Momentum", detail: mc.momentum, level: "" });
+      if (mc.timeframe_alignment) checks.push({ label:"Timeframe Alignment", detail: mc.timeframe_alignment, level: "" });
 
-      if (mc.structure) entries.push({ label:"Context • Structure", detail: String(mc.structure), level: "" });
-      if (mc.liquidity) entries.push({ label:"Context • Liquidity", detail: String(mc.liquidity), level: "" });
-      if (mc.momentum) entries.push({ label:"Context • Momentum", detail: String(mc.momentum), level: "" });
-      if (mc.timeframe_alignment) entries.push({ label:"Context • Timeframe Alignment", detail: String(mc.timeframe_alignment), level: "" });
-
-      // Invalidation warnings are desk-grade checks (always prominent)
-      if (Array.isArray(n.invalidations) && n.invalidations.length){
-        for (const w of n.invalidations.slice(0, 6)){
-          entries.unshift({ label:"Invalidation Warning", detail: String(w), level: "High risk" });
-        }
-      }
-
-      if (!entries.length){
+      if (!checks.length){
         addRow(checksList, "Checks", "No structured checks returned.", "");
-        return;
+      } else {
+        checks.forEach(it => addRow(checksList, it.label, fmt(it.detail), it.level));
       }
 
-      for (const it of entries){
-        addRow(checksList, it.label, it.detail || "—", it.level || "");
-      }
-    }
+      // Signal
+      document.getElementById("signalBox").textContent = fmt(report.signal_input);
 
-    function renderSnapshot(n){
-      const snapshotList = document.getElementById("snapshotList");
-      snapshotList.innerHTML = "";
+      // Reasoning text
+      const reasoning =
+        (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
+        : (typeof a.verdict === "string" && a.verdict.trim()) ? a.verdict.trim()
+        : (Array.isArray(a.guidance) && a.guidance.length) ? ("Guidance:\n- " + a.guidance.slice(0, 10).join("\n- "))
+        : "";
 
-      // Show the fields that matter in a report (institutional formatting)
-      addRow(snapshotList, "Pair Type", fmt(n.pair || "—"), "");
-      addRow(snapshotList, "Timeframe", fmt(n.timeframe || "—"), "");
-      addRow(snapshotList, "Direction", fmt(n.direction || "—"), "");
-
-      if (n.entry) addRow(snapshotList, "Entry", fmt(n.entry), "");
-      if (n.stop) addRow(snapshotList, "Stop Loss", fmt(n.stop), "");
-      if (n.targets) addRow(snapshotList, "Targets", fmt(n.targets), "");
-      if (n.rr !== null && n.rr !== undefined) addRow(snapshotList, "R:R", Number(n.rr).toFixed(2), "");
-
-      // Confidence/Strength/Clarity are also part of the snapshot
-      addRow(snapshotList, "AI Confidence", `${Math.round(n.confidence)}%`, "");
-      if (isFinite(n.strength)) addRow(snapshotList, "Strength", fmt(n.strength), "");
-      if (isFinite(n.clarity)) addRow(snapshotList, "Clarity", fmt(n.clarity), "");
-    }
-
-    function buildReasoning(n, verdictObj){
-      // Build a meaningful narrative even if backend doesn’t send a single "analysis text"
-      const lines = [];
-
-      lines.push("Institutional Summary");
-      lines.push(`• Verdict: ${verdictObj.tier} (Edge Score: ${verdictObj.score}/100)`);
-      lines.push(`• Basis: ${verdictObj.reasons.join(" • ")}`);
-
-      // Signal check
-      lines.push("");
-      lines.push("Signal Check");
-      lines.push(`• Direction: ${fmt(n.direction)}`);
-      lines.push(`• Entry: ${fmt(n.entry)}`);
-      lines.push(`• Stop Loss: ${fmt(n.stop)}`);
-      lines.push(`• Targets: ${fmt(n.targets)}`);
-      lines.push(`• Approx RR: ${n.rr !== null ? Number(n.rr).toFixed(2) : "—"}`);
-
-      // Market context
-      const mc = n.mc || {};
-      lines.push("");
-      lines.push("Market Context");
-      lines.push(`• Structure: ${fmt(mc.structure)}`);
-      lines.push(`• Liquidity: ${fmt(mc.liquidity)}`);
-      lines.push(`• Momentum: ${fmt(mc.momentum)}`);
-      lines.push(`• Timeframe alignment: ${fmt(mc.timeframe_alignment)}`);
-
-      // Invalidation warnings
-      if (Array.isArray(n.invalidations) && n.invalidations.length){
-        lines.push("");
-        lines.push("Invalidation Warnings (desk-grade)");
-        for (const w of n.invalidations.slice(0, 6)){
-          lines.push(`• ${fmt(w)}`);
-        }
-      }
-
-      // Why + Guidance (if available)
-      if (Array.isArray(n.why) && n.why.length){
-        lines.push("");
-        lines.push("Why This Trade");
-        for (const w of n.why.slice(0, 7)){
-          lines.push(`• ${fmt(w)}`);
-        }
-      }
-
-      if (n.raw?.analysis?.verdict){
-        lines.push("");
-        lines.push("Model Verdict Notes");
-        lines.push(fmt(n.raw.analysis.verdict));
-      }
-
-      if (Array.isArray(n.guidance) && n.guidance.length){
-        lines.push("");
-        lines.push("Execution Guidance");
-        for (const g of n.guidance.slice(0, 7)){
-          lines.push(`• ${fmt(g)}`);
-        }
-      }
-
-      // Always include the original signal for auditability
-      if (n.signal){
-        lines.push("");
-        lines.push("Original Input");
-        lines.push(n.signal);
-      }
-
-      return lines.join("\n");
-    }
-
-    function render(n){
-      // Meta
-      document.getElementById("metaLine").textContent = `Generated — ${nowStamp(n.generatedAt)}`;
-
-      // Institutional verdict
-      const v = institutionalVerdict(n);
-      paintBanner(v);
-
-      // KPIs
-      document.getElementById("kpiPair").textContent = fmt(n.pair);
-      document.getElementById("kpiTf").textContent = `Timeframe: ${fmt(n.timeframe)}`;
-      document.getElementById("kpiSide").textContent = safeUpper(n.direction || "—");
-      document.getElementById("kpiBias").textContent = `Bias: ${fmt(n.mc?.structure || n.raw?.analysis?.bias || "—")}`;
-      document.getElementById("kpiScore").textContent = `${v.score}/100`;
-      document.getElementById("kpiParts").textContent = `Confidence: ${v.conf}% • RR: ${n.rr !== null ? Number(n.rr).toFixed(2) : "—"}`;
-
-      // Snapshot + Checks
-      renderSnapshot(n);
-      renderChecks(n);
-
-      // Reasoning
-      const analysisBox = document.getElementById("analysisBox");
-      analysisBox.textContent = buildReasoning(n, v);
+      document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned. (Fix: ensure backend returns analysis.reasoning_text)";
 
       // Copy payload
       window.__fxco_copy = {
-        tier: v.tier,
-        score: v.score,
-        confidence: v.conf,
-        rr: n.rr,
-        pair: n.pair,
-        timeframe: n.timeframe,
-        direction: n.direction,
-        reasoning: analysisBox.textContent
+        tier: tier,
+        decision: label,
+        score: Number.isFinite(score) ? Math.round(score) : "",
+        confidence: Math.round(confidence),
+        pair: report.pair_type,
+        timeframe: report.timeframe,
+        direction: (sc.direction || a.bias || ""),
+        rr: (sc.rr || ""),
+        signal: report.signal_input,
+        reasoning: reasoning
       };
     }
 
@@ -851,13 +754,18 @@
         const d = window.__fxco_copy || {};
         const out =
 `FXCO-Pilot Trade Validation Report
-Institutional Verdict: ${fmt(d.tier)} (Edge Score: ${fmt(d.score)}/100)
+Tier: ${fmt(d.tier)}
+Decision: ${fmt(d.decision)}
+Score: ${fmt(d.score)}
 Confidence: ${fmt(d.confidence)}%
-RR: ${d.rr !== null && d.rr !== undefined ? Number(d.rr).toFixed(2) : "—"}
 
-Instrument: ${fmt(d.pair)}
+Pair: ${fmt(d.pair)}
 Timeframe: ${fmt(d.timeframe)}
 Direction: ${fmt(d.direction)}
+RR: ${fmt(d.rr)}
+
+Signal:
+${fmt(d.signal)}
 
 Reasoning:
 ${fmt(d.reasoning)}`.trim();
@@ -872,41 +780,30 @@ ${fmt(d.reasoning)}`.trim();
       }
     });
 
-    // Load report from sessionStorage
     (function init(){
       const raw = sessionStorage.getItem("fxcoReport");
       if (!raw){
-        render(normalize({
+        render(parseReport({
           pair_type: "—",
           timeframe: "—",
-          signal_input: "",
+          signal_input: "—",
           analysis: {
+            decision_tier: "WAIT",
+            decision: "NO REPORT FOUND",
+            score: 0,
             confidence: 0,
-            strength: 0,
-            clarity: 0,
-            verdict: "No report found",
-            guidance: [
-              "No validation data was found in this session.",
-              "Go back and analyze a trade to generate a new report."
-            ]
-          },
-          generated_at: Date.now()
+            conditions: ["Go back and run a validation to generate a report."],
+            reasoning_text: "No validation data was found in this browser session."
+          }
         }));
         return;
       }
 
       try{
         const parsed = JSON.parse(raw);
-        render(normalize(parsed));
+        render(parseReport(parsed));
       } catch(e){
-        // If it wasn't JSON, render as fallback
-        render(normalize({
-          pair_type: "—",
-          timeframe: "—",
-          signal_input: "",
-          analysis: { verdict: "Unknown", guidance: [String(raw)] },
-          generated_at: Date.now()
-        }));
+        render(parseReport(raw));
       }
     })();
   </script>
