@@ -35,6 +35,12 @@ app = Flask(__name__)
 #
 # Optional:
 #   PAYSTACK_ACCESS_DAYS=30                   # how long to unlock after payment (default 30)
+#
+# Optional (rate limits):
+#   FREE_LIMIT_60S=5
+#   FREE_LIMIT_24H=50
+#   PAID_LIMIT_60S=60
+#   PAID_LIMIT_24H=2000
 # ============================================================
 
 # ==========================
@@ -57,17 +63,14 @@ def _cache_set(key, value, ttl=60):
 
 # ==========================
 # Rate limiting (in-memory)
-#   - 5 requests / 60s per IP
-#   - 50 requests / 24h per IP
+#   - Free limits (defaults): 5 requests / 60s, 50 requests / 24h
+#   - Paid limits (defaults): 60 requests / 60s, 2000 requests / 24h
 # Applied ONLY to /api/analyze
 # ==========================
 _SHORT_WINDOW_SECONDS = 60
-_SHORT_LIMIT = 5
-
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
-_DAY_LIMIT = 50
 
-# key: ip -> deque[timestamps]
+# key: bucket_key -> deque[timestamps]
 _RATE_SHORT = {}
 _RATE_DAY = {}
 
@@ -83,19 +86,65 @@ def _client_ip():
     return request.remote_addr or "unknown"
 
 
+def _env_int(name: str, default: int, min_v: int = 1, max_v: int = 10_000_000) -> int:
+    try:
+        v = int((os.getenv(name, str(default)) or str(default)).strip())
+        v = max(min_v, min(max_v, v))
+        return v
+    except Exception:
+        return default
+
+
+def _rate_limits_for_request(ip: str):
+    """
+    Decide which limits apply (paid vs free), without frontend changes.
+    Uses your existing _is_client_unlocked(client_id).
+    Returns:
+      (bucket_key, short_limit, day_limit, is_paid)
+    """
+    # If payment gate is enabled and the user is unlocked -> treat as paid
+    client_id = _get_client_id_header() or ("ip:" + ip)
+    paid = False
+    try:
+        paid = bool(_is_client_unlocked(client_id))
+    except Exception:
+        paid = False
+
+    if paid:
+        short_limit = _env_int("PAID_LIMIT_60S", 60)
+        day_limit = _env_int("PAID_LIMIT_24H", 2000)
+    else:
+        short_limit = _env_int("FREE_LIMIT_60S", 5)
+        day_limit = _env_int("FREE_LIMIT_24H", 50)
+
+    # Use a stable per-user bucket key:
+    # - Prefer client_id if present (your frontend already sends X-FXCO-Client)
+    # - Fallback to IP (keeps behavior sane even without header)
+    bucket_key = client_id if client_id else ("ip:" + ip)
+
+    return bucket_key, short_limit, day_limit, paid
+
+
 def _rate_check(ip: str):
     """
     Returns: (ok: bool, retry_after_seconds: int, headers: dict)
+
+    ✅ Updated:
+      - Detects paid status via _is_client_unlocked(client_id)
+      - Applies different limits automatically (no frontend change)
+      - Rate limiting key uses client_id when available (better than raw IP)
     """
     now = time.time()
 
-    if ip not in _RATE_SHORT:
-        _RATE_SHORT[ip] = deque()
-    if ip not in _RATE_DAY:
-        _RATE_DAY[ip] = deque()
+    bucket_key, short_limit, day_limit, is_paid = _rate_limits_for_request(ip)
 
-    short_q = _RATE_SHORT[ip]
-    day_q = _RATE_DAY[ip]
+    if bucket_key not in _RATE_SHORT:
+        _RATE_SHORT[bucket_key] = deque()
+    if bucket_key not in _RATE_DAY:
+        _RATE_DAY[bucket_key] = deque()
+
+    short_q = _RATE_SHORT[bucket_key]
+    day_q = _RATE_DAY[bucket_key]
 
     # prune old entries
     while short_q and (now - short_q[0]) >= _SHORT_WINDOW_SECONDS:
@@ -103,8 +152,8 @@ def _rate_check(ip: str):
     while day_q and (now - day_q[0]) >= _DAY_WINDOW_SECONDS:
         day_q.popleft()
 
-    short_remaining = max(0, _SHORT_LIMIT - len(short_q))
-    day_remaining = max(0, _DAY_LIMIT - len(day_q))
+    short_remaining = max(0, short_limit - len(short_q))
+    day_remaining = max(0, day_limit - len(day_q))
 
     # blocked
     if short_remaining <= 0 or day_remaining <= 0:
@@ -116,9 +165,10 @@ def _rate_check(ip: str):
 
         headers = {
             "Retry-After": str(retry_after),
-            "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+            "X-RateLimit-Tier": "paid" if is_paid else "free",
+            "X-RateLimit-Limit-60s": str(short_limit),
             "X-RateLimit-Remaining-60s": str(short_remaining),
-            "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
+            "X-RateLimit-Limit-24h": str(day_limit),
             "X-RateLimit-Remaining-24h": str(day_remaining),
         }
         return False, retry_after, headers
@@ -128,9 +178,10 @@ def _rate_check(ip: str):
     day_q.append(now)
 
     headers = {
-        "X-RateLimit-Limit-60s": str(_SHORT_LIMIT),
+        "X-RateLimit-Tier": "paid" if is_paid else "free",
+        "X-RateLimit-Limit-60s": str(short_limit),
         "X-RateLimit-Remaining-60s": str(short_remaining - 1),
-        "X-RateLimit-Limit-24h": str(_DAY_LIMIT),
+        "X-RateLimit-Limit-24h": str(day_limit),
         "X-RateLimit-Remaining-24h": str(day_remaining - 1),
     }
     return True, 0, headers
@@ -242,8 +293,6 @@ def _callback_url():
 
     BEST: set PAYSTACK_CALLBACK_URL to your deployed frontend domain
       e.g. https://fxco-pilot.solfightech.org/
-
-    We will NOT guess incorrectly if you set the env.
     """
     cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
     if cb:
@@ -787,7 +836,7 @@ def analyze():
         resp = jsonify(
             {
                 "error": "Too many requests. Please slow down.",
-                "limits": {"per_60s": _SHORT_LIMIT, "per_24h": _DAY_LIMIT},
+                "limits": {"per_60s": int(rl_headers.get("X-RateLimit-Limit-60s", "0")), "per_24h": int(rl_headers.get("X-RateLimit-Limit-24h", "0"))},
                 "retry_after_seconds": retry_after,
             }
         )
