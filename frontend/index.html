@@ -69,12 +69,15 @@
       z-index: 900;
       box-shadow: 0 4px 18px rgba(0,0,0,0.4);
       gap: 12px;
+      box-sizing: border-box;
     }
 
     .topbar-right {
       display: inline-flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
 
     .topbtn {
@@ -106,6 +109,7 @@
       padding: 4px 10px;
       border-radius: 6px;
       font-weight: 500;
+      white-space: nowrap;
     }
 
     .open { background: #00d46a22; color: #00d46a; }
@@ -124,6 +128,7 @@
 
       display: flex;
       gap: 40px;
+      box-sizing: border-box;
     }
 
     h1 {
@@ -167,7 +172,7 @@
     textarea { height: 110px; resize: none; }
 
     .btn {
-      reminding: none;
+      appearance: none;
       width: 100%;
       padding: 15px;
       border-radius: 10px;
@@ -520,6 +525,11 @@
     @media(max-width: 900px){
       .container { flex-direction: column; margin: 20px; padding: 25px; }
       .sessions span { margin-right: 10px; }
+      .topbar { padding: 12px 16px; }
+    }
+
+    @media(max-width: 620px){
+      .sessions { display:none; }
     }
   </style>
 </head>
@@ -540,7 +550,7 @@
     <div class="topbar-right">
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
-      <button id="unlockBtn" class="topbtn primary" onclick="openPricing()">Unlock</button>
+      <!-- Removed Unlock button (not needed anymore) -->
     </div>
   </div>
 
@@ -874,7 +884,7 @@
     /* Auth storage */
     const AUTH_TOKEN_KEY = "fxco_auth_token_v1";
     const AUTH_EMAIL_KEY = "fxco_auth_email_v1";
-    const TRIAL_END_KEY  = "fxco_trial_end_v1 (cache)";
+    const TRIAL_END_KEY  = "fxco_trial_end_v1";
 
     function getAuthToken() {
       try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
@@ -1240,13 +1250,9 @@
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
-      const unlockBtn = document.getElementById("unlockBtn");
 
       if (statusEl) {
         statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
-      }
-      if (unlockBtn) {
-        unlockBtn.innerText = (paid || trialActive) ? "Unlocked" : "Unlock";
       }
 
       const btn = document.getElementById("analyzeBtn");
@@ -1257,7 +1263,7 @@
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
         if (accepted) {
-          setPayHint("Start your free trial (verify email) or Unlock via Pricing.", true);
+          setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
         }
         return;
       }
@@ -1340,7 +1346,6 @@
       // Gate: if require payment, allow if (paid OR trialActive)
       const trialActive = getAuthToken() && isTrialActiveLocal();
       if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
-        // Encourage trial first (anti-spam)
         openAuth();
         return;
       }
@@ -1411,6 +1416,8 @@
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
           startRateCooldown(seconds);
+          btn.disabled = false;
+          applyPaymentGateUI();
           return;
         }
 
