@@ -1,1107 +1,1092 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FX Co-Pilot – AI Trade Validator</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FX Co-Pilot – AI Trade Validator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-    <!-- Vercel serves frontend/public/* at / -->
-    <link rel="icon" href="/favicon.ico">
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="manifest" href="/site.webmanifest">
+  <!-- Vercel serves frontend/public/* at / -->
+  <link rel="icon" href="/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
 
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: "Poppins", sans-serif;
-            background-image: url("/images/bg_fx_4k.png");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-color: #05070b;
-            padding-bottom: 90px;
-        }
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Poppins", sans-serif;
+      background-image: url("/images/bg_fx_4k.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      background-color: #05070b;
+      padding-bottom: 90px;
+    }
 
-        .bg-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.45);
-            pointer-events: none;
-            z-index: -1;
-        }
+    .bg-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      pointer-events: none;
+      z-index: -1;
+    }
 
-        .watermark {
-            position: fixed;
-            right: 32px;
-            bottom: 32px;
-            font-size: 15px;
-            font-weight: 300;
-            text-transform: uppercase;
-            letter-spacing: 10px;
-            user-select: none;
-            pointer-events: none;
-            z-index: 999;
-            font-family: "Poppins", sans-serif;
+    .watermark {
+      position: fixed;
+      right: 32px;
+      bottom: 32px;
+      font-size: 15px;
+      font-weight: 300;
+      text-transform: uppercase;
+      letter-spacing: 10px;
+      user-select: none;
+      pointer-events: none;
+      z-index: 999;
+      font-family: "Poppins", sans-serif;
 
-            background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+      background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
 
-            text-shadow: 0 0 12px rgba(255,255,255,0.08);
-            filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
-        }
+      text-shadow: 0 0 12px rgba(255,255,255,0.08);
+      filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
+    }
 
-        .topbar {
-            width: 100%;
-            padding: 12px 25px;
-            background: rgba(0,0,0,0.55);
-            backdrop-filter: blur(8px);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: #dce1e7;
-            font-size: 14px;
-            position: sticky;
-            top: 0;
-            z-index: 900;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.4);
-            gap: 12px;
-        }
+    .topbar {
+      width: 100%;
+      padding: 12px 25px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(8px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #dce1e7;
+      font-size: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 900;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+      gap: 12px;
+    }
 
-        .topbar-right {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-        }
+    .topbar-right {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
 
-        .topbtn {
-            border: 1px solid rgba(255,255,255,0.10);
-            background: rgba(255,255,255,0.06);
-            color: #e5e7eb;
-            font-weight: 700;
-            font-size: 12px;
-            padding: 8px 12px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: 0.15s;
-        }
-        .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
-        .topbtn.primary {
-            border: 1px solid rgba(0,212,106,0.35);
-            background: rgba(0,212,106,0.14);
-            color: #b8ffdd;
-        }
+    .topbtn {
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.06);
+      color: #e5e7eb;
+      font-weight: 700;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
+    .topbtn.primary {
+      border: 1px solid rgba(0,212,106,0.35);
+      background: rgba(0,212,106,0.14);
+      color: #b8ffdd;
+    }
 
-        .sessions span {
-            margin-right: 20px;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-weight: 500;
-        }
+    .sessions span {
+      margin-right: 20px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 500;
+    }
 
-        .open { background: #00d46a22; color: #00d46a; }
-        .closed { background: #ff444422; color: #ff7777; }
+    .open { background: #00d46a22; color: #00d46a; }
+    .closed { background: #ff444422; color: #ff7777; }
 
-        .container {
-            max-width: 1300px;
-            margin: 50px auto;
-            padding: 40px;
-            border-radius: 18px;
+    .container {
+      max-width: 1300px;
+      margin: 50px auto;
+      padding: 40px;
+      border-radius: 18px;
 
-            background: rgba(18,20,28,0.35);
-            backdrop-filter: blur(18px);
-            border: 1px solid rgba(255,255,255,0.05);
-            box-shadow: 0 8px 35px rgba(0,0,0,0.5);
+      background: rgba(18,20,28,0.35);
+      backdrop-filter: blur(18px);
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: 0 8px 35px rgba(0,0,0,0.5);
 
-            display: flex;
-            gap: 40px;
-        }
+      display: flex;
+      gap: 40px;
+    }
 
-        h1 {
-            font-size: 38px;
-            color: #ffffff;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
+    h1 {
+      font-size: 38px;
+      color: #ffffff;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
 
-        .badge {
-            background: #00d46a;
-            padding: 4px 10px;
-            font-weight: 600;
-            color: black;
-            font-size: 12px;
-            border-radius: 8px;
-        }
+    .badge {
+      background: #00d46a;
+      padding: 4px 10px;
+      font-weight: 600;
+      color: black;
+      font-size: 12px;
+      border-radius: 8px;
+    }
 
-        .section { flex: 1; }
+    .section { flex: 1; }
 
-        label {
-            color: #cfd3d8;
-            margin-bottom: 6px;
-            font-size: 14px;
-            display: block;
-        }
+    label {
+      color: #cfd3d8;
+      margin-bottom: 6px;
+      font-size: 14px;
+      display: block;
+    }
 
-        select, textarea, input[type="file"] {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 20px;
-            border-radius: 8px;
-            border: none;
-            background: #0b0d14cc;
-            backdrop-filter: blur(6px);
-            color: #cfd3d8;
-            font-size: 14px;
-        }
+    select, textarea, input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      border: none;
+      background: #0b0d14cc;
+      backdrop-filter: blur(6px);
+      color: #cfd3d8;
+      font-size: 14px;
+    }
 
-        textarea { height: 110px; resize: none; }
+    textarea { height: 110px; resize: none; }
 
-        .btn {
-            width: 100%;
-            padding: 15px;
-            border-radius: 10px;
-            border: none;
-            font-size: 18px;
-            font-weight: 600;
-            cursor: pointer;
-            color: #fff;
-            background: linear-gradient(90deg, #00d46a, #0ebb53);
-            transition: 0.2s;
-        }
+    .btn {
+      width: 100%;
+      padding: 15px;
+      border-radius: 10px;
+      border: none;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #fff;
+      background: linear-gradient(90deg, #00d46a, #0ebb53);
+      transition: 0.2s;
+    }
 
-        .btn:hover {
-            transform: scale(1.03);
-            box-shadow: 0 0 20px rgba(0,255,140,0.4);
-        }
+    .btn:hover {
+      transform: scale(1.03);
+      box-shadow: 0 0 20px rgba(0,255,140,0.4);
+    }
 
-        .btn:disabled {
-            cursor: not-allowed;
-            opacity: 0.45;
-            transform: none;
-            box-shadow: none;
-            background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
-        }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      transform: none;
+      box-shadow: none;
+      background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
+    }
 
-        /* NEW: rate limit hint line under button */
-        .rate-hint {
-            margin-top: 10px;
-            font-size: 12px;
-            color: #ffd86b;
-            opacity: 0.95;
-            display: none;
-        }
+    /* rate limit + pay hint line */
+    .rate-hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #ffd86b;
+      opacity: 0.95;
+      display: none;
+    }
 
-        .output-box {
-            background: rgba(0,0,0,0.45);
-            border-radius: 12px;
-            padding: 20px;
-            color: #dce1e7;
-            min-height: 260px;
-            overflow-y: auto;
-            border: 1px solid rgba(255,255,255,0.05);
-            backdrop-filter: blur(8px);
-        }
+    .output-box {
+      background: rgba(0,0,0,0.45);
+      border-radius: 12px;
+      padding: 20px;
+      color: #dce1e7;
+      min-height: 260px;
+      overflow-y: auto;
+      border: 1px solid rgba(255,255,255,0.05);
+      backdrop-filter: blur(8px);
+    }
 
-        .title-small {
-            color: #cfd3d8;
-            opacity: 0.8;
-            font-size: 15px;
-            margin-bottom: 10px;
-        }
+    .title-small {
+      color: #cfd3d8;
+      opacity: 0.8;
+      font-size: 15px;
+      margin-bottom: 10px;
+    }
 
-        .decision {
-            padding: 12px;
-            font-size: 20px;
-            font-weight: 700;
-            border-radius: 12px;
-            text-align: center;
-            margin: 12px 0 16px;
-        }
+    .decision {
+      padding: 12px;
+      font-size: 20px;
+      font-weight: 700;
+      border-radius: 12px;
+      text-align: center;
+      margin: 12px 0 16px;
+    }
 
-        .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
-        .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
-        .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
+    .take { color: #00ff9c; background: rgba(0,255,140,0.20); border: 1px solid #00ff9c44; }
+    .neutral { color: #ffd700; background: rgba(255,215,0,0.20); border: 1px solid #ffd70055; }
+    .avoid { color: #ff5050; background: rgba(255,80,80,0.20); border: 1px solid #ff505055; }
 
-        .confidence {
-            margin-bottom: 18px;
-            padding: 12px 12px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
+    .confidence {
+      margin-bottom: 18px;
+      padding: 12px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
 
-        .confidence-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 10px;
-            color: #cbd5e1;
-            font-size: 12px;
-        }
+    .confidence-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: #cbd5e1;
+      font-size: 12px;
+    }
 
-        .confidence-top .label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            letter-spacing: 0.4px;
-            text-transform: uppercase;
-            opacity: 0.9;
-        }
+    .confidence-top .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
 
-        .confidence-top .value { font-weight: 700; color: #ffffff; }
+    .confidence-top .value { font-weight: 700; color: #ffffff; }
 
-        .confidence-track {
-            height: 10px;
-            width: 100%;
-            border-radius: 999px;
-            background: rgba(255,255,255,0.08);
-            overflow: hidden;
-            border: 1px solid rgba(255,255,255,0.06);
-        }
+    .confidence-track {
+      height: 10px;
+      width: 100%;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
 
-        .confidence-fill {
-            height: 100%;
-            width: 0%;
-            border-radius: 999px;
-            background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
-            transition: width 450ms ease;
-        }
+    .confidence-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #ff5050, #fbbf24, #00d46a);
+      transition: width 450ms ease;
+    }
 
-        .consent-row {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            margin: -6px 0 16px;
-            padding: 12px 12px;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.06);
-        }
+    .consent-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: -6px 0 16px;
+      padding: 12px 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
 
-        .consent-row input[type="checkbox"] {
-            margin-top: 3px;
-            width: 18px;
-            height: 18px;
-            accent-color: #00d46a;
-        }
+    .consent-row input[type="checkbox"] {
+      margin-top: 3px;
+      width: 18px;
+      height: 18px;
+      accent-color: #00d46a;
+    }
 
-        .consent-text {
-            color: #cbd5e1;
-            font-size: 12px;
-            line-height: 1.55;
-        }
+    .consent-text {
+      color: #cbd5e1;
+      font-size: 12px;
+      line-height: 1.55;
+    }
 
-        .consent-text a {
-            color: #93c5fd;
-            text-decoration: none;
-            font-weight: 700;
-        }
+    .consent-text a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-weight: 700;
+    }
 
-        .consent-text a:hover { text-decoration: underline; }
+    .consent-text a:hover { text-decoration: underline; }
 
-        .consent-hint {
-            margin-top: 6px;
-            font-size: 12px;
-            color: #ffd86b;
-            display: none;
-        }
+    .consent-hint {
+      margin-top: 6px;
+      font-size: 12px;
+      color: #ffd86b;
+      display: none;
+    }
 
-        .warn-callout {
-            border: 1px solid rgba(251,191,36,0.22);
-            background: rgba(251,191,36,0.08);
-            padding: 14px;
-            border-radius: 14px;
-            margin: 12px 0 16px;
-            color: #f8fafc;
-        }
-        .warn-callout strong { color: #fbbf24; }
+    .warn-callout {
+      border: 1px solid rgba(251,191,36,0.22);
+      background: rgba(251,191,36,0.08);
+      padding: 14px;
+      border-radius: 14px;
+      margin: 12px 0 16px;
+      color: #f8fafc;
+    }
+    .warn-callout strong { color: #fbbf24; }
 
-        .fx-disclaimer {
-            position: fixed;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 2147483647;
-            background: rgba(10, 15, 20, 0.92);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(255, 255, 255, 0.10);
-            padding: 12px 16px;
-            font-size: 12px;
-            color: #cbd5e1;
-            text-align: center;
-        }
+    .fx-disclaimer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 2147483647;
+      background: rgba(10, 15, 20, 0.92);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255, 255, 255, 0.10);
+      padding: 12px 16px;
+      font-size: 12px;
+      color: #cbd5e1;
+      text-align: center;
+    }
 
-        .fx-disclaimer strong { color: #fbbf24; }
+    .fx-disclaimer strong { color: #fbbf24; }
 
-        .fx-legal {
-            margin-top: 8px;
-            display: inline-flex;
-            gap: 10px;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
-            opacity: 0.95;
-        }
+    .fx-legal {
+      margin-top: 8px;
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      opacity: 0.95;
+    }
 
-        .fx-legal a {
-            color: #93c5fd;
-            text-decoration: none;
-            font-weight: 700;
-        }
+    .fx-legal a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-weight: 700;
+    }
 
-        .fx-legal a:hover { text-decoration: underline; }
-        .fx-legal .sep { color: rgba(255,255,255,0.25); }
+    .fx-legal a:hover { text-decoration: underline; }
+    .fx-legal .sep { color: rgba(255,255,255,0.25); }
 
-        .legal-backdrop {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 2147483646;
-            background: rgba(0,0,0,0.65);
-            backdrop-filter: blur(4px);
-        }
+    .legal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 2147483646;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+    }
 
-        .legal-modal {
-            display: none;
-            position: fixed;
-            left: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2147483647;
-            max-width: 920px;
-            width: 92%;
-            max-height: 80vh;
-            overflow: auto;
-            border-radius: 18px;
-            background: rgba(18,20,28,0.92);
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 12px 50px rgba(0,0,0,0.75);
-            color: #cbd5e1;
-        }
+    .legal-modal {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2147483647;
+      max-width: 920px;
+      width: 92%;
+      max-height: 80vh;
+      overflow: auto;
+      border-radius: 18px;
+      background: rgba(18,20,28,0.92);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 12px 50px rgba(0,0,0,0.75);
+      color: #cbd5e1;
+    }
 
-        .legal-modal-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 16px 18px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-        }
+    .legal-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
 
-        .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
+    .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
 
-        .legal-close {
-            cursor: pointer;
-            border: none;
-            background: rgba(255,255,255,0.08);
-            color: #fff;
-            border-radius: 12px;
-            padding: 8px 12px;
-            font-weight: 800;
-        }
+    .legal-close {
+      cursor: pointer;
+      border: none;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-weight: 800;
+    }
 
-        .legal-close:hover { background: rgba(255,255,255,0.12); }
+    .legal-close:hover { background: rgba(255,255,255,0.12); }
 
-        .legal-modal-content {
-            padding: 18px;
-            font-size: 13px;
-            line-height: 1.75;
-        }
+    .legal-modal-content {
+      padding: 18px;
+      font-size: 13px;
+      line-height: 1.75;
+    }
 
-        .legal-modal-content h2 {
-            color: #fff;
-            margin: 18px 0 8px;
-            font-size: 15px;
-        }
+    .legal-modal-content h2 {
+      color: #fff;
+      margin: 18px 0 8px;
+      font-size: 15px;
+    }
 
-        .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
+    .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
 
-        .legal-callout {
-            border: 1px solid rgba(251,191,36,0.22);
-            background: rgba(251,191,36,0.08);
-            padding: 14px;
-            border-radius: 14px;
-            margin: 12px 0;
-        }
+    .legal-callout {
+      border: 1px solid rgba(251,191,36,0.22);
+      background: rgba(251,191,36,0.08);
+      padding: 14px;
+      border-radius: 14px;
+      margin: 12px 0;
+    }
 
-        .legal-callout strong { color: #fbbf24; }
+    .legal-callout strong { color: #fbbf24; }
 
-        .fx-section-title {
-            margin: 14px 0 6px;
-            font-weight: 800;
-            color: #ffffff;
-            font-size: 13px;
-            letter-spacing: 0.2px;
-        }
+    .fx-section-title {
+      margin: 14px 0 6px;
+      font-weight: 800;
+      color: #ffffff;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+    }
 
-        .fx-kv {
-            margin: 8px 0;
-            color: #cbd5e1;
-            font-size: 13px;
-            line-height: 1.6;
-        }
+    .fx-kv {
+      margin: 8px 0;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.6;
+    }
 
-        .fx-ul {
-            margin: 8px 0 0;
-            padding-left: 18px;
-            color: #cbd5e1;
-            font-size: 13px;
-            line-height: 1.6;
-        }
+    .fx-ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: #cbd5e1;
+      font-size: 13px;
+      line-height: 1.6;
+    }
 
-        /* ========= NEW: Pricing modal styles ========= */
-        .pricing-card {
-            border: 1px solid rgba(255,255,255,0.10);
-            background: rgba(255,255,255,0.06);
-            border-radius: 16px;
-            padding: 16px;
-        }
-        .price-row {
-            display:flex;
-            align-items: baseline;
-            justify-content: space-between;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .price {
-            font-size: 28px;
-            font-weight: 900;
-            color: #ffffff;
-        }
-        .per {
-            font-size: 12px;
-            opacity: 0.85;
-        }
-        .pill {
-            display:inline-flex;
-            gap:8px;
-            align-items:center;
-            font-size: 12px;
-            border: 1px solid rgba(0,212,106,0.35);
-            background: rgba(0,212,106,0.12);
-            color: #b8ffdd;
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-weight: 800;
-        }
-        .muted { opacity: 0.85; }
-        .small { font-size: 12px; line-height: 1.6; }
+    /* Pricing modal styles */
+    .pricing-card {
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 16px;
+    }
+    .price-row {
+      display:flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .price {
+      font-size: 28px;
+      font-weight: 900;
+      color: #ffffff;
+    }
+    .per {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+    .pill {
+      display:inline-flex;
+      gap:8px;
+      align-items:center;
+      font-size: 12px;
+      border: 1px solid rgba(0,212,106,0.35);
+      background: rgba(0,212,106,0.12);
+      color: #b8ffdd;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+    .muted { opacity: 0.85; }
+    .small { font-size: 12px; line-height: 1.6; }
 
-        @media(max-width: 900px){
-            .container { flex-direction: column; margin: 20px; padding: 25px; }
-            .sessions span { margin-right: 10px; }
-        }
-    </style>
+    @media(max-width: 900px){
+      .container { flex-direction: column; margin: 20px; padding: 25px; }
+      .sessions span { margin-right: 10px; }
+    }
+  </style>
 </head>
 
 <body>
-<div class="bg-overlay"></div>
-<div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
+  <div class="bg-overlay"></div>
+  <div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
 
-<div class="topbar">
+  <div class="topbar">
     <div id="clock">Loading time...</div>
 
     <div class="sessions">
-        <span id="london" class="closed">London</span>
-        <span id="newyork" class="closed">New York</span>
-        <span id="tokyo" class="closed">Tokyo</span>
+      <span id="london" class="closed">London</span>
+      <span id="newyork" class="closed">New York</span>
+      <span id="tokyo" class="closed">Tokyo</span>
     </div>
 
     <div class="topbar-right">
-        <button class="topbtn" onclick="openPricing()">Pricing</button>
-        <button id="unlockBtn" class="topbtn primary" onclick="openPricing()">Unlock</button>
+      <button class="topbtn" onclick="openPricing()">Pricing</button>
+      <button id="unlockBtn" class="topbtn primary" onclick="openPricing()">Unlock</button>
     </div>
-</div>
+  </div>
 
-<div class="container">
+  <div class="container">
     <div class="section">
-        <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
-        <p style="color:#cfd3d8; margin-bottom:25px;">
-            Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
-        </p>
-
-        <label>Pair Type</label>
-        <select id="pairType">
-            <option>Forex</option>
-            <option>Gold</option>
-            <option>Crypto</option>
-            <option>Indices</option>
-        </select>
-
-        <label>Timeframe Mode</label>
-        <select id="timeframe">
-            <option>Scalp</option>
-            <option>Intraday</option>
-            <option>Swing</option>
-        </select>
-
-        <label>Chart (optional)</label>
-        <input type="file" id="chart">
-
-        <label>Your signal</label>
-        <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
-
-        <div class="consent-row">
-            <input type="checkbox" id="acceptLegal" />
-            <div class="consent-text">
-                I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
-                <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
-                <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
-            </div>
-        </div>
-
-        <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
-        <div id="rateHint" class="rate-hint"></div>
-
-        <!-- NEW: payment hint -->
-        <div id="payHint" class="rate-hint" style="display:none;"></div>
-    </div>
-
-    <div class="section">
-        <div class="title-small">AI Trade Decision & Analysis</div>
-        <div id="result" class="output-box">Awaiting analysis...</div>
-
-        <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
-        <div id="history" class="output-box" style="min-height:120px;"></div>
-    </div>
-</div>
-
-<footer class="fx-disclaimer">
-  <p style="margin:0;">
-    <strong>Disclaimer:</strong>
-    FXCO-PILOT provides AI-assisted market analysis for
-    <strong>educational and informational purposes only</strong>.
-    It does <strong>not</strong> constitute financial, investment,
-    or trading advice. Trading involves risk. Always do your own research.
-  </p>
-
-  <div class="fx-legal" aria-label="Legal links">
-    <a href="#" onclick="openLegal('terms');return false;">Terms</a>
-    <span class="sep">•</span>
-    <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
-  </div>
-</footer>
-
-<!-- Existing legal modal -->
-<div id="legalBackdrop" class="legal-backdrop"></div>
-<div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
-  <div class="legal-modal-header">
-    <div id="legalTitle" class="legal-modal-title">Legal</div>
-    <button class="legal-close" onclick="closeLegal()">Close</button>
-  </div>
-  <div id="legalContent" class="legal-modal-content"></div>
-</div>
-
-<!-- Existing risk modal -->
-<div id="riskBackdrop" class="legal-backdrop"></div>
-<div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
-  <div class="legal-modal-header">
-    <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
-    <button class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
-  </div>
-
-  <div class="legal-modal-content">
-    <div class="legal-callout">
-      <p style="margin:0;">
-        <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
-        You can lose part or all of your capital.
-      </p>
-    </div>
-
-    <h2>FXCO-PILOT is not financial advice</h2>
-    <p>
-      FXCO-PILOT provides AI-assisted analysis for <b>educational and informational purposes only</b>. It does <b>not</b> provide financial, investment, or trading advice.
-      Any trade decision you make is solely your responsibility.
-    </p>
-
-    <h2>Use responsibly</h2>
-    <ul>
-      <li>Always do your own research and confirm with your strategy.</li>
-      <li>Use risk management (position sizing, SL, and limits).</li>
-      <li>Consider professional advice if needed.</li>
-    </ul>
-
-    <p style="margin-top:14px;opacity:0.9;">
-      Click <b>“I Understand”</b> to continue.
-    </p>
-  </div>
-</div>
-
-<!-- NEW: Pricing modal -->
-<div id="pricingBackdrop" class="legal-backdrop"></div>
-<div id="pricingModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="pricingTitle">
-  <div class="legal-modal-header">
-    <div id="pricingTitle" class="legal-modal-title">Pricing</div>
-    <button class="legal-close" onclick="closePricing()">Close</button>
-  </div>
-
-  <div class="legal-modal-content">
-    <div class="pricing-card">
-      <div class="pill">One Plan • Full Access</div>
-      <h2 style="margin-top:12px;">Stop second-guessing trades.</h2>
-      <p class="muted small" style="margin-top:8px;">
-        FX Co-Pilot validates your signal with structure, liquidity and probability — fast.
-        Pay once per month, use it every day.
+      <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
+      <p style="color:#cfd3d8; margin-bottom:25px;">
+        Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
       </p>
 
-      <div class="price-row">
-        <div>
-          <div class="price" id="pricingAmount">—</div>
-          <div class="per" id="pricingPer">per month</div>
+      <label>Pair Type</label>
+      <select id="pairType">
+        <option>Forex</option>
+        <option>Gold</option>
+        <option>Crypto</option>
+        <option>Indices</option>
+      </select>
+
+      <label>Timeframe Mode</label>
+      <select id="timeframe">
+        <option>Scalp</option>
+        <option>Intraday</option>
+        <option>Swing</option>
+      </select>
+
+      <label>Chart (optional)</label>
+      <input type="file" id="chart">
+
+      <label>Your signal</label>
+      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+
+      <div class="consent-row">
+        <input type="checkbox" id="acceptLegal" />
+        <div class="consent-text">
+          I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
+          <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
+          <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
         </div>
-        <div class="pill" id="pricingStatus">Checking access…</div>
       </div>
 
-      <ul class="fx-ul" style="margin-top:12px;">
-        <li>Unlimited AI trade validations</li>
-        <li>Structure + liquidity context</li>
-        <li>Confidence scoring + invalidation warnings</li>
-        <li>History of your recent analyses</li>
+      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
+      <div id="rateHint" class="rate-hint"></div>
+
+      <!-- payment hint -->
+      <div id="payHint" class="rate-hint" style="display:none;"></div>
+    </div>
+
+    <div class="section">
+      <div class="title-small">AI Trade Decision & Analysis</div>
+      <div id="result" class="output-box">Awaiting analysis...</div>
+
+      <div class="title-small" style="margin-top:20px;">Previous Analyses</div>
+      <div id="history" class="output-box" style="min-height:120px;"></div>
+    </div>
+  </div>
+
+  <footer class="fx-disclaimer">
+    <p style="margin:0;">
+      <strong>Disclaimer:</strong>
+      FXCO-PILOT provides AI-assisted market analysis for
+      <strong>educational and informational purposes only</strong>.
+      It does <strong>not</strong> constitute financial, investment,
+      or trading advice. Trading involves risk. Always do your own research.
+    </p>
+
+    <div class="fx-legal" aria-label="Legal links">
+      <a href="#" onclick="openLegal('terms');return false;">Terms</a>
+      <span class="sep">•</span>
+      <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
+    </div>
+  </footer>
+
+  <!-- Existing legal modal -->
+  <div id="legalBackdrop" class="legal-backdrop"></div>
+  <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
+    <div class="legal-modal-header">
+      <div id="legalTitle" class="legal-modal-title">Legal</div>
+      <button class="legal-close" onclick="closeLegal()">Close</button>
+    </div>
+    <div id="legalContent" class="legal-modal-content"></div>
+  </div>
+
+  <!-- Existing risk modal -->
+  <div id="riskBackdrop" class="legal-backdrop"></div>
+  <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
+    <div class="legal-modal-header">
+      <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
+      <button class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
+    </div>
+
+    <div class="legal-modal-content">
+      <div class="legal-callout">
+        <p style="margin:0;">
+          <strong>Trading Risk Notice:</strong> Trading financial instruments (Forex, indices, crypto, metals) involves significant risk and may not be suitable for everyone.
+          You can lose part or all of your capital.
+        </p>
+      </div>
+
+      <h2>FXCO-PILOT is not financial advice</h2>
+      <p>
+        FXCO-PILOT provides AI-assisted analysis for <b>educational and informational purposes only</b>. It does <b>not</b> provide financial, investment, or trading advice.
+        Any trade decision you make is solely your responsibility.
+      </p>
+
+      <h2>Use responsibly</h2>
+      <ul>
+        <li>Always do your own research and confirm with your strategy.</li>
+        <li>Use risk management (position sizing, SL, and limits).</li>
+        <li>Consider professional advice if needed.</li>
       </ul>
 
-      <button class="btn" style="margin-top:14px;" onclick="startPaystackCheckout()">Pay with Paystack</button>
-      <p class="small muted" style="margin-top:10px;">
-        After payment, you’ll be returned here automatically and your access will unlock.
+      <p style="margin-top:14px;opacity:0.9;">
+        Click <b>“I Understand”</b> to continue.
       </p>
     </div>
   </div>
-</div>
 
-<script>
-function updateClock() {
-    const now = new Date();
-    document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
-    const hour = now.getUTCHours();
-    function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
-    setStatus("london", hour >= 7 && hour < 16);
-    setStatus("newyork", hour >= 12 && hour < 21);
-    setStatus("tokyo", hour >= 0 && hour < 9);
-}
-updateClock();
-setInterval(updateClock, 1000);
+  <!-- Pricing modal -->
+  <div id="pricingBackdrop" class="legal-backdrop"></div>
+  <div id="pricingModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="pricingTitle">
+    <div class="legal-modal-header">
+      <div id="pricingTitle" class="legal-modal-title">Pricing</div>
+      <button class="legal-close" onclick="closePricing()">Close</button>
+    </div>
 
-function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+    <div class="legal-modal-content">
+      <div class="pricing-card">
+        <div class="pill">One Plan • Full Access</div>
+        <h2 style="margin-top:12px;">Stop second-guessing trades.</h2>
+        <p class="muted small" style="margin-top:8px;">
+          FX Co-Pilot validates your signal with structure, liquidity and probability — fast.
+          Pay once per month, use it every day.
+        </p>
 
-function renderConfidenceBar(percent) {
-    const p = clamp(Number(percent ?? 0), 0, 100);
-    return `
-      <div class="confidence" aria-label="AI confidence score">
-        <div class="confidence-top">
-          <div class="label">AI Confidence</div>
-          <div class="value">${p}%</div>
+        <div class="price-row">
+          <div>
+            <!-- fallback shows ₦10,000 until backend config loads -->
+            <div class="price" id="pricingAmount">₦10,000</div>
+            <div class="per" id="pricingPer">per month</div>
+          </div>
+          <div class="pill" id="pricingStatus">Checking access…</div>
         </div>
-        <div class="confidence-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
-          <div class="confidence-fill" style="width:${p}%"></div>
-        </div>
+
+        <ul class="fx-ul" style="margin-top:12px;">
+          <li>Unlimited AI trade validations</li>
+          <li>Structure + liquidity context</li>
+          <li>Confidence scoring + invalidation warnings</li>
+          <li>History of your recent analyses</li>
+        </ul>
+
+        <button class="btn" style="margin-top:14px;" onclick="startPaystackCheckout()">Pay with Paystack</button>
+        <p class="small muted" style="margin-top:10px;">
+          After payment, you’ll be returned here automatically and your access will unlock.
+        </p>
       </div>
-    `;
-}
+    </div>
+  </div>
 
-function renderDecisionBadge(decision) {
-    const d = (decision || "NEUTRAL").toUpperCase();
-    if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
-    if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
-    return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
-}
+  <script>
+    function updateClock() {
+      const now = new Date();
+      document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
+      const hour = now.getUTCHours();
+      function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
+      setStatus("london", hour >= 7 && hour < 16);
+      setStatus("newyork", hour >= 12 && hour < 21);
+      setStatus("tokyo", hour >= 0 && hour < 9);
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
 
-function esc(s) {
-    return String(s ?? "").replace(/[&<>"']/g, m => ({
+    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+    function renderConfidenceBar(percent) {
+      const p = clamp(Number(percent ?? 0), 0, 100);
+      return `
+        <div class="confidence" aria-label="AI confidence score">
+          <div class="confidence-top">
+            <div class="label">AI Confidence</div>
+            <div class="value">${p}%</div>
+          </div>
+          <div class="confidence-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p}">
+            <div class="confidence-fill" style="width:${p}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDecisionBadge(decision) {
+      const d = (decision || "NEUTRAL").toUpperCase();
+      if (d === "TAKE TRADE") return "<div class='decision take'>TAKE TRADE 👍</div>";
+      if (d === "AVOID TRADE") return "<div class='decision avoid'>AVOID TRADE 🚫</div>";
+      return "<div class='decision neutral'>NEUTRAL ⚠️</div>";
+    }
+
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-    }[m]));
-}
+      }[m]));
+    }
 
-function renderWarningsBlock(warnings) {
-    const w = Array.isArray(warnings) ? warnings.filter(Boolean).slice(0, 6) : [];
-    if (!w.length) return "";
-    return `
-      <div class="warn-callout">
-        <strong>Trade Invalidation Warnings:</strong>
-        <ul class="fx-ul" style="margin-top:10px;">
-          ${w.map(x => `<li>${esc(x)}</li>`).join("")}
-        </ul>
-      </div>
-    `;
-}
+    function renderWarningsBlock(warnings) {
+      const w = Array.isArray(warnings) ? warnings.filter(Boolean).slice(0, 6) : [];
+      if (!w.length) return "";
+      return `
+        <div class="warn-callout">
+          <strong>Trade Invalidation Warnings:</strong>
+          <ul class="fx-ul" style="margin-top:10px;">
+            ${w.map(x => `<li>${esc(x)}</li>`).join("")}
+          </ul>
+        </div>
+      `;
+    }
 
-function renderAnalysisFromJSON(a) {
-    const bias = a.bias || "Unclear";
-    const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
-    const strength = (typeof a.strength === "number") ? a.strength : "";
-    const clarity = (typeof a.clarity === "number") ? a.clarity : "";
-    const sc = a.signal_check || {};
-    const mc = a.market_context || {};
+    function renderAnalysisFromJSON(a) {
+      const bias = a.bias || "Unclear";
+      const confidence = (typeof a.confidence === "number") ? a.confidence : 0;
+      const strength = (typeof a.strength === "number") ? a.strength : "";
+      const clarity = (typeof a.clarity === "number") ? a.clarity : "";
+      const sc = a.signal_check || {};
+      const mc = a.market_context || {};
 
-    const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
-    const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 6) : [];
-    const invalidations = a.invalidation_warnings || [];
+      const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 6) : [];
+      const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 6) : [];
+      const invalidations = a.invalidation_warnings || [];
 
-    return `
-      ${renderConfidenceBar(confidence)}
+      return `
+        ${renderConfidenceBar(confidence)}
 
-      <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
-        ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
-        ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
-      </div>
+        <div class="fx-kv"><b>BIAS:</b> ${esc(bias)}
+          ${strength !== "" ? `&nbsp;&nbsp; <b>STRENGTH:</b> ${esc(strength)}` : ""}
+          ${clarity !== "" ? `&nbsp;&nbsp; <b>CLARITY:</b> ${esc(clarity)}` : ""}
+        </div>
 
-      <div class="fx-section-title">Signal Check</div>
-      <div class="fx-kv">
-        • <b>Direction:</b> ${esc(sc.direction)}<br/>
-        • <b>Entry:</b> ${esc(sc.entry)}<br/>
-        • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
-        • <b>Targets:</b> ${esc(Array.isArray(sc.targets) ? sc.targets.join(", ") : sc.targets)}<br/>
-        • <b>Approx RR:</b> ${esc(sc.rr)}
-      </div>
+        <div class="fx-section-title">Signal Check</div>
+        <div class="fx-kv">
+          • <b>Direction:</b> ${esc(sc.direction)}<br/>
+          • <b>Entry:</b> ${esc(sc.entry)}<br/>
+          • <b>Stop loss:</b> ${esc(sc.stop_loss)}<br/>
+          • <b>Targets:</b> ${esc(Array.isArray(sc.targets) ? sc.targets.join(", ") : sc.targets)}<br/>
+          • <b>Approx RR:</b> ${esc(sc.rr)}
+        </div>
 
-      <div class="fx-section-title">Market Context</div>
-      <div class="fx-kv">
-        • <b>Structure:</b> ${esc(mc.structure)}<br/>
-        • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
-        • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
-        • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
-      </div>
+        <div class="fx-section-title">Market Context</div>
+        <div class="fx-kv">
+          • <b>Structure:</b> ${esc(mc.structure)}<br/>
+          • <b>Liquidity:</b> ${esc(mc.liquidity)}<br/>
+          • <b>Momentum:</b> ${esc(mc.momentum)}<br/>
+          • <b>Timeframe alignment:</b> ${esc(mc.timeframe_alignment)}
+        </div>
 
-      ${renderDecisionBadge(a.decision)}
+        ${renderDecisionBadge(a.decision)}
 
-      ${renderWarningsBlock(invalidations)}
+        ${renderWarningsBlock(invalidations)}
 
-      ${why.length ? `
-        <div class="fx-section-title">Why This Trade?</div>
-        <ul class="fx-ul">
-          ${why.map(r => `<li>${esc(r)}</li>`).join("")}
-        </ul>
-      ` : ""}
+        ${why.length ? `
+          <div class="fx-section-title">Why This Trade?</div>
+          <ul class="fx-ul">
+            ${why.map(r => `<li>${esc(r)}</li>`).join("")}
+          </ul>
+        ` : ""}
 
-      ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
+        ${a.verdict ? `<div class="fx-section-title">Verdict</div><div class="fx-kv">${esc(a.verdict)}</div>` : ""}
 
-      ${guidance.length ? `
-        <div class="fx-section-title">Guidance</div>
-        <ul class="fx-ul">
-          ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
-        </ul>
-      ` : ""}
-    `;
-}
+        ${guidance.length ? `
+          <div class="fx-section-title">Guidance</div>
+          <ul class="fx-ul">
+            ${guidance.map(g => `<li>${esc(g)}</li>`).join("")}
+          </ul>
+        ` : ""}
+      `;
+    }
 
-/* ==========================
-   NEW: Per-session client id
-   ========================== */
-function getOrCreateClientId() {
-    const key = "fxco_client_id_v1";
-    try {
+    /* Per-session client id */
+    function getOrCreateClientId() {
+      const key = "fxco_client_id_v1";
+      try {
         let cid = localStorage.getItem(key);
         if (!cid) {
-            if (window.crypto && crypto.randomUUID) cid = crypto.randomUUID();
-            else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
-            localStorage.setItem(key, cid);
+          if (window.crypto && crypto.randomUUID) cid = crypto.randomUUID();
+          else cid = "cid-" + Math.random().toString(16).slice(2) + "-" + Date.now();
+          localStorage.setItem(key, cid);
         }
         return cid.length > 128 ? cid.slice(0, 128) : cid;
-    } catch {
+      } catch {
         return "unknown";
+      }
     }
-}
-const FXCO_CLIENT_ID = getOrCreateClientId();
+    const FXCO_CLIENT_ID = getOrCreateClientId();
 
-/* ==========================
-   NEW: Payment state
-   ========================== */
-const PAID_KEY = "fxco_paid_v1";                 // "1" or "0"
-const PAID_REF_KEY = "fxco_paid_ref_v1";         // paystack reference
+    /* Payment state */
+    const PAID_KEY = "fxco_paid_v1";
+    const PAID_REF_KEY = "fxco_paid_ref_v1";
+    let PAYSTACK_CONFIG = { ok:false };
 
-let PAYSTACK_CONFIG = { ok:false };
+    function setPayHint(msg, show=true) {
+      const el = document.getElementById("payHint");
+      if (!el) return;
+      if (!show || !msg) { el.style.display = "none"; el.innerText = ""; return; }
+      el.style.display = "block";
+      el.innerText = msg;
+    }
 
-function setPayHint(msg, show=true) {
-    const el = document.getElementById("payHint");
-    if (!el) return;
-    if (!show || !msg) { el.style.display = "none"; el.innerText = ""; return; }
-    el.style.display = "block";
-    el.innerText = msg;
-}
-
-function isPaid() {
-    try { return localStorage.getItem(PAID_KEY) === "1"; } catch { return false; }
-}
-function getPaidRef() {
-    try { return localStorage.getItem(PAID_REF_KEY) || ""; } catch { return ""; }
-}
-function setPaid(reference) {
-    try {
+    function isPaid() {
+      try { return localStorage.getItem(PAID_KEY) === "1"; } catch { return false; }
+    }
+    function getPaidRef() {
+      try { return localStorage.getItem(PAID_REF_KEY) || ""; } catch { return ""; }
+    }
+    function setPaid(reference) {
+      try {
         localStorage.setItem(PAID_KEY, "1");
         if (reference) localStorage.setItem(PAID_REF_KEY, reference);
-    } catch {}
-}
+      } catch {}
+    }
 
-/* ==========================
-   NEW: Rate limit UX
-   ========================== */
-let rateTimer = null;
-function setRateHint(msg, show=true) {
-    const el = document.getElementById("rateHint");
-    if (!el) return;
-    if (!show || !msg) {
+    /* Rate limit UX */
+    let rateTimer = null;
+    function setRateHint(msg, show=true) {
+      const el = document.getElementById("rateHint");
+      if (!el) return;
+      if (!show || !msg) {
         el.style.display = "none";
         el.innerText = "";
         return;
+      }
+      el.style.display = "block";
+      el.innerText = msg;
     }
-    el.style.display = "block";
-    el.innerText = msg;
-}
 
-function startRateCooldown(seconds) {
-    const btn = document.getElementById("analyzeBtn");
-    let remaining = Math.max(1, Number(seconds || 1));
-    const accepted = document.getElementById("acceptLegal")?.checked;
+    function startRateCooldown(seconds) {
+      const btn = document.getElementById("analyzeBtn");
+      let remaining = Math.max(1, Number(seconds || 1));
+      const accepted = document.getElementById("acceptLegal")?.checked;
 
-    btn.disabled = true;
-    setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
+      btn.disabled = true;
+      setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
 
-    if (rateTimer) clearInterval(rateTimer);
-    rateTimer = setInterval(() => {
+      if (rateTimer) clearInterval(rateTimer);
+      rateTimer = setInterval(() => {
         remaining -= 1;
         if (remaining <= 0) {
-            clearInterval(rateTimer);
-            rateTimer = null;
-            setRateHint("", false);
-            btn.disabled = !accepted;
-            applyPaymentGateUI();
-            return;
+          clearInterval(rateTimer);
+          rateTimer = null;
+          setRateHint("", false);
+          btn.disabled = !accepted;
+          applyPaymentGateUI();
+          return;
         }
         setRateHint(`Rate limit hit. Try again in ${remaining}s…`, true);
-    }, 1000);
-}
+      }, 1000);
+    }
 
-function setAnalyzeEnabled(enabled) {
-    const btn = document.getElementById("analyzeBtn");
-    const hint = document.getElementById("consentHint");
-    btn.disabled = !enabled;
-    hint.style.display = enabled ? "none" : "block";
-}
+    function setAnalyzeEnabled(enabled) {
+      const btn = document.getElementById("analyzeBtn");
+      const hint = document.getElementById("consentHint");
+      btn.disabled = !enabled;
+      hint.style.display = enabled ? "none" : "block";
+    }
 
-function initConsentGate() {
-    const cb = document.getElementById("acceptLegal");
-    if (!cb) return;
+    function initConsentGate() {
+      const cb = document.getElementById("acceptLegal");
+      if (!cb) return;
 
-    try {
+      try {
         const saved = localStorage.getItem("fxco_accept_legal_v1");
         if (saved === "1") cb.checked = true;
-    } catch {}
+      } catch {}
 
-    setAnalyzeEnabled(cb.checked);
+      setAnalyzeEnabled(cb.checked);
 
-    cb.addEventListener("change", () => {
+      cb.addEventListener("change", () => {
         if (rateTimer) {
-            setAnalyzeEnabled(false);
+          setAnalyzeEnabled(false);
         } else {
-            setAnalyzeEnabled(cb.checked);
+          setAnalyzeEnabled(cb.checked);
         }
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
         applyPaymentGateUI();
-    });
-}
-
-/* ==========================
-   Legal modal (existing)
-   ========================== */
-function openLegal(which) {
-    const backdrop = document.getElementById("legalBackdrop");
-    const modal = document.getElementById("legalModal");
-    const title = document.getElementById("legalTitle");
-    const content = document.getElementById("legalContent");
-
-    const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-
-    const termsHtml = `
-      <div class="legal-callout">
-        <p style="margin:0;">
-          <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
-          It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
-          <br/><br/>
-          <strong>AI Confidence is not a guarantee.</strong>
-        </p>
-      </div>
-
-      <p><b>Last updated:</b> ${updated}</p>
-
-      <h2>1) Acceptance of Terms</h2>
-      <p>By accessing or using FXCO-PILOT (the “Service”), you agree to these Terms. If you do not agree, do not use the Service.</p>
-
-      <h2>2) No Financial Advice</h2>
-      <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
-
-      <h2>3) AI Outputs & Limitations</h2>
-      <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee.</p>
-    `;
-
-    const privacyHtml = `
-      <p><b>Last updated:</b> ${updated}</p>
-      <h2>1) What We Collect</h2>
-      <ul>
-        <li><b>Inputs you provide:</b> signals you paste and optional chart uploads, processed to generate analysis.</li>
-      </ul>
-    `;
-
-    if (which === "terms") {
-        title.textContent = "Terms of Service";
-        content.innerHTML = termsHtml;
-    } else {
-        title.textContent = "Privacy Policy";
-        content.innerHTML = privacyHtml;
+      });
     }
 
-    backdrop.style.display = "block";
-    modal.style.display = "block";
-}
-function closeLegal() {
-    document.getElementById("legalBackdrop").style.display = "none";
-    document.getElementById("legalModal").style.display = "none";
-}
-document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeLegal(); closePricing(); } });
+    /* Legal modal */
+    function openLegal(which) {
+      const backdrop = document.getElementById("legalBackdrop");
+      const modal = document.getElementById("legalModal");
+      const title = document.getElementById("legalTitle");
+      const content = document.getElementById("legalContent");
 
-/* ==========================
-   Risk modal (existing)
-   ========================== */
-function showRiskModalIfNeeded() {
-    try {
+      const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+      const termsHtml = `
+        <div class="legal-callout">
+          <p style="margin:0;">
+            <strong>Important:</strong> FXCO-PILOT provides AI-assisted market analysis for <strong>educational and informational purposes only</strong>.
+            It does <strong>not</strong> provide financial, investment, or trading advice. Trading involves risk and you may lose money.
+            <br/><br/>
+            <strong>AI Confidence is not a guarantee.</strong>
+          </p>
+        </div>
+
+        <p><b>Last updated:</b> ${updated}</p>
+
+        <h2>1) Acceptance of Terms</h2>
+        <p>By accessing or using FXCO-PILOT (the “Service”), you agree to these Terms. If you do not agree, do not use the Service.</p>
+
+        <h2>2) No Financial Advice</h2>
+        <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
+
+        <h2>3) AI Outputs & Limitations</h2>
+        <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee.</p>
+      `;
+
+      const privacyHtml = `
+        <p><b>Last updated:</b> ${updated}</p>
+        <h2>1) What We Collect</h2>
+        <ul>
+          <li><b>Inputs you provide:</b> signals you paste and optional chart uploads, processed to generate analysis.</li>
+        </ul>
+      `;
+
+      if (which === "terms") {
+        title.textContent = "Terms of Service";
+        content.innerHTML = termsHtml;
+      } else {
+        title.textContent = "Privacy Policy";
+        content.innerHTML = privacyHtml;
+      }
+
+      backdrop.style.display = "block";
+      modal.style.display = "block";
+    }
+    function closeLegal() {
+      document.getElementById("legalBackdrop").style.display = "none";
+      document.getElementById("legalModal").style.display = "none";
+    }
+    document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
+
+    /* Risk modal */
+    function showRiskModalIfNeeded() {
+      try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
         if (seen === "1") return;
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
-    } catch {
+      } catch {
         document.getElementById("riskBackdrop").style.display = "block";
         document.getElementById("riskModal").style.display = "block";
         document.body.style.overflow = "hidden";
+      }
     }
-}
-function acknowledgeRisk() {
-    try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
-    document.getElementById("riskBackdrop").style.display = "none";
-    document.getElementById("riskModal").style.display = "none";
-    document.body.style.overflow = "";
-}
-document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+    function acknowledgeRisk() {
+      try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
+      document.getElementById("riskBackdrop").style.display = "none";
+      document.getElementById("riskModal").style.display = "none";
+      document.body.style.overflow = "";
+    }
+    document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-/* ==========================
-   NEW: Pricing modal
-   ========================== */
-function openPricing() {
-    document.getElementById("pricingBackdrop").style.display = "block";
-    document.getElementById("pricingModal").style.display = "block";
-}
-function closePricing() {
-    document.getElementById("pricingBackdrop").style.display = "none";
-    document.getElementById("pricingModal").style.display = "none";
-}
-document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
+    /* Pricing modal */
+    function openPricing() {
+      document.getElementById("pricingBackdrop").style.display = "block";
+      document.getElementById("pricingModal").style.display = "block";
+    }
+    function closePricing() {
+      document.getElementById("pricingBackdrop").style.display = "none";
+      document.getElementById("pricingModal").style.display = "none";
+    }
+    document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
 
-/* ==========================
-   NEW: Paystack Checkout
-   ========================== */
-function formatMoneyMinor(amountMinor, currency) {
-    const amt = Number(amountMinor || 0);
-    const cur = (currency || "NGN").toUpperCase();
-    // Paystack amounts are minor units (kobo for NGN)
-    const major = amt / 100;
-    try {
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { closeLegal(); closePricing(); }
+    });
+
+    /* Paystack */
+    function formatMoneyMinor(amountMinor, currency) {
+      const amt = Number(amountMinor || 0);
+      const cur = (currency || "NGN").toUpperCase();
+      const major = amt / 100;
+      try {
         return new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(major);
-    } catch {
+      } catch {
         return `${cur} ${major.toFixed(2)}`;
+      }
     }
-}
 
-async function loadPaystackConfig() {
-    try {
+    async function loadPaystackConfig() {
+      try {
         const res = await fetch("/api/paystack/config");
         const j = await res.json();
         PAYSTACK_CONFIG = j || { ok:false };
+
         const amountEl = document.getElementById("pricingAmount");
-        if (amountEl && j?.ok) amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
+        // If backend sends amount/currency, use it; otherwise keep ₦10,000 fallback
+        if (amountEl && j?.ok && typeof j.amount !== "undefined") {
+          amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
+        }
         applyPaymentGateUI();
-    } catch {
-        // ignore
+      } catch {
+        // keep fallback UI
+        applyPaymentGateUI();
+      }
     }
-}
 
-function applyPaymentGateUI() {
-    const paid = isPaid();
-    const accepted = document.getElementById("acceptLegal")?.checked;
-    const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
+    function applyPaymentGateUI() {
+      const paid = isPaid();
+      const accepted = document.getElementById("acceptLegal")?.checked;
+      const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
 
-    const statusEl = document.getElementById("pricingStatus");
-    const unlockBtn = document.getElementById("unlockBtn");
+      const statusEl = document.getElementById("pricingStatus");
+      const unlockBtn = document.getElementById("unlockBtn");
 
-    if (statusEl) {
+      if (statusEl) {
         statusEl.innerText = paid ? "Active Access" : (requirePayment ? "Locked" : "Optional");
-    }
-    if (unlockBtn) {
+      }
+      if (unlockBtn) {
         unlockBtn.innerText = paid ? "Unlocked" : "Unlock";
-    }
+      }
 
-    // If backend requires payment: block analyze until paid + accepted + not rate limited
-    const btn = document.getElementById("analyzeBtn");
-    if (!btn) return;
+      const btn = document.getElementById("analyzeBtn");
+      if (!btn) return;
+      if (rateTimer) return;
 
-    if (rateTimer) return; // cooldown already overrides
-
-    if (requirePayment && !paid) {
+      if (requirePayment && !paid) {
         btn.disabled = true;
         if (accepted) setPayHint("Unlock required to run AI analysis. Tap Pricing → Pay with Paystack.", true);
         return;
+      }
+
+      setPayHint("", false);
+      btn.disabled = !accepted;
     }
 
-    // Normal consent gate behavior
-    setPayHint("", false);
-    btn.disabled = !accepted;
-}
-
-async function startPaystackCheckout() {
-    // Ask email (Paystack requires one)
-    const email = (prompt("Enter your email for Paystack checkout:") || "").trim();
-    if (!email || !email.includes("@")) {
+    async function startPaystackCheckout() {
+      const email = (prompt("Enter your email for Paystack checkout:") || "").trim();
+      if (!email || !email.includes("@")) {
         alert("Please enter a valid email.");
         return;
-    }
+      }
 
-    try {
-        // Create initialize session on backend then redirect to Paystack hosted checkout
+      try {
         const res = await fetch("/api/paystack/init", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email })
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
         });
 
         const j = await res.json().catch(() => null);
         if (!res.ok || !j?.ok || !j?.authorization_url) {
-            alert("Paystack init failed: " + (j?.error || "Unknown error"));
-            return;
+          alert("Paystack init failed: " + (j?.error || "Unknown error"));
+          return;
         }
 
-        // Store reference locally; verification happens after redirect back
         try { localStorage.setItem(PAID_REF_KEY, j.reference || ""); } catch {}
-
         window.location.href = j.authorization_url;
-    } catch (e) {
+      } catch (e) {
         alert("Checkout failed: " + (e?.message || "Unknown error"));
+      }
     }
-}
 
-function getQueryParam(name) {
-    const u = new URL(window.location.href);
-    return u.searchParams.get(name);
-}
+    function getQueryParam(name) {
+      const u = new URL(window.location.href);
+      return u.searchParams.get(name);
+    }
 
-async function verifyPaystackIfReturned() {
-    const paystack = getQueryParam("paystack");
-    const reference = getQueryParam("reference") || getQueryParam("trxref") || getPaidRef();
+    async function verifyPaystackIfReturned() {
+      const paystack = getQueryParam("paystack");
+      const reference = getQueryParam("reference") || getQueryParam("trxref") || getPaidRef();
 
-    if (paystack !== "success" || !reference) return;
+      if (paystack !== "success" || !reference) return;
 
-    try {
-        // show quick UI
+      try {
         const statusEl = document.getElementById("pricingStatus");
         if (statusEl) statusEl.innerText = "Verifying payment…";
 
@@ -1109,179 +1094,159 @@ async function verifyPaystackIfReturned() {
         const j = await res.json().catch(() => null);
 
         if (res.ok && j?.ok && j?.paid) {
-            setPaid(reference);
-            alert("Payment verified. Access unlocked ✅");
+          setPaid(reference);
+          alert("Payment verified. Access unlocked ✅");
         } else {
-            alert("Payment not verified yet. If you were charged, refresh in a minute.");
+          alert("Payment not verified yet. If you were charged, refresh in a minute.");
         }
 
-        // Clean URL
         const u = new URL(window.location.href);
         u.searchParams.delete("paystack");
         u.searchParams.delete("reference");
         u.searchParams.delete("trxref");
         window.history.replaceState({}, "", u.toString());
-    } catch {
+      } catch {
         // ignore
-    } finally {
+      } finally {
         applyPaymentGateUI();
+      }
     }
-}
 
-/* ==========================
-   Analyze (updated to pass Paystack ref if required)
-   ========================== */
-async function analyze() {
-    const accepted = document.getElementById("acceptLegal")?.checked;
-    if (!accepted) { setAnalyzeEnabled(false); return; }
+    /* Analyze */
+    async function analyze() {
+      const accepted = document.getElementById("acceptLegal")?.checked;
+      if (!accepted) { setAnalyzeEnabled(false); return; }
 
-    if (rateTimer) return;
+      if (rateTimer) return;
 
-    // Payment gate UI handles disabling the button already, but double-protect:
-    if (PAYSTACK_CONFIG?.require_payment && !isPaid()) {
+      if (PAYSTACK_CONFIG?.require_payment && !isPaid()) {
         openPricing();
         return;
-    }
+      }
 
-    setRateHint("", false);
+      setRateHint("", false);
 
-    const pairTypeEl = document.getElementById("pairType");
-    const timeframeEl = document.getElementById("timeframe");
-    const signalEl = document.getElementById("signal");
+      const pairTypeEl = document.getElementById("pairType");
+      const timeframeEl = document.getElementById("timeframe");
+      const signalEl = document.getElementById("signal");
 
-    const pairType = (pairTypeEl?.value || "").trim();
-    const timeframe = (timeframeEl?.value || "").trim();
-    const signal = (signalEl?.value || "").trim();
+      const pairType = (pairTypeEl?.value || "").trim();
+      const timeframe = (timeframeEl?.value || "").trim();
+      const signal = (signalEl?.value || "").trim();
 
-    if (!pairType || !timeframe || !signal) {
+      if (!pairType || !timeframe || !signal) {
         document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
+          "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
         return;
-    }
+      }
 
-    const formData = new FormData();
-    formData.append("pair_type", pairType);
-    formData.append("timeframe", timeframe);
-    formData.append("signal_input", signal);
+      const formData = new FormData();
+      formData.append("pair_type", pairType);
+      formData.append("timeframe", timeframe);
+      formData.append("signal_input", signal);
 
-    const file = document.getElementById("chart").files[0];
-    if (file) formData.append("chart_image", file);
+      const file = document.getElementById("chart").files[0];
+      if (file) formData.append("chart_image", file);
 
-    const btn = document.getElementById("analyzeBtn");
-    btn.disabled = true;
-    document.getElementById("result").innerHTML = "Analyzing…";
+      const btn = document.getElementById("analyzeBtn");
+      btn.disabled = true;
+      document.getElementById("result").innerHTML = "Analyzing…";
 
-    try {
+      try {
         const headers = { "X-FXCO-Client": FXCO_CLIENT_ID };
 
-        // If backend requires payment, pass reference
         const ref = getPaidRef();
         if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
 
         const res = await fetch("/api/analyze", {
-            method: "POST",
-            body: formData,
-            headers
+          method: "POST",
+          body: formData,
+          headers
         });
 
         const ct = res.headers.get("content-type") || "";
 
         if (res.status === 429) {
-            let retryAfter = Number(res.headers.get("Retry-After") || 0);
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Too many requests" };
-            }
+          let retryAfter = Number(res.headers.get("Retry-After") || 0);
+          let j = null;
+          if (ct.includes("application/json")) {
+            try { j = await res.json(); } catch {}
+          } else {
+            const t = await res.text().catch(() => "");
+            j = { error: t || "Too many requests" };
+          }
 
-            const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
+          const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
+          document.getElementById("result").innerHTML =
+            "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
 
-            startRateCooldown(seconds);
-            return;
+          startRateCooldown(seconds);
+          return;
         }
 
-        // Payment gate (backend)
+        // Payment required (locked)
         if (res.status === 402) {
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Payment required" };
-            }
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
-                "<br/><span style='opacity:0.9'>Open Pricing to unlock.</span>";
-            btn.disabled = false;
-            openPricing();
-            return;
+          let j = null;
+          if (ct.includes("application/json")) {
+            try { j = await res.json(); } catch {}
+          } else {
+            const t = await res.text().catch(() => "");
+            j = { error: t || "Payment required" };
+          }
+          document.getElementById("result").innerHTML =
+            "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
+            "<br/><span style='opacity:0.9'>Open Pricing to unlock.</span>";
+          btn.disabled = false;
+          openPricing();
+          return;
         }
 
         if (res.status === 400) {
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Bad request" };
-            }
+          let j = null;
+          if (ct.includes("application/json")) {
+            try { j = await res.json(); } catch {}
+          } else {
+            const t = await res.text().catch(() => "");
+            j = { error: t || "Bad request" };
+          }
 
-            const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
-                (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
-            btn.disabled = false;
-            return;
-        }
-
-        if (res.status === 402) {
-            let j = null;
-            if (ct.includes("application/json")) {
-                try { j = await res.json(); } catch {}
-            } else {
-                const t = await res.text().catch(() => "");
-                j = { error: t || "Payment required / quota issue" };
-            }
-
-            document.getElementById("result").innerHTML =
-                "<b style='color:#ff6b6b'>AI quota/billing issue:</b> " + esc(j?.error || "OpenAI quota exceeded.");
-            btn.disabled = false;
-            return;
+          const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
+          document.getElementById("result").innerHTML =
+            "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
+            (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
+          btn.disabled = false;
+          return;
         }
 
         if (!res.ok) {
-            if (ct.includes("application/json")) {
-                const j = await res.json().catch(() => null);
-                throw new Error(j?.error || "Request failed.");
-            }
-            const t = await res.text().catch(() => "");
-            throw new Error(t || "Request failed.");
+          if (ct.includes("application/json")) {
+            const j = await res.json().catch(() => null);
+            throw new Error(j?.error || "Request failed.");
+          }
+          const t = await res.text().catch(() => "");
+          throw new Error(t || "Request failed.");
         }
 
         if (!ct.includes("application/json")) {
-            const t = await res.text().catch(() => "");
-            throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
+          const t = await res.text().catch(() => "");
+          throw new Error("Server did not return JSON. Got: " + t.slice(0, 120));
         }
 
         const data = await res.json();
 
         if (data && data.analysis) {
-            const html = renderAnalysisFromJSON(data.analysis);
-            document.getElementById("result").innerHTML = html;
+          const html = renderAnalysisFromJSON(data.analysis);
+          document.getElementById("result").innerHTML = html;
 
-            const historyBox = document.getElementById("history");
-            historyBox.innerHTML =
-                `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
-                    ${html}
-                 </div>` + historyBox.innerHTML;
+          const historyBox = document.getElementById("history");
+          historyBox.innerHTML =
+            `<div style="margin-bottom:12px;border-bottom:1px solid #333;padding-bottom:12px;">
+                ${html}
+             </div>` + historyBox.innerHTML;
 
-            btn.disabled = false;
-            applyPaymentGateUI();
-            return;
+          btn.disabled = false;
+          applyPaymentGateUI();
+          return;
         }
 
         const text = (data && data.result) ? String(data.result) : "No result returned.";
@@ -1289,18 +1254,18 @@ async function analyze() {
         btn.disabled = false;
         applyPaymentGateUI();
 
-    } catch (err) {
+      } catch (err) {
         document.getElementById("result").innerHTML =
-            "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
+          "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err.message);
         btn.disabled = false;
         applyPaymentGateUI();
+      }
     }
-}
 
-initConsentGate();
-showRiskModalIfNeeded();
-loadPaystackConfig();
-verifyPaystackIfReturned();
-</script>
+    initConsentGate();
+    showRiskModalIfNeeded();
+    loadPaystackConfig();
+    verifyPaystackIfReturned();
+  </script>
 </body>
 </html>
