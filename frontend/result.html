@@ -25,6 +25,7 @@
       --good:#22c55e;
       --warn:#f59e0b;
       --bad:#ef4444;
+      --info:#3b82f6;
 
       --btn:#0b1220;
       --btnInk:#ffffff;
@@ -352,6 +353,7 @@
     .chip.warn{ background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.22); }
     .chip.bad{ background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.22); }
 
+    /* AI Reasoning block (not silent anymore) */
     .analysis{
       border: 1px solid var(--line);
       background: rgba(255,255,255,.65);
@@ -364,6 +366,18 @@
       word-break: break-word;
     }
 
+    .callout{
+      margin-bottom: 10px;
+      border-radius: 14px;
+      border: 1px solid rgba(59,130,246,.18);
+      background: rgba(59,130,246,.08);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: rgba(15,23,42,.86);
+    }
+    .callout b{ font-weight: 900; }
+
     .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
 
     .foot{
@@ -375,7 +389,6 @@
       padding: 10px 6px 0;
     }
 
-    /* Print */
     @media print{
       .topbar .actions{ display:none; }
       body{ background: #fff; }
@@ -418,7 +431,6 @@
             </div>
           </div>
 
-          <!-- BIG Decision banner -->
           <div class="decisionBanner banner-neutral" id="decisionBanner">
             <div class="decisionLeft">
               <div class="decisionIcon icon-neutral" id="decisionIcon">↔</div>
@@ -497,10 +509,6 @@
     }
 
     function stampFrom(ts){
-      if (!ts) {
-        const d = new Date();
-        return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
-      }
       const n = Number(ts);
       const d = isFinite(n) ? new Date(n) : new Date();
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
@@ -569,7 +577,6 @@
 
       const d = String(decisionRaw || "").toUpperCase();
 
-      // defaults
       banner.className = "decisionBanner banner-neutral";
       icon.className = "decisionIcon icon-neutral";
       icon.textContent = "↔";
@@ -602,30 +609,101 @@
         meaning.textContent = "Setup has mixed signals. Reduce risk, demand stronger confirmation, or wait for a better entry.";
         return;
       }
+    }
 
-      if (d.includes("NEUTRAL") || d.includes("WAIT") || d.includes("UNCLEAR")){
-        // keep neutral styling
-        return;
+    function flattenContextToBullets(contextObj){
+      if (!contextObj || typeof contextObj !== "object") return [];
+      const out = [];
+      for (const [k,v] of Object.entries(contextObj)){
+        const key = String(k).replace(/_/g, " ");
+        const val = String(v || "").trim();
+        if (!val) continue;
+        out.push(`${key}: ${val}`);
       }
+      return out;
+    }
+
+    function buildReasoning(report){
+      // 1) Prefer real text if backend sends it
+      const rawText = (typeof report.analysis === "string") ? report.analysis.trim() : "";
+      if (rawText) return rawText;
+
+      // 2) Otherwise: generate a summary from what we DO have
+      const a = (report.raw && report.raw.analysis && typeof report.raw.analysis === "object") ? report.raw.analysis : {};
+      const decision = String(report.decision || "").toUpperCase();
+      const dir = safeUpper(report.side);
+      const conf = pick(a, ["confidence","ai_confidence","score"]);
+      const rr = pick(a, ["approx_rr","rr","risk_reward"]);
+      const verdictLine = pick(a, ["verdict"]) || pick(report.raw, ["verdict"]) || "";
+
+      const why = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean) : [];
+      const guidance = Array.isArray(a.guidance) ? a.guidance.filter(Boolean) : [];
+
+      // Market context can be under analysis.market_context
+      const ctx = (a.market_context && typeof a.market_context === "object") ? a.market_context : null;
+      const ctxBullets = flattenContextToBullets(ctx);
+
+      // Also pull “checks list” content into bullets (top few) for readability
+      const checkBullets = [];
+      const checks = Array.isArray(report.checks) ? report.checks : [];
+      for (const item of checks){
+        if (typeof item === "string") {
+          checkBullets.push(item);
+        } else if (item && typeof item === "object") {
+          const label = fmt(item.label ?? item.name ?? item.key ?? "Check");
+          const detail = fmt(item.detail ?? item.value ?? item.message ?? "");
+          if (detail && detail !== "—") checkBullets.push(`${label}: ${detail}`);
+        }
+        if (checkBullets.length >= 6) break;
+      }
+
+      const lines = [];
+      lines.push(`Summary`);
+      lines.push(`- Decision: ${decision || "—"}`);
+      if (dir && dir !== "—") lines.push(`- Direction: ${dir}`);
+      if (conf) lines.push(`- Confidence: ${conf}`);
+      if (rr) lines.push(`- Approx R:R: ${rr}`);
+      if (verdictLine) lines.push(`- Verdict note: ${verdictLine}`);
+
+      const evidence = [];
+      for (const b of ctxBullets.slice(0, 6)) evidence.push(b);
+      for (const b of checkBullets.slice(0, 6)) evidence.push(b);
+
+      if (evidence.length) {
+        lines.push(`\nEvidence seen`);
+        for (const b of evidence.slice(0, 8)) lines.push(`- ${b}`);
+      }
+
+      if (why.length) {
+        lines.push(`\nWhy this decision`);
+        for (const b of why.slice(0, 8)) lines.push(`- ${b}`);
+      }
+
+      if (guidance.length) {
+        lines.push(`\nGuidance`);
+        for (const b of guidance.slice(0, 10)) lines.push(`- ${b}`);
+      }
+
+      // Hard fallback so it never looks empty
+      if (lines.length <= 3){
+        lines.push(`\nNo detailed reasoning text was returned by the server.`);
+        lines.push(`FXCO-Pilot generated this summary from the available context fields.`);
+      }
+
+      return lines.join("\n");
     }
 
     function normalizeFromIndexPayload(payload){
       const p = payload || {};
       const a = (p.analysis && typeof p.analysis === "object") ? p.analysis : {};
 
-      // decision is what we will highlight
       const decision = pick(a, ["decision","verdict","final_verdict","recommendation"]) ||
                        pick(p, ["decision","verdict","status"]) || "";
 
-      // direction
       const direction = pick(a, ["direction","bias","side"]) || "";
-
-      // risk
       const risk = pick(a, ["risk","risk_level","riskLevel","risk_summary"]) || "";
-
       const pair = pick(a, ["pair","symbol","instrument"]) || pick(p, ["pair","pair_type"]) || "";
 
-      // Snapshot
       const entry = pick(a, ["entry","entry_price"]);
       const sl = pick(a, ["stop_loss","sl"]);
       const tp = pick(a, ["take_profit","tp","target","targets"]);
@@ -647,11 +725,11 @@
       if (strength) snapshot["Strength"] = strength;
       if (clarity) snapshot["Clarity"] = clarity;
 
-      // Checks
       let checks = [];
       const maybeChecks = pick(a, ["checks","key_checks","rules"]);
       if (Array.isArray(maybeChecks)) checks = maybeChecks;
 
+      // Also push market_context into checks list (so it shows even if checks are missing)
       const ctx = a.market_context && typeof a.market_context === "object" ? a.market_context : null;
       if (ctx) {
         const ctxPairs = Object.entries(ctx).filter(([k,v]) => v !== null && v !== undefined && String(v).trim() !== "");
@@ -660,27 +738,12 @@
         }
       }
 
-      // Reasoning text (your current backend doesn't include long reasoning, so we also build fallback from why/guidance)
-      const whyArr = Array.isArray(a.why_this_trade) ? a.why_this_trade.filter(Boolean).slice(0, 8) : [];
-      const guideArr = Array.isArray(a.guidance) ? a.guidance.filter(Boolean).slice(0, 10) : [];
-
-      let analysisText =
-        pick(a, ["reasoning","analysis_text","analysis","summary","verdict_explanation"]) ||
-        (typeof p.raw === "object" ? pick(p.raw, ["reasoning","analysis","summary","message"]) : "") ||
-        "";
-
-      if (!analysisText) {
-        const parts = [];
-        if (whyArr.length) parts.push("Why this decision:\n- " + whyArr.join("\n- "));
-        if (a.verdict) parts.push("\nVerdict:\n" + String(a.verdict));
-        if (guideArr.length) parts.push("\nGuidance:\n- " + guideArr.join("\n- "));
-        analysisText = parts.join("\n");
-      }
+      const analysisText = pick(a, ["reasoning","analysis_text","summary","explanation"]) || "";
 
       return {
         decision,
         verdictBadge: decision,
-        analysis: analysisText || "",
+        analysis: analysisText,
         pair,
         side: direction,
         risk,
@@ -699,7 +762,6 @@
         return normalizeFromIndexPayload(raw);
       }
 
-      // legacy
       const decision = raw.decision ?? raw.verdict ?? raw.status ?? "";
       return {
         decision,
@@ -759,15 +821,24 @@
       }
 
       const analysisBox = document.getElementById("analysisBox");
-      const text = (typeof report.analysis === "string") ? report.analysis.trim() : "";
-      analysisBox.textContent = text || "No analysis text returned.";
+      const reasoning = buildReasoning(report);
+
+      // If backend didn't send reasoning, show a small callout so users trust it
+      const backendSentText = (typeof report.analysis === "string") && report.analysis.trim().length > 0;
+      const callout = backendSentText ? "" : `
+        <div class="callout">
+          <b>Reasoning Summary:</b> The server did not return a long-form explanation, so FXCO-Pilot generated this readable summary from your context + checks.
+        </div>
+      `;
+
+      analysisBox.innerHTML = callout + `<div>${escHtml(reasoning)}</div>`;
 
       window.__fxco_copy = {
         decision: report.decision,
         pair: report.pair || report.raw?.pair_type || "",
         side: report.side,
         risk: report.risk,
-        analysis: text
+        analysis: reasoning
       };
     }
 
