@@ -15,7 +15,6 @@
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 
-  <!-- ✅ Keep your existing manifest path, but ensure it's a real PWA manifest file -->
   <link rel="manifest" href="/manifest.webmanifest">
 
   <style>
@@ -111,11 +110,24 @@
       color: #fff3c4;
     }
 
-    /* Optional: make install button pop slightly */
     .topbtn.install {
       border: 1px solid rgba(147,197,253,0.35);
       background: rgba(147,197,253,0.12);
       color: #dbeafe;
+    }
+
+    .topbtn.ok {
+      border: 1px solid rgba(34,197,94,0.30);
+      background: rgba(34,197,94,0.12);
+      color: #bbf7d0;
+      cursor: default;
+    }
+
+    .topbtn.bad {
+      border: 1px solid rgba(239,68,68,0.30);
+      background: rgba(239,68,68,0.12);
+      color: #fecaca;
+      cursor: default;
     }
 
     .sessions span {
@@ -128,6 +140,23 @@
 
     .open { background: #00d46a22; color: #00d46a; }
     .closed { background: #ff444422; color: #ff7777; }
+
+    /* ✅ Offline banner */
+    .offline-banner {
+      display:none;
+      position: sticky;
+      top: 52px;
+      z-index: 899;
+      margin: 10px auto 0;
+      max-width: 1300px;
+      padding: 10px 16px;
+      background: rgba(251,191,36,0.16);
+      border: 1px solid rgba(251,191,36,0.28);
+      color: #fff3c4;
+      border-radius: 14px;
+      backdrop-filter: blur(8px);
+      box-sizing: border-box;
+    }
 
     .container {
       max-width: 1300px;
@@ -212,7 +241,6 @@
       background: linear-gradient(90deg, rgba(0,212,106,0.35), rgba(14,187,83,0.35));
     }
 
-    /* rate limit + pay hint line */
     .rate-hint {
       margin-top: 10px;
       font-size: 12px;
@@ -412,7 +440,6 @@
       line-height: 1.6;
     }
 
-    /* Pricing modal styles */
     .pricing-card {
       border: 1px solid rgba(255,255,255,0.10);
       background: rgba(255,255,255,0.06);
@@ -450,7 +477,6 @@
     .muted { opacity: 0.85; }
     .small { font-size: 12px; line-height: 1.6; }
 
-    /* Auth (OTP) modal bits */
     .auth-row {
       display:flex;
       gap:10px;
@@ -468,7 +494,6 @@
     .auth-ok { color: #b8ffdd; }
     .auth-danger { color: #ff9aa2; }
 
-    /* ✅ Verdict Preview modal */
     .preview-backdrop {
       display:none;
       position: fixed;
@@ -631,6 +656,23 @@
 
     .preview-actions .topbtn{ padding: 10px 12px; border-radius: 12px; }
 
+    /* ✅ iOS install tip */
+    .ios-tip {
+      display:none;
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 86px;
+      z-index: 2147483647;
+      background: rgba(18,20,28,0.92);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 16px;
+      padding: 12px 14px;
+      color: #e5e7eb;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 50px rgba(0,0,0,0.55);
+    }
+
     @media(max-width: 900px){
       .container { flex-direction: column; margin: 20px; padding: 25px; }
       .sessions span { margin-right: 10px; }
@@ -657,13 +699,21 @@
     </div>
 
     <div class="topbar-right">
-      <!-- ✅ Install button (only shows when install is available) -->
+      <!-- ✅ Install button (desktop/Android prompt OR iOS tip) -->
       <button id="installAppBtn" class="topbtn install" onclick="installApp()" style="display:none;">Install App</button>
+
+      <!-- ✅ API status -->
+      <span id="apiStatus" class="topbtn" style="cursor:default;opacity:0.92;">API: …</span>
 
       <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
     </div>
+  </div>
+
+  <!-- ✅ Offline banner -->
+  <div id="offlineBanner" class="offline-banner">
+    You’re offline. Analysis and payments may not work until you reconnect.
   </div>
 
   <div class="container">
@@ -923,11 +973,33 @@
     </div>
   </div>
 
+  <!-- ✅ iOS Install Tip -->
+  <div id="iosInstallTip" class="ios-tip">
+    <div style="font-weight:900;margin-bottom:4px;">Install FXCO-PILOT on iPhone</div>
+    <div style="font-size:12px;line-height:1.55;opacity:0.95;">
+      Tap <b>Share</b> → <b>Add to Home Screen</b>.
+    </div>
+    <div style="margin-top:10px;display:flex;justify-content:flex-end;">
+      <button class="topbtn" onclick="hideIosTip()">Got it</button>
+    </div>
+  </div>
+
   <script>
     // -------------------------
     // PWA Install + Service Worker
     // -------------------------
     let __deferredPrompt = null;
+
+    function isIos() {
+      return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    }
+    function isSafari() {
+      const ua = (navigator.userAgent || "").toLowerCase();
+      return ua.includes("safari") && !ua.includes("chrome") && !ua.includes("crios") && !ua.includes("fxios");
+    }
+    function isInStandalone() {
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }
 
     function showInstallButton(show) {
       const btn = document.getElementById("installAppBtn");
@@ -935,7 +1007,23 @@
       btn.style.display = show ? "inline-flex" : "none";
     }
 
-    // Chrome/Edge/Android install prompt
+    function showIosTip() {
+      const el = document.getElementById("iosInstallTip");
+      if (!el) return;
+      try {
+        const seen = localStorage.getItem("fxco_ios_tip_seen_v1") === "1";
+        if (seen) return;
+      } catch {}
+      el.style.display = "block";
+    }
+
+    function hideIosTip() {
+      const el = document.getElementById("iosInstallTip");
+      if (el) el.style.display = "none";
+      try { localStorage.setItem("fxco_ios_tip_seen_v1", "1"); } catch {}
+    }
+    window.hideIosTip = hideIosTip;
+
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       __deferredPrompt = e;
@@ -948,6 +1036,11 @@
     });
 
     async function installApp() {
+      // iOS Safari: no prompt exists. Show the tip.
+      if (isIos() && isSafari() && !isInStandalone()) {
+        showIosTip();
+        return;
+      }
       if (!__deferredPrompt) return;
       __deferredPrompt.prompt();
       try { await __deferredPrompt.userChoice; } catch {}
@@ -956,14 +1049,16 @@
     }
 
     function registerServiceWorker() {
-      // Service workers require https (Vercel is fine)
       if (!("serviceWorker" in navigator)) return;
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      window.addEventListener("load", async () => {
+        try {
+          const reg = await navigator.serviceWorker.register("/sw.js");
+          // Encourage new SW versions to take over faster
+          if (reg && reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        } catch {}
       });
     }
 
-    // Make install callable from inline onclick
     window.installApp = installApp;
 
     // -------------------------
@@ -985,6 +1080,43 @@
       return String(s ?? "").replace(/[&<>"']/g, m => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
       }[m]));
+    }
+
+    // -------------------------
+    // Offline banner
+    // -------------------------
+    function setOfflineUI() {
+      const offline = !navigator.onLine;
+      const b = document.getElementById("offlineBanner");
+      if (b) b.style.display = offline ? "block" : "none";
+
+      const btn = document.getElementById("analyzeBtn");
+      if (btn && offline) btn.disabled = true;
+      if (btn && !offline) applyPaymentGateUI();
+    }
+    window.addEventListener("online", setOfflineUI);
+    window.addEventListener("offline", setOfflineUI);
+
+    // -------------------------
+    // API Health Indicator
+    // -------------------------
+    async function refreshApiHealth() {
+      const el = document.getElementById("apiStatus");
+      if (!el) return;
+      try {
+        const res = await fetch("/api/health", { cache: "no-store" });
+        const j = await res.json().catch(() => null);
+        if (res.ok && j?.ok) {
+          el.textContent = "API: Online ✅";
+          el.className = "topbtn ok";
+          return;
+        }
+        el.textContent = "API: Issue ⚠️";
+        el.className = "topbtn warn";
+      } catch {
+        el.textContent = "API: Down ❌";
+        el.className = "topbtn bad";
+      }
     }
 
     // -------------------------
@@ -1111,6 +1243,16 @@
       } catch { return false; }
     }
 
+    function trialDaysLeft() {
+      try {
+        const end = Number(localStorage.getItem(TRIAL_END_KEY) || "0");
+        if (!end) return null;
+        const ms = (end * 1000) - Date.now();
+        if (ms <= 0) return 0;
+        return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+      } catch { return null; }
+    }
+
     function setAuthStatus(msg, kind) {
       const el = document.getElementById("authStatus");
       if (!el) return;
@@ -1210,9 +1352,10 @@
 
       const token = getAuthToken();
       const active = isTrialActiveLocal();
+      const days = trialDaysLeft();
 
       if (token && active) {
-        btn.innerText = "Trial Active ✅";
+        btn.innerText = days ? `Trial Active ✅ (${days}d left)` : "Trial Active ✅";
         btn.className = "topbtn primary";
       } else if (token && !active) {
         btn.innerText = "Trial Ended • Verify";
@@ -1275,7 +1418,7 @@
           clearInterval(rateTimer);
           rateTimer = null;
           setRateHint("", false);
-          btn.disabled = !accepted;
+          btn.disabled = !accepted || !navigator.onLine;
           applyPaymentGateUI();
           return;
         }
@@ -1283,7 +1426,6 @@
       }, 1000);
     }
 
-    // Show remaining counts (you asked for this)
     function showRateRemainingFromHeaders(res) {
       try {
         const plan = res.headers.get("X-RateLimit-Plan") || "";
@@ -1316,7 +1458,7 @@
     function setAnalyzeEnabled(enabled) {
       const btn = document.getElementById("analyzeBtn");
       const hint = document.getElementById("consentHint");
-      if (btn) btn.disabled = !enabled;
+      if (btn) btn.disabled = !enabled || !navigator.onLine;
       if (hint) hint.style.display = enabled ? "none" : "block";
     }
 
@@ -1449,7 +1591,7 @@
 
     async function loadPaystackConfig() {
       try {
-        const res = await fetch("/api/paystack/config");
+        const res = await fetch("/api/paystack/config", { cache: "no-store" });
         const j = await res.json();
         PAYSTACK_CONFIG = j || { ok:false };
 
@@ -1479,6 +1621,11 @@
       const btn = document.getElementById("analyzeBtn");
       if (!btn) return;
       if (rateTimer) return;
+
+      if (!navigator.onLine) {
+        btn.disabled = true;
+        return;
+      }
 
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
@@ -1598,8 +1745,6 @@
       if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
       if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (fragile setup).");
 
-      const hardNo = hardBlocks.length > 0;
-
       const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
       let score =
@@ -1615,7 +1760,7 @@
       score = clamp(score, 0, 100);
 
       let tier = "WAIT";
-      if (score >= 78 && !hardNo) tier = "EXECUTE";
+      if (score >= 78 && hardBlocks.length === 0) tier = "EXECUTE";
       else if (score >= 62) tier = "EXECUTE_IF";
       else if (score >= 48) tier = "WAIT";
       else tier = "DO_NOT_TRADE";
@@ -1685,6 +1830,12 @@
       const accepted = document.getElementById("acceptLegal")?.checked;
       if (!accepted) { setAnalyzeEnabled(false); return; }
       if (rateTimer) return;
+
+      if (!navigator.onLine) {
+        document.getElementById("result").innerHTML =
+          "<b style='color:#ffd86b'>Offline:</b> Reconnect to run analysis.";
+        return;
+      }
 
       const trialActive = getAuthToken() && isTrialActiveLocal();
       if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
@@ -1930,9 +2081,6 @@
       }
     }
 
-    // -------------------------
-    // Hardening: ensure clicks always work (no "does nothing")
-    // -------------------------
     function hardenButtonClicks() {
       const btn = document.getElementById("analyzeBtn");
       if (btn) {
@@ -1948,8 +2096,18 @@
     function initAll() {
       registerServiceWorker();
 
+      // iOS: show install button as a tip trigger
+      if (isIos() && isSafari() && !isInStandalone()) {
+        showInstallButton(true);
+      }
+
       updateClock();
       setInterval(updateClock, 1000);
+
+      setOfflineUI();
+
+      refreshApiHealth();
+      setInterval(refreshApiHealth, 30000);
 
       document.getElementById("authBackdrop")?.addEventListener("click", closeAuth);
       document.getElementById("legalBackdrop")?.addEventListener("click", closeLegal);
@@ -1969,6 +2127,8 @@
       renderLocalHistory();
       updateViewReportButton();
       hardenButtonClicks();
+
+      applyPaymentGateUI();
     }
 
     // -------------------------
@@ -1991,8 +2151,8 @@
     window.goToLastReport = goToLastReport;
     window.startPaystackCheckout = startPaystackCheckout;
     window.acknowledgeRisk = acknowledgeRisk;
+    window.installApp = installApp;
 
-    // Run
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", initAll);
     } else {
