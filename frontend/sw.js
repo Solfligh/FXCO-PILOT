@@ -1,11 +1,9 @@
 /* sw.js — FXCO-PILOT PWA */
 
-// Change this to force update when you deploy
-const VERSION = "fxco-pwa-v3";
+const VERSION = "fxco-pwa-v5";
 const CACHE_NAME = `fxco-cache-${VERSION}`;
 
-// Only cache the *pages* you want available offline.
-// Do NOT cache maintenance.html as a global fallback.
+// Cache essentials only (do NOT cache maintenance.html as a fallback)
 const PRECACHE = [
   "/",
   "/index.html",
@@ -20,30 +18,29 @@ const PRECACHE = [
   "/icons/icon-512-maskable.png"
 ];
 
-// Never let SW "fallback" to HTML for these asset types
-function isAssetRequest(url) {
+function isAssetPath(pathname) {
   return (
-    url.pathname === "/favicon.ico" ||
-    url.pathname === "/manifest.webmanifest" ||
-    url.pathname === "/sw.js" ||
-    url.pathname === "/apple-touch-icon.png" ||
-    url.pathname.startsWith("/icons/") ||
-    url.pathname.startsWith("/images/") ||
-    /\.(png|jpg|jpeg|webp|svg|ico|css|js|json|webmanifest)$/i.test(url.pathname)
+    pathname === "/favicon.ico" ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname.startsWith("/icons/") ||
+    pathname.startsWith("/images/") ||
+    /\.(png|jpg|jpeg|webp|svg|ico|css|js|json|webmanifest)$/i.test(pathname)
   );
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k.startsWith("fxco-cache-") && k !== CACHE_NAME) ? caches.delete(k) : null))
+      Promise.all(
+        keys.map((k) => (k.startsWith("fxco-cache-") && k !== CACHE_NAME ? caches.delete(k) : null))
+      )
     )
   );
   self.clients.claim();
@@ -51,35 +48,25 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-
-  // Only handle GET
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
 
-  // Let API go straight to network
+  // Don’t SW-hijack API calls
   if (url.pathname.startsWith("/api/")) return;
 
-  // ✅ Assets: NETWORK-FIRST (never return HTML fallback)
-  if (isAssetRequest(url)) {
-    event.respondWith(
-      fetch(req).catch(() => caches.match(req))
-    );
+  // ✅ Assets: network-first (never return HTML fallback)
+  if (isAssetPath(url.pathname)) {
+    event.respondWith(fetch(req).catch(() => caches.match(req)));
     return;
   }
 
-  // ✅ Navigations (pages): try network, then cached index.html as fallback
+  // ✅ Navigations: network-first; offline fallback to cached index.html
   if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => res)
-        .catch(() => caches.match("/index.html"))
-    );
+    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
     return;
   }
 
-  // Other requests: cache-first
-  event.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req))
-  );
+  // Everything else: cache-first
+  event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
 });
