@@ -1,7 +1,11 @@
 {
   "routes": [
     { "handle": "filesystem" },
+
     { "src": "/api/(.*)", "dest": "https://fxco-pilot.onrender.com/api/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+
+    { "src": "/maintenance", "dest": "/maintenance.html" },
+
+    { "src": "/(.*)", "dest": "/maintenance.html" }
   ]
 }
