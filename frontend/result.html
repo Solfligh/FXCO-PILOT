@@ -539,12 +539,23 @@
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
     }
 
+    // ✅ Normalize tier to underscores (backend truth)
+    function normalizeTier(tier){
+      const t = String(tier || "").trim().toUpperCase();
+      if (!t || t === "—") return "";
+      // accept legacy hyphen forms
+      if (t === "EXECUTE-IF") return "EXECUTE_IF";
+      if (t === "DO-NOT-TRADE") return "DO_NOT_TRADE";
+      // accept any hyphen variant
+      return t.replace(/-/g, "_");
+    }
+
     function pillToneForTier(tier){
-      const t = (tier||"").toUpperCase();
+      const t = normalizeTier(tier);
       if (t === "EXECUTE") return "good";
-      if (t === "EXECUTE-IF") return "warn";
+      if (t === "EXECUTE_IF") return "warn";
       if (t === "WAIT") return "neutral";
-      if (t === "DO-NOT-TRADE") return "bad";
+      if (t === "DO_NOT_TRADE") return "bad";
       return "neutral";
     }
 
@@ -556,14 +567,14 @@
       const pillScore = document.getElementById("pillScore");
       const pillConf = document.getElementById("pillConfidence");
 
-      const T = (tier||"").toUpperCase();
+      const T = normalizeTier(tier);
       const tone = pillToneForTier(T);
 
       const sealMap = {
         "EXECUTE": "GO",
-        "EXECUTE-IF": "IF",
+        "EXECUTE_IF": "IF",
         "WAIT": "WAIT",
-        "DO-NOT-TRADE": "NO"
+        "DO_NOT_TRADE": "NO"
       };
 
       const toneMap = {
@@ -666,32 +677,32 @@
 
       let tier = "WAIT";
       if (score >= 78 && !hardNo) tier = "EXECUTE";
-      else if (score >= 62) tier = "EXECUTE-IF";
+      else if (score >= 62) tier = "EXECUTE_IF";
       else if (score >= 48) tier = "WAIT";
-      else tier = "DO-NOT-TRADE";
+      else tier = "DO_NOT_TRADE";
 
       const conditions = [];
-      if (tier === "EXECUTE-IF") {
+      if (tier === "EXECUTE_IF") {
         conditions.push("Require confirmation before entry (break/close, sweep, or retest).");
         conditions.push("Reduce size; treat as conditional execution.");
       }
       if (tier === "WAIT") {
         conditions.push("Set alerts at levels; reassess when structure aligns.");
       }
-      if (tier === "DO-NOT-TRADE") {
+      if (tier === "DO_NOT_TRADE") {
         conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
       }
 
       const label =
         tier === "EXECUTE" ? "EXECUTE (DESK-GRADE)" :
-        tier === "EXECUTE-IF" ? "EXECUTE IF CONFIRMED" :
+        tier === "EXECUTE_IF" ? "EXECUTE IF CONFIRMED" :
         tier === "WAIT" ? "WAIT (NO CLEAN EDGE)" :
         "DO NOT TRADE";
 
       const why =
         tier === "EXECUTE"
           ? "Edge is confirmed. Ticket is complete and risk flags are acceptable."
-          : tier === "EXECUTE-IF"
+          : tier === "EXECUTE_IF"
           ? "Edge exists but needs confirmation. Conditions must be met before entry."
           : tier === "WAIT"
           ? "No clear edge yet. Market context is not aligned or information is incomplete."
@@ -700,7 +711,7 @@
       const action =
         tier === "EXECUTE"
           ? "Execute with defined size, hard SL, and no revenge entries."
-          : tier === "EXECUTE-IF"
+          : tier === "EXECUTE_IF"
           ? "Reduce size + require confirmation. No impulse entries."
           : tier === "WAIT"
           ? "No trade now. Set alert + reassess."
@@ -769,9 +780,10 @@
       const mc = a.market_context || {};
 
       // If backend doesn't provide a proper decision tier/score, compute with desk model
-      const backendTier =
-        (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString();
-      const hasBackendTier = backendTier && backendTier !== "—";
+      const backendTierRaw =
+        (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString().trim();
+      const backendTier = normalizeTier(backendTierRaw);
+      const hasBackendTier = !!backendTier;
 
       // Score fields (sometimes backend uses different names)
       const backendScoreCandidate =
@@ -784,11 +796,7 @@
 
       const desk = computeDeskVerdict(a);
 
-      // Normalize tier naming to the UI set
-      const tier =
-        hasBackendTier
-          ? backendTier.toUpperCase().replace(/_/g,"-")
-          : desk.tier;
+      const tier = hasBackendTier ? backendTier : normalizeTier(desk.tier);
 
       const label =
         (a.decision || a.decision_label || a.verdict || "").toString().trim()
@@ -860,7 +868,7 @@
         hardBlocks.slice(0, 10).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
       }
       if (conditions.length){
-        conditions.slice(0, 12).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "EXECUTE-IF"));
+        conditions.slice(0, 12).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "EXECUTE_IF"));
       }
       if (!hardBlocks.length && !conditions.length){
         addRow(blocksList, "Status", "No blocks or conditions returned.", "OK");
