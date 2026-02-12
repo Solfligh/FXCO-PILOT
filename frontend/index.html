@@ -6,9 +6,16 @@
   <title>FX Co-Pilot – AI Trade Validator</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
+  <!-- PWA / Install -->
+  <meta name="theme-color" content="#05070b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
   <!-- Vercel serves frontend/public/* at / -->
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <!-- ✅ Keep your existing manifest path, but ensure it's a real PWA manifest file -->
   <link rel="manifest" href="/site.webmanifest">
 
   <style>
@@ -102,6 +109,13 @@
       border: 1px solid rgba(251,191,36,0.35);
       background: rgba(251,191,36,0.14);
       color: #fff3c4;
+    }
+
+    /* Optional: make install button pop slightly */
+    .topbtn.install {
+      border: 1px solid rgba(147,197,253,0.35);
+      background: rgba(147,197,253,0.12);
+      color: #dbeafe;
     }
 
     .sessions span {
@@ -643,6 +657,9 @@
     </div>
 
     <div class="topbar-right">
+      <!-- ✅ Install button (only shows when install is available) -->
+      <button id="installAppBtn" class="topbtn install" onclick="installApp()" style="display:none;">Install App</button>
+
       <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
@@ -907,6 +924,48 @@
   </div>
 
   <script>
+    // -------------------------
+    // PWA Install + Service Worker
+    // -------------------------
+    let __deferredPrompt = null;
+
+    function showInstallButton(show) {
+      const btn = document.getElementById("installAppBtn");
+      if (!btn) return;
+      btn.style.display = show ? "inline-flex" : "none";
+    }
+
+    // Chrome/Edge/Android install prompt
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      __deferredPrompt = e;
+      showInstallButton(true);
+    });
+
+    window.addEventListener("appinstalled", () => {
+      __deferredPrompt = null;
+      showInstallButton(false);
+    });
+
+    async function installApp() {
+      if (!__deferredPrompt) return;
+      __deferredPrompt.prompt();
+      try { await __deferredPrompt.userChoice; } catch {}
+      __deferredPrompt = null;
+      showInstallButton(false);
+    }
+
+    function registerServiceWorker() {
+      // Service workers require https (Vercel is fine)
+      if (!("serviceWorker" in navigator)) return;
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
+    }
+
+    // Make install callable from inline onclick
+    window.installApp = installApp;
+
     // -------------------------
     // Clock / Sessions
     // -------------------------
@@ -1233,7 +1292,6 @@
         const rem24 = res.headers.get("X-RateLimit-Remaining-24h");
         const lim24 = res.headers.get("X-RateLimit-Limit-24h");
 
-        // Only show if we actually got numbers
         const hasAny = (rem60 && lim60) || (rem24 && lim24);
         if (!hasAny) return;
 
@@ -1244,7 +1302,6 @@
 
         setRateHint(bits.join(" • "), true);
 
-        // auto-hide after a bit (doesn't hide if rateTimer is running)
         if (!rateTimer) {
           setTimeout(() => {
             if (!rateTimer) setRateHint("", false);
@@ -1500,7 +1557,6 @@
     // -------------------------
     function normalizeTier(tier){
       const t = String(tier || "").trim().toUpperCase();
-      // accept old hyphen forms too
       if (t === "EXECUTE-IF") return "EXECUTE_IF";
       if (t === "DO-NOT-TRADE") return "DO_NOT_TRADE";
       return t;
@@ -1672,7 +1728,6 @@
         const res = await fetch("/api/analyze", { method: "POST", body: formData, headers });
         const ct = res.headers.get("content-type") || "";
 
-        // ✅ show remaining counts whenever headers exist
         showRateRemainingFromHeaders(res);
 
         const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
@@ -1753,14 +1808,12 @@
         renderLocalHistory();
         updateViewReportButton();
 
-        // Prefer backend tier if available, else compute fallback
         const backendTier = normalizeTier(reportPayload?.analysis?.decision_tier || "");
         const backendScore = Number(reportPayload?.analysis?.score);
         const backendConf = Number(reportPayload?.analysis?.confidence);
 
         let v = computeDeskVerdict(reportPayload.analysis || {});
         if (backendTier) {
-          // keep the nice "desk" narration but align tier/score with server
           v.tier = backendTier;
           if (isFinite(backendScore)) v.score = Math.round(backendScore);
           if (isFinite(backendConf)) v.conf = Math.round(backendConf);
@@ -1824,7 +1877,6 @@
           </div>
         `;
 
-        // Fill preview modal
         document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
 
         const banner = document.getElementById("previewBanner");
@@ -1894,10 +1946,11 @@
     // DOM init
     // -------------------------
     function initAll() {
+      registerServiceWorker();
+
       updateClock();
       setInterval(updateClock, 1000);
 
-      // Backdrops click-to-close
       document.getElementById("authBackdrop")?.addEventListener("click", closeAuth);
       document.getElementById("legalBackdrop")?.addEventListener("click", closeLegal);
       document.getElementById("pricingBackdrop")?.addEventListener("click", closePricing);
