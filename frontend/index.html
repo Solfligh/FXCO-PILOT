@@ -452,7 +452,7 @@
     .auth-ok { color: #b8ffdd; }
     .auth-danger { color: #ff9aa2; }
 
-    /* ✅ Institutional Verdict Preview modal */
+    /* ✅ Verdict Preview modal */
     .preview-backdrop {
       display:none;
       position: fixed;
@@ -686,7 +686,6 @@
 
       <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
       <div id="rateHint" class="rate-hint"></div>
-
       <div id="payHint" class="rate-hint" style="display:none;"></div>
     </div>
 
@@ -725,7 +724,7 @@
     </div>
   </footer>
 
-  <!-- Existing legal modal -->
+  <!-- Legal modal -->
   <div id="legalBackdrop" class="legal-backdrop"></div>
   <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
     <div class="legal-modal-header">
@@ -735,7 +734,7 @@
     <div id="legalContent" class="legal-modal-content"></div>
   </div>
 
-  <!-- Existing risk modal -->
+  <!-- Risk modal -->
   <div id="riskBackdrop" class="legal-backdrop"></div>
   <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
     <div class="legal-modal-header">
@@ -851,7 +850,7 @@
     </div>
   </div>
 
-  <!-- ✅ Institutional Verdict Preview -->
+  <!-- ✅ Desk Verdict Preview -->
   <div id="previewBackdrop" class="preview-backdrop"></div>
   <div id="previewModal" class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
     <div class="preview-head">
@@ -906,6 +905,9 @@
   </div>
 
   <script>
+    // -------------------------
+    // Clock / Sessions
+    // -------------------------
     function updateClock() {
       const now = new Date();
       document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
@@ -915,8 +917,6 @@
       setStatus("newyork", hour >= 12 && hour < 21);
       setStatus("tokyo", hour >= 0 && hour < 9);
     }
-    updateClock();
-    setInterval(updateClock, 1000);
 
     function clamp(n, min, max) { return Math.max(min, Math.min(max, Number(n || 0))); }
 
@@ -926,7 +926,9 @@
       }[m]));
     }
 
-    /* Per-session client id */
+    // -------------------------
+    // Client ID
+    // -------------------------
     function getOrCreateClientId() {
       const key = "fxco_client_id_v1";
       try {
@@ -943,18 +945,18 @@
     }
     const FXCO_CLIENT_ID = getOrCreateClientId();
 
-    /* Report storage */
+    // -------------------------
+    // Report storage
+    // -------------------------
     const REPORT_KEY = "fxcoReport";
-    const REPORTS_LIST_KEY = "fxco_reports_list_v1"; // local history list
+    const REPORTS_LIST_KEY = "fxco_reports_list_v1";
 
     function hasLastReport() {
       try { return !!sessionStorage.getItem(REPORT_KEY); } catch { return false; }
     }
-
     function goToLastReport() {
       window.location.href = "/result.html";
     }
-
     function updateViewReportButton() {
       const btn = document.getElementById("viewReportBtn");
       if (!btn) return;
@@ -969,14 +971,14 @@
 
         const item = {
           ts: Date.now(),
-          pairType: report?.pair_type || report?.pairType || "",
+          pairType: report?.pair_type || "",
           timeframe: report?.timeframe || "",
-          signal: report?.signal_input || report?.signal || "",
-          decision: report?.analysis?.decision || report?.decision || report?.analysis?.verdict || ""
+          signal: report?.signal_input || "",
+          decision: report?.analysis?.decision || report?.analysis?.verdict || ""
         };
 
         safeList.unshift(item);
-        const trimmed = safeList.slice(0, 8); // keep last 8
+        const trimmed = safeList.slice(0, 8);
         localStorage.setItem(REPORTS_LIST_KEY, JSON.stringify(trimmed));
       } catch {}
     }
@@ -990,6 +992,7 @@
 
       let list = [];
       try { list = raw ? JSON.parse(raw) : []; } catch { list = []; }
+
       if (!Array.isArray(list) || list.length === 0) {
         box.innerHTML = '<div style="opacity:0.9;">No reports yet.</div>';
         return;
@@ -1003,7 +1006,7 @@
         return `
           <div style="border-bottom:1px solid rgba(255,255,255,0.08);padding:12px 0;">
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-              <div style="font-weight:800;color:#fff;">${meta}</div>
+              <div style="font-weight:900;color:#fff;">${meta}</div>
               <div style="opacity:0.85;font-size:11px;white-space:nowrap;">${esc(dt)}</div>
             </div>
             <div style="margin-top:6px;opacity:0.9;font-size:12px;line-height:1.6;">
@@ -1015,17 +1018,16 @@
       }).join("");
     }
 
-    /* Auth storage */
+    // -------------------------
+    // Auth storage
+    // -------------------------
     const AUTH_TOKEN_KEY = "fxco_auth_token_v1";
     const AUTH_EMAIL_KEY = "fxco_auth_email_v1";
     const TRIAL_END_KEY  = "fxco_trial_end_v1";
 
-    function getAuthToken() {
-      try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; }
-    }
-    function getAuthEmail() {
-      try { return localStorage.getItem(AUTH_EMAIL_KEY) || ""; } catch { return ""; }
-    }
+    function getAuthToken() { try { return localStorage.getItem(AUTH_TOKEN_KEY) || ""; } catch { return ""; } }
+    function getAuthEmail() { try { return localStorage.getItem(AUTH_EMAIL_KEY) || ""; } catch { return ""; } }
+
     function setAuth(email, token, trialEnds) {
       try {
         if (email) localStorage.setItem(AUTH_EMAIL_KEY, email);
@@ -1040,7 +1042,6 @@
         localStorage.removeItem(TRIAL_END_KEY);
       } catch {}
     }
-
     function isTrialActiveLocal() {
       try {
         const end = Number(localStorage.getItem(TRIAL_END_KEY) || "0");
@@ -1070,7 +1071,6 @@
       document.getElementById("authModal").style.display = "none";
       setAuthStatus("", "");
     }
-    document.getElementById("authBackdrop").addEventListener("click", closeAuth);
 
     function authPasteSavedEmail() {
       const e = getAuthEmail();
@@ -1162,7 +1162,9 @@
       }
     }
 
-    /* Payment state */
+    // -------------------------
+    // Payment state
+    // -------------------------
     const PAID_KEY = "fxco_paid_v1";
     const PAID_REF_KEY = "fxco_paid_ref_v1";
     let PAYSTACK_CONFIG = { ok:false };
@@ -1175,12 +1177,8 @@
       el.innerText = msg;
     }
 
-    function isPaid() {
-      try { return localStorage.getItem(PAID_KEY) === "1"; } catch { return false; }
-    }
-    function getPaidRef() {
-      try { return localStorage.getItem(PAID_REF_KEY) || ""; } catch { return ""; }
-    }
+    function isPaid() { try { return localStorage.getItem(PAID_KEY) === "1"; } catch { return false; } }
+    function getPaidRef() { try { return localStorage.getItem(PAID_REF_KEY) || ""; } catch { return ""; } }
     function setPaid(reference) {
       try {
         localStorage.setItem(PAID_KEY, "1");
@@ -1188,16 +1186,15 @@
       } catch {}
     }
 
-    /* Rate limit UX */
+    // -------------------------
+    // Rate limit UX
+    // -------------------------
     let rateTimer = null;
+
     function setRateHint(msg, show=true) {
       const el = document.getElementById("rateHint");
       if (!el) return;
-      if (!show || !msg) {
-        el.style.display = "none";
-        el.innerText = "";
-        return;
-      }
+      if (!show || !msg) { el.style.display = "none"; el.innerText = ""; return; }
       el.style.display = "block";
       el.innerText = msg;
     }
@@ -1225,11 +1222,14 @@
       }, 1000);
     }
 
+    // -------------------------
+    // Consent gate
+    // -------------------------
     function setAnalyzeEnabled(enabled) {
       const btn = document.getElementById("analyzeBtn");
       const hint = document.getElementById("consentHint");
-      btn.disabled = !enabled;
-      hint.style.display = enabled ? "none" : "block";
+      if (btn) btn.disabled = !enabled;
+      if (hint) hint.style.display = enabled ? "none" : "block";
     }
 
     function initConsentGate() {
@@ -1244,17 +1244,16 @@
       setAnalyzeEnabled(cb.checked);
 
       cb.addEventListener("change", () => {
-        if (rateTimer) {
-          setAnalyzeEnabled(false);
-        } else {
-          setAnalyzeEnabled(cb.checked);
-        }
+        if (rateTimer) setAnalyzeEnabled(false);
+        else setAnalyzeEnabled(cb.checked);
         try { localStorage.setItem("fxco_accept_legal_v1", cb.checked ? "1" : "0"); } catch {}
         applyPaymentGateUI();
       });
     }
 
-    /* Legal modal */
+    // -------------------------
+    // Legal modal
+    // -------------------------
     function openLegal(which) {
       const backdrop = document.getElementById("legalBackdrop");
       const modal = document.getElementById("legalModal");
@@ -1304,13 +1303,15 @@
       backdrop.style.display = "block";
       modal.style.display = "block";
     }
+
     function closeLegal() {
       document.getElementById("legalBackdrop").style.display = "none";
       document.getElementById("legalModal").style.display = "none";
     }
-    document.getElementById("legalBackdrop").addEventListener("click", closeLegal);
 
-    /* Risk modal */
+    // -------------------------
+    // Risk modal
+    // -------------------------
     function showRiskModalIfNeeded() {
       try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
@@ -1324,15 +1325,17 @@
         document.body.style.overflow = "hidden";
       }
     }
+
     function acknowledgeRisk() {
       try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
       document.getElementById("riskBackdrop").style.display = "none";
       document.getElementById("riskModal").style.display = "none";
       document.body.style.overflow = "";
     }
-    document.getElementById("riskBackdrop").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
-    /* Pricing modal */
+    // -------------------------
+    // Pricing modal
+    // -------------------------
     function openPricing() {
       document.getElementById("pricingBackdrop").style.display = "block";
       document.getElementById("pricingModal").style.display = "block";
@@ -1341,13 +1344,10 @@
       document.getElementById("pricingBackdrop").style.display = "none";
       document.getElementById("pricingModal").style.display = "none";
     }
-    document.getElementById("pricingBackdrop").addEventListener("click", closePricing);
 
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); closePreview(); }
-    });
-
-    /* Paystack */
+    // -------------------------
+    // Paystack
+    // -------------------------
     function formatMoneyMinor(amountMinor, currency) {
       const amt = Number(amountMinor || 0);
       const cur = (currency || "NGN").toUpperCase();
@@ -1384,7 +1384,6 @@
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
-
       if (statusEl) {
         statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
       }
@@ -1395,9 +1394,7 @@
 
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
-        if (accepted) {
-          setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
-        }
+        if (accepted) setPayHint("Start your free trial (verify email) or open Pricing to unlock.", true);
         return;
       }
 
@@ -1441,7 +1438,6 @@
     async function verifyPaystackIfReturned() {
       const paystack = getQueryParam("paystack");
       const reference = getQueryParam("reference") || getQueryParam("trxref") || getPaidRef();
-
       if (paystack !== "success" || !reference) return;
 
       try {
@@ -1463,14 +1459,14 @@
         u.searchParams.delete("reference");
         u.searchParams.delete("trxref");
         window.history.replaceState({}, "", u.toString());
-      } catch {
-        // ignore
       } finally {
         applyPaymentGateUI();
       }
     }
 
-    /* ✅ Institutional scoring helpers (1% desk model) */
+    // -------------------------
+    // Desk verdict helpers (1% feel)
+    // -------------------------
     function parseRR(rr){
       if (rr === null || rr === undefined) return null;
       if (typeof rr === "number" && isFinite(rr)) return rr;
@@ -1481,11 +1477,10 @@
       return isFinite(n) ? n : null;
     }
 
-    function computeInstitutionalVerdict(analysis){
+    function computeDeskVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(a.confidence, 0, 100);
 
-      // Backend strength/clarity might be 0..10 or 0..100. Normalize to 0..100.
       const strRaw = Number(a.strength ?? 0);
       const clrRaw = Number(a.clarity ?? 0);
       const str = clamp(strRaw <= 10 ? (strRaw * 10) : strRaw, 0, 100);
@@ -1499,16 +1494,14 @@
       const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const invCount = inv.length;
 
-      // --- Desk hard blocks (1% feel) ---
       const hardBlocks = [];
-      if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
-      if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
+      if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing ticket fields (Entry/SL/TP).");
+      if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy).");
       if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
-      if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
+      if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (fragile setup).");
 
       const hardNo = hardBlocks.length > 0;
 
-      // --- Edge score (desk weighting) ---
       const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
       let score =
@@ -1517,14 +1510,12 @@
         (clr * 0.22) +
         (rrScore * 0.10);
 
-      // Penalties (risk flags / missing ticket)
       if (invCount >= 1) score -= 10;
       if (invCount >= 2) score -= 10;
       if (!hasEntry || !hasSL || !hasTP) score -= 12;
 
       score = clamp(score, 0, 100);
 
-      // --- Tiering with desk language ---
       let tier = "WAIT";
       if (score >= 78 && !hardNo) tier = "EXECUTE";
       else if (score >= 62) tier = "EXECUTE-IF";
@@ -1543,17 +1534,17 @@
       let action = "";
 
       if (tier === "EXECUTE") {
-        why = "Edge is confirmed. Ticket is complete and risk flags are acceptable.";
-        action = "Execute with defined size, hard SL, and no revenge entries.";
+        why = "Edge is confirmed. Ticket is complete and flags are acceptable.";
+        action = "Execute with strict size, hard SL, and no revenge entries.";
       } else if (tier === "EXECUTE-IF") {
         why = "Edge exists but needs confirmation. Conditions must be met before entry.";
         action = "Reduce size + require confirmation (break/close, sweep, or retest).";
       } else if (tier === "WAIT") {
-        why = "No clear edge yet. Market context is not aligned or information is incomplete.";
-        action = "Wait for alignment. Set alerts at key levels and reassess.";
+        why = "No clear edge yet. Context is not aligned or information is incomplete.";
+        action = "Wait. Set alerts at key levels and reassess.";
       } else {
         why = "Fails desk rules (expectancy / completeness / risk flags).";
-        action = "Stand down. Only re-enter the decision if setup materially improves.";
+        action = "Stand down. Only re-enter if the setup materially improves.";
       }
 
       return {
@@ -1571,7 +1562,9 @@
       };
     }
 
-    /* ✅ Preview modal controls */
+    // -------------------------
+    // Preview modal
+    // -------------------------
     function openPreview() {
       document.getElementById("previewBackdrop").style.display = "block";
       document.getElementById("previewModal").style.display = "block";
@@ -1582,14 +1575,14 @@
       document.getElementById("previewModal").style.display = "none";
       document.body.style.overflow = "";
     }
-    document.getElementById("previewBackdrop").addEventListener("click", closePreview);
-
     function openFullReport(){
       closePreview();
       window.location.href = "/result.html";
     }
 
-    /* Analyze */
+    // -------------------------
+    // Analyze
+    // -------------------------
     async function analyze() {
       const accepted = document.getElementById("acceptLegal")?.checked;
       if (!accepted) { setAnalyzeEnabled(false); return; }
@@ -1603,17 +1596,13 @@
 
       setRateHint("", false);
 
-      const pairTypeEl = document.getElementById("pairType");
-      const timeframeEl = document.getElementById("timeframe");
-      const signalEl = document.getElementById("signal");
-
-      const pairType = (pairTypeEl?.value || "").trim();
-      const timeframe = (timeframeEl?.value || "").trim();
-      const signal = (signalEl?.value || "").trim();
+      const pairType = (document.getElementById("pairType")?.value || "").trim();
+      const timeframe = (document.getElementById("timeframe")?.value || "").trim();
+      const signal = (document.getElementById("signal")?.value || "").trim();
 
       if (!pairType || !timeframe || !signal) {
         document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> Missing required fields. Please fill Pair Type, Timeframe Mode, and Your signal.";
+          "<b style='color:#ff6b6b'>Request failed:</b> Missing Pair Type, Timeframe Mode, or Signal.";
         return;
       }
 
@@ -1622,7 +1611,7 @@
       formData.append("timeframe", timeframe);
       formData.append("signal_input", signal);
 
-      const file = document.getElementById("chart").files[0];
+      const file = document.getElementById("chart")?.files?.[0];
       if (file) formData.append("chart_image", file);
 
       const btn = document.getElementById("analyzeBtn");
@@ -1638,12 +1627,7 @@
         const ref = getPaidRef();
         if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
 
-        const res = await fetch("/api/analyze", {
-          method: "POST",
-          body: formData,
-          headers
-        });
-
+        const res = await fetch("/api/analyze", { method: "POST", body: formData, headers });
         const ct = res.headers.get("content-type") || "";
 
         const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
@@ -1656,12 +1640,8 @@
         if (res.status === 429) {
           let retryAfter = Number(res.headers.get("Retry-After") || 0);
           let j = null;
-          if (ct.includes("application/json")) {
-            try { j = await res.json(); } catch {}
-          } else {
-            const t = await res.text().catch(() => "");
-            j = { error: t || "Too many requests" };
-          }
+          if (ct.includes("application/json")) { try { j = await res.json(); } catch {} }
+          else { const t = await res.text().catch(() => ""); j = { error: t || "Too many requests" }; }
           const seconds = Number((j && j.retry_after_seconds) || retryAfter || 10);
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
@@ -1673,12 +1653,8 @@
 
         if (res.status === 402) {
           let j = null;
-          if (ct.includes("application/json")) {
-            try { j = await res.json(); } catch {}
-          } else {
-            const t = await res.text().catch(() => "");
-            j = { error: t || "Access locked" };
-          }
+          if (ct.includes("application/json")) { try { j = await res.json(); } catch {} }
+          else { const t = await res.text().catch(() => ""); j = { error: t || "Access locked" }; }
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
             "<br/><span style='opacity:0.9'>Start Trial (verify email) or open Pricing to unlock.</span>";
@@ -1690,18 +1666,14 @@
 
         if (res.status === 400) {
           let j = null;
-          if (ct.includes("application/json")) {
-            try { j = await res.json(); } catch {}
-          } else {
-            const t = await res.text().catch(() => "");
-            j = { error: t || "Bad request" };
-          }
-
+          if (ct.includes("application/json")) { try { j = await res.json(); } catch {} }
+          else { const t = await res.text().catch(() => ""); j = { error: t || "Bad request" }; }
           const missing = Array.isArray(j?.missing) ? j.missing.join(", ") : "";
           document.getElementById("result").innerHTML =
             "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
             (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
           btn.disabled = false;
+          applyPaymentGateUI();
           return;
         }
 
@@ -1721,10 +1693,9 @@
 
         const data = await res.json();
 
-        // Store for result page
         const reportPayload = {
           pair_type: pairType,
-          timeframe: timeframe,
+          timeframe,
           signal_input: signal,
           analysis: data?.analysis || null,
           raw: data || null,
@@ -1736,10 +1707,7 @@
         renderLocalHistory();
         updateViewReportButton();
 
-        // ✅ Desk verdict
-        const v = computeInstitutionalVerdict(reportPayload.analysis || {});
-
-        // Ticket values for the status card
+        const v = computeDeskVerdict(reportPayload.analysis || {});
         const ticket = reportPayload.analysis?.signal_check || {};
         const entry = ticket.entry ?? "—";
         const sl = ticket.stop_loss ?? "—";
@@ -1751,9 +1719,8 @@
           v.tier === "WAIT" ? "#94a3b8" :
           "#ff5a5f";
 
-        const blocks = (v.hardBlocks || []).slice(0, 3).map(x => `<div style="margin-top:4px;opacity:0.95">• ${esc(x)}</div>`).join("");
+        const blocksHtml = (v.hardBlocks || []).map(x => `<div style="margin-top:4px;">• ${esc(x)}</div>`).join("");
 
-        // Update status area (1% trade ticket)
         document.getElementById("result").innerHTML = `
           <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:16px;padding:16px;">
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
@@ -1772,4 +1739,155 @@
               </div>
               <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
                 <div style="font-size:11px;opacity:0.85;">STOP LOSS</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc
+                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(sl)}</div>
+              </div>
+              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
+                <div style="font-size:11px;opacity:0.85;">TP1</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(tp1)}</div>
+              </div>
+            </div>
+
+            <div style="margin-top:10px;color:#e5e7eb;font-size:12px;line-height:1.6;">
+              ${esc(v.why)}<br/>
+              <span style="opacity:0.9;">${esc(v.action)}</span>
+            </div>
+
+            ${v.hardBlocks && v.hardBlocks.length ? `
+              <div style="margin-top:10px;border:1px solid rgba(255,90,95,0.22);background:rgba(255,90,95,0.08);padding:12px;border-radius:14px;">
+                <div style="font-weight:1000;color:#ff9aa2;margin-bottom:4px;">Hard Blocks</div>
+                <div style="font-size:12px;line-height:1.6;color:#ffd1d6;">${blocksHtml}</div>
+              </div>
+            ` : ""}
+
+            <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+              <button class="topbtn" onclick="openPreview()">View Preview</button>
+              <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
+            </div>
+          </div>
+        `;
+
+        // Fill preview modal
+        document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
+
+        const banner = document.getElementById("previewBanner");
+        banner.classList.remove("dec-ok","dec-cond","dec-wait","dec-bad");
+
+        if (v.tier === "EXECUTE"){
+          banner.classList.add("dec-ok");
+          document.getElementById("previewIcon").textContent = "✓";
+          document.getElementById("previewTier").textContent = "EXECUTE (DESK-OK)";
+        } else if (v.tier === "EXECUTE-IF"){
+          banner.classList.add("dec-cond");
+          document.getElementById("previewIcon").textContent = "!";
+          document.getElementById("previewTier").textContent = "EXECUTE-IF (CONDITIONS)";
+        } else if (v.tier === "WAIT"){
+          banner.classList.add("dec-wait");
+          document.getElementById("previewIcon").textContent = "⏸";
+          document.getElementById("previewTier").textContent = "WAIT (NO EDGE YET)";
+        } else {
+          banner.classList.add("dec-bad");
+          document.getElementById("previewIcon").textContent = "×";
+          document.getElementById("previewTier").textContent = "DO-NOT-TRADE (BLOCKED)";
+        }
+
+        document.getElementById("previewWhy").textContent = `${v.why} ${v.action}`;
+        document.getElementById("previewScore").textContent = `${v.score}/100`;
+        document.getElementById("previewBasis").textContent = v.reasons.join(" • ");
+        document.getElementById("previewConf").textContent = `${v.conf}%`;
+        document.getElementById("previewSC").textContent = `Strength: ${v.str}/100 • Clarity: ${v.clr}/100`;
+        document.getElementById("previewRR").textContent = v.rr !== null ? `RR ${v.rr.toFixed(2)}` : "RR —";
+        document.getElementById("previewRiskFlags").textContent = v.invCount ? `${v.invCount} invalidation warning(s)` : "No invalidation warnings";
+
+        const blocksWrap = document.getElementById("previewBlocks");
+        const blocksList = document.getElementById("previewBlocksList");
+        if (v.hardBlocks && v.hardBlocks.length) {
+          blocksWrap.style.display = "block";
+          blocksList.innerHTML = v.hardBlocks.map(x => `• ${esc(x)}`).join("<br/>");
+        } else {
+          blocksWrap.style.display = "none";
+          blocksList.innerHTML = "";
+        }
+
+        openPreview();
+
+      } catch (err) {
+        document.getElementById("result").innerHTML =
+          "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
+        btn.disabled = false;
+        applyPaymentGateUI();
+      } finally {
+        if (!rateTimer) applyPaymentGateUI();
+      }
+    }
+
+    // -------------------------
+    // Hardening: ensure clicks always work (no "does nothing")
+    // -------------------------
+    function hardenButtonClicks() {
+      const btn = document.getElementById("analyzeBtn");
+      if (btn) {
+        btn.addEventListener("click", (e) => {
+          // if inline onclick failed for any reason, this guarantees it still runs
+          if (typeof window.analyze === "function") window.analyze();
+        });
+      }
+    }
+
+    // -------------------------
+    // DOM init
+    // -------------------------
+    function initAll() {
+      updateClock();
+      setInterval(updateClock, 1000);
+
+      // Backdrops click-to-close
+      document.getElementById("authBackdrop")?.addEventListener("click", closeAuth);
+      document.getElementById("legalBackdrop")?.addEventListener("click", closeLegal);
+      document.getElementById("pricingBackdrop")?.addEventListener("click", closePricing);
+      document.getElementById("previewBackdrop")?.addEventListener("click", closePreview);
+      document.getElementById("riskBackdrop")?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); closePreview(); }
+      });
+
+      initConsentGate();
+      showRiskModalIfNeeded();
+      loadPaystackConfig();
+      verifyPaystackIfReturned();
+      updateTrialButton();
+      renderLocalHistory();
+      updateViewReportButton();
+      hardenButtonClicks();
+    }
+
+    // -------------------------
+    // Make inline onclick handlers reliable
+    // -------------------------
+    window.analyze = analyze;
+    window.openPricing = openPricing;
+    window.closePricing = closePricing;
+    window.openAuth = openAuth;
+    window.closeAuth = closeAuth;
+    window.authSendCode = authSendCode;
+    window.authVerifyCode = authVerifyCode;
+    window.authLogout = authLogout;
+    window.authPasteSavedEmail = authPasteSavedEmail;
+    window.openLegal = openLegal;
+    window.closeLegal = closeLegal;
+    window.openFullReport = openFullReport;
+    window.openPreview = openPreview;
+    window.closePreview = closePreview;
+    window.goToLastReport = goToLastReport;
+    window.startPaystackCheckout = startPaystackCheckout;
+    window.acknowledgeRisk = acknowledgeRisk;
+
+    // Run
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initAll);
+    } else {
+      initAll();
+    }
+  </script>
+</body>
+</html>
