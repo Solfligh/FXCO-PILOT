@@ -476,7 +476,7 @@
           </div>
 
           <p class="muted" style="margin: 12px 2px 0;">
-            Institutional-style output: **guards first**, then **score**, then **tier**. This is decision support — not a signal.
+            Institutional-style output: guards first, then score, then tier. This is decision support — not a signal.
           </p>
         </div>
 
@@ -520,6 +520,10 @@
   </div>
 
   <script>
+    // Storage keys (session first, local fallback)
+    const REPORT_KEY = "fxcoReport";
+    const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
+
     function fmt(v){
       if (v === null || v === undefined || v === "") return "—";
       return String(v);
@@ -529,17 +533,18 @@
 
     function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
-    function nowStamp(){
-      const d = new Date();
+    function stampFrom(ts){
+      const n = Number(ts || 0);
+      const d = n ? new Date(n) : new Date();
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
     }
 
     function pillToneForTier(tier){
       const t = (tier||"").toUpperCase();
       if (t === "EXECUTE") return "good";
-      if (t === "EXECUTE_IF") return "warn";
+      if (t === "EXECUTE-IF") return "warn";
       if (t === "WAIT") return "neutral";
-      if (t === "DO_NOT_TRADE") return "bad";
+      if (t === "DO-NOT-TRADE") return "bad";
       return "neutral";
     }
 
@@ -555,10 +560,10 @@
       const tone = pillToneForTier(T);
 
       const sealMap = {
-        EXECUTE: "GO",
-        EXECUTE_IF: "IF",
-        WAIT: "WAIT",
-        DO_NOT_TRADE: "NO"
+        "EXECUTE": "GO",
+        "EXECUTE-IF": "IF",
+        "WAIT": "WAIT",
+        "DO-NOT-TRADE": "NO"
       };
 
       const toneMap = {
@@ -580,7 +585,7 @@
       pillTier.className = "pill " + tone;
       pillTier.textContent = "Tier: " + (T || "—");
 
-      pillScore.className = "pill " + (score >= 75 ? "good" : score >= 60 ? "warn" : score >= 45 ? "neutral" : "bad");
+      pillScore.className = "pill " + (score >= 78 ? "good" : score >= 62 ? "warn" : score >= 48 ? "neutral" : "bad");
       pillScore.textContent = "Score: " + (Number.isFinite(score) ? score : "—");
 
       pillConf.className = "pill " + (confidence >= 70 ? "good" : confidence >= 55 ? "warn" : confidence >= 40 ? "neutral" : "bad");
@@ -590,8 +595,8 @@
     function chipClass(level){
       const v = (level || "").toLowerCase();
       if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "pill good";
-      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("conditional")) return "pill warn";
-      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("block") || v.includes("risk")) return "pill bad";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("conditional") || v.includes("if")) return "pill warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("block") || v.includes("risk") || v.includes("no")) return "pill bad";
       return "pill neutral";
     }
 
@@ -608,12 +613,117 @@
       container.appendChild(el);
     }
 
+    function parseRR(rr){
+      if (rr === null || rr === undefined) return null;
+      if (typeof rr === "number" && isFinite(rr)) return rr;
+      const s = String(rr);
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return isFinite(n) ? n : null;
+    }
+
+    // 1% "desk model" verdict computed client-side when backend doesn't provide a tier/score
+    function computeDeskVerdict(analysis){
+      const a = analysis || {};
+      const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
+
+      const strRaw = Number(a.strength ?? 0);
+      const clrRaw = Number(a.clarity ?? 0);
+      const str = clamp(strRaw <= 10 ? (strRaw * 10) : strRaw, 0, 100);
+      const clr = clamp(clrRaw <= 10 ? (clrRaw * 10) : clrRaw, 0, 100);
+
+      const sc = a.signal_check || {};
+      const rr = parseRR(sc.rr);
+      const hasEntry = sc.entry != null && String(sc.entry).trim() !== "";
+      const hasSL = sc.stop_loss != null && String(sc.stop_loss).trim() !== "";
+      const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
+
+      const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const invCount = inv.length;
+
+      const hardBlocks = [];
+      if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
+      if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
+      if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
+      if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
+
+      const hardNo = hardBlocks.length > 0;
+
+      const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+
+      let score =
+        (conf * 0.52) +
+        (str * 0.16) +
+        (clr * 0.22) +
+        (rrScore * 0.10);
+
+      if (invCount >= 1) score -= 10;
+      if (invCount >= 2) score -= 10;
+      if (!hasEntry || !hasSL || !hasTP) score -= 12;
+
+      score = clamp(score, 0, 100);
+
+      let tier = "WAIT";
+      if (score >= 78 && !hardNo) tier = "EXECUTE";
+      else if (score >= 62) tier = "EXECUTE-IF";
+      else if (score >= 48) tier = "WAIT";
+      else tier = "DO-NOT-TRADE";
+
+      const conditions = [];
+      if (tier === "EXECUTE-IF") {
+        conditions.push("Require confirmation before entry (break/close, sweep, or retest).");
+        conditions.push("Reduce size; treat as conditional execution.");
+      }
+      if (tier === "WAIT") {
+        conditions.push("Set alerts at levels; reassess when structure aligns.");
+      }
+      if (tier === "DO-NOT-TRADE") {
+        conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
+      }
+
+      const label =
+        tier === "EXECUTE" ? "EXECUTE (DESK-GRADE)" :
+        tier === "EXECUTE-IF" ? "EXECUTE IF CONFIRMED" :
+        tier === "WAIT" ? "WAIT (NO CLEAN EDGE)" :
+        "DO NOT TRADE";
+
+      const why =
+        tier === "EXECUTE"
+          ? "Edge is confirmed. Ticket is complete and risk flags are acceptable."
+          : tier === "EXECUTE-IF"
+          ? "Edge exists but needs confirmation. Conditions must be met before entry."
+          : tier === "WAIT"
+          ? "No clear edge yet. Market context is not aligned or information is incomplete."
+          : "Fails desk rules (expectancy / completeness / risk flags).";
+
+      const action =
+        tier === "EXECUTE"
+          ? "Execute with defined size, hard SL, and no revenge entries."
+          : tier === "EXECUTE-IF"
+          ? "Reduce size + require confirmation. No impulse entries."
+          : tier === "WAIT"
+          ? "No trade now. Set alert + reassess."
+          : "Stand down. Find a higher-quality setup.";
+
+      return {
+        tier,
+        label,
+        score: Math.round(score),
+        confidence: Math.round(conf),
+        hardBlocks,
+        conditions,
+        why,
+        action
+      };
+    }
+
     function parseReport(raw){
       // Expected storage from index.html:
       // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
       const r = raw || {};
       if (typeof r === "string"){
-        return { pair_type:"", timeframe:"", signal_input:"", analysis:{ reasoning_text: r } };
+        return { pair_type:"", timeframe:"", signal_input:"", analysis:{ reasoning_text: r }, raw: { }, generated_at: Date.now() };
       }
 
       const analysis = r.analysis || r.result || r.raw?.analysis || {};
@@ -622,29 +732,84 @@
         timeframe: r.timeframe || "",
         signal_input: r.signal_input || r.signal || "",
         analysis: analysis || {},
-        raw: r.raw || r
+        raw: r.raw || r,
+        generated_at: r.generated_at || Date.now()
       };
     }
 
+    function ensureLocalFallback(reportObj){
+      // Save a fallback copy so refresh / new tab still works
+      try{
+        localStorage.setItem(REPORT_FALLBACK_KEY, JSON.stringify(reportObj));
+      }catch{}
+    }
+
+    function getStoredReportRaw(){
+      // 1) sessionStorage (best)
+      try{
+        const s = sessionStorage.getItem(REPORT_KEY);
+        if (s) return s;
+      }catch{}
+
+      // 2) localStorage fallback
+      try{
+        const l = localStorage.getItem(REPORT_FALLBACK_KEY);
+        if (l) return l;
+      }catch{}
+
+      return "";
+    }
+
     function render(report){
-      document.getElementById("metaLine").textContent = `Generated — ${nowStamp()}`;
+      // Meta line should reflect report generation time (not "now" on refresh)
+      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
 
       const a = report.analysis || {};
       const sc = a.signal_check || {};
       const mc = a.market_context || {};
 
-      const tier = a.decision_tier || "";
-      const label = a.decision || a.decision_label || a.verdict || "—";
-      const score = Number.isFinite(Number(a.score)) ? Number(a.score) : (Number.isFinite(Number(a.strength)) ? Number(a.strength) : NaN);
-      const confidence = Number.isFinite(Number(a.confidence)) ? Number(a.confidence) : 0;
+      // If backend doesn't provide a proper decision tier/score, compute with desk model
+      const backendTier =
+        (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString();
+      const hasBackendTier = backendTier && backendTier !== "—";
+
+      // Score fields (sometimes backend uses different names)
+      const backendScoreCandidate =
+        Number.isFinite(Number(a.score)) ? Number(a.score) :
+        Number.isFinite(Number(a.edge_score)) ? Number(a.edge_score) :
+        Number.isFinite(Number(a.edgeScore)) ? Number(a.edgeScore) :
+        (Number.isFinite(Number(a.strength)) ? (Number(a.strength) <= 10 ? Number(a.strength) * 10 : Number(a.strength)) : NaN);
+
+      const backendConf = Number.isFinite(Number(a.confidence)) ? Number(a.confidence) : 0;
+
+      const desk = computeDeskVerdict(a);
+
+      // Normalize tier naming to the UI set
+      const tier =
+        hasBackendTier
+          ? backendTier.toUpperCase().replace(/_/g,"-")
+          : desk.tier;
+
+      const label =
+        (a.decision || a.decision_label || a.verdict || "").toString().trim()
+          ? (a.decision || a.decision_label || a.verdict)
+          : desk.label;
+
+      const score =
+        Number.isFinite(backendScoreCandidate) ? Math.round(backendScoreCandidate)
+        : desk.score;
+
+      const confidence =
+        Number.isFinite(backendConf) && backendConf > 0 ? Math.round(backendConf)
+        : desk.confidence;
 
       const metaBits = [];
       if (mc.structure) metaBits.push("Structure: " + fmt(mc.structure));
       if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
       if (mc.timeframe_alignment) metaBits.push("Alignment: " + fmt(mc.timeframe_alignment));
-      const meta = metaBits.length ? metaBits.join(" • ") : "No market-context metadata returned.";
+      const meta = metaBits.length ? metaBits.join(" • ") : `${desk.why} ${desk.action}`;
 
-      setDecisionUI(tier, label, meta, Number.isFinite(score) ? Math.round(score) : NaN, Math.round(confidence));
+      setDecisionUI(tier, label, meta, score, confidence);
 
       // KPIs
       document.getElementById("kpiPair").textContent = fmt(report.pair_type);
@@ -657,51 +822,54 @@
       document.getElementById("confText").textContent = c + "%";
       requestAnimationFrame(() => { document.getElementById("confFill").style.width = c + "%"; });
 
-      // Snapshot
+      // Snapshot (ticket + completeness feel)
       const snapshotList = document.getElementById("snapshotList");
       snapshotList.innerHTML = "";
-      const snapshot = {
-        "Entry": sc.entry || "",
-        "Stop Loss": sc.stop_loss || "",
-        "Targets": Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || ""),
-        "Approx RR": sc.rr || "",
-        "Bias": a.bias || ""
-      };
-      const snapEntries = Object.entries(snapshot).filter(([k,v]) => String(v||"").trim() !== "");
-      if (!snapEntries.length){
-        addRow(snapshotList, "Snapshot", "No snapshot fields returned.", "");
-      } else {
-        snapEntries.forEach(([k,v]) => addRow(snapshotList, k, fmt(v), ""));
-      }
 
-      // Blocks & Conditions
+      const targetsText = Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || "");
+      const entry = sc.entry ?? "";
+      const sl = sc.stop_loss ?? "";
+      const rr = sc.rr ?? "";
+      const hasEntry = String(entry || "").trim() !== "";
+      const hasSL = String(sl || "").trim() !== "";
+      const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
+
+      const completeness = [hasEntry, hasSL, hasTP].filter(Boolean).length; // 0..3
+      const compPct = Math.round((completeness / 3) * 100);
+      const compTone = compPct >= 100 ? "OK" : compPct >= 67 ? "WARN" : "BLOCK";
+
+      addRow(snapshotList, "Ticket Completeness", `${compPct}% (Entry/SL/TP)`, compTone);
+      addRow(snapshotList, "Entry", fmt(entry), hasEntry ? "OK" : "BLOCK");
+      addRow(snapshotList, "Stop Loss", fmt(sl), hasSL ? "OK" : "BLOCK");
+      addRow(snapshotList, "Targets", fmt(targetsText), hasTP ? "OK" : "BLOCK");
+      addRow(snapshotList, "Approx RR", fmt(rr), rr ? "OK" : "WARN");
+      if (a.bias) addRow(snapshotList, "Bias", fmt(a.bias), "OK");
+
+      // Blocks & Conditions (prefer backend if present, else desk computed)
       const blocksList = document.getElementById("blocksList");
       blocksList.innerHTML = "";
 
-      const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
-      const conditions = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
+      const backendHard = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
+      const backendCond = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
       const invalids = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
-      const rationale = Array.isArray(a.rationale) ? a.rationale.filter(Boolean) : [];
+
+      const hardBlocks = backendHard.length ? backendHard : (desk.hardBlocks || []);
+      const conditions = backendCond.length ? backendCond : (desk.conditions || []);
 
       if (hardBlocks.length){
-        hardBlocks.slice(0, 8).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
+        hardBlocks.slice(0, 10).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
       }
       if (conditions.length){
-        conditions.slice(0, 10).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "CONDITIONAL"));
+        conditions.slice(0, 12).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "EXECUTE-IF"));
       }
       if (!hardBlocks.length && !conditions.length){
         addRow(blocksList, "Status", "No blocks or conditions returned.", "OK");
       }
-
       if (invalids.length){
-        invalids.slice(0, 8).forEach(x => addRow(blocksList, "INVALIDATION", fmt(x), "WARN"));
+        invalids.slice(0, 10).forEach(x => addRow(blocksList, "INVALIDATION", fmt(x), "WARN"));
       }
 
-      if (rationale.length){
-        rationale.slice(0, 8).forEach(x => addRow(blocksList, "Rationale", fmt(x), "GOOD"));
-      }
-
-      // Key Checks (show structured sections if present)
+      // Key Checks (structured market context if present)
       const checksList = document.getElementById("checksList");
       checksList.innerHTML = "";
 
@@ -712,7 +880,7 @@
       if (mc.timeframe_alignment) checks.push({ label:"Timeframe Alignment", detail: mc.timeframe_alignment, level: "" });
 
       if (!checks.length){
-        addRow(checksList, "Checks", "No structured checks returned.", "");
+        addRow(checksList, "Checks", "No structured checks returned. (Backend can optionally send market_context.* fields.)", "");
       } else {
         checks.forEach(it => addRow(checksList, it.label, fmt(it.detail), it.level));
       }
@@ -720,21 +888,21 @@
       // Signal
       document.getElementById("signalBox").textContent = fmt(report.signal_input);
 
-      // Reasoning text
+      // Reasoning text (fallback to desk summary if missing)
       const reasoning =
         (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
-        : (typeof a.verdict === "string" && a.verdict.trim()) ? a.verdict.trim()
-        : (Array.isArray(a.guidance) && a.guidance.length) ? ("Guidance:\n- " + a.guidance.slice(0, 10).join("\n- "))
-        : "";
+        : (typeof a.reasoning === "string" && a.reasoning.trim()) ? a.reasoning.trim()
+        : (Array.isArray(a.guidance) && a.guidance.length) ? ("Guidance:\n- " + a.guidance.slice(0, 12).join("\n- "))
+        : `${desk.why}\n\nAction:\n- ${desk.action}`;
 
-      document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned. (Fix: ensure backend returns analysis.reasoning_text)";
+      document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned.";
 
       // Copy payload
       window.__fxco_copy = {
         tier: tier,
         decision: label,
-        score: Number.isFinite(score) ? Math.round(score) : "",
-        confidence: Math.round(confidence),
+        score: Number.isFinite(score) ? score : "",
+        confidence: confidence,
         pair: report.pair_type,
         timeframe: report.timeframe,
         direction: (sc.direction || a.bias || ""),
@@ -781,29 +949,37 @@ ${fmt(d.reasoning)}`.trim();
     });
 
     (function init(){
-      const raw = sessionStorage.getItem("fxcoReport");
+      const raw = getStoredReportRaw();
+
       if (!raw){
-        render(parseReport({
+        const fallback = {
           pair_type: "—",
           timeframe: "—",
           signal_input: "—",
+          generated_at: Date.now(),
           analysis: {
-            decision_tier: "WAIT",
-            decision: "NO REPORT FOUND",
-            score: 0,
             confidence: 0,
-            conditions: ["Go back and run a validation to generate a report."],
-            reasoning_text: "No validation data was found in this browser session."
+            strength: 0,
+            clarity: 0,
+            invalidation_warnings: [],
+            signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+            reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
           }
-        }));
+        };
+        render(parseReport(fallback));
         return;
       }
 
       try{
         const parsed = JSON.parse(raw);
+        // persist to local fallback so hard refresh / new tab still works
+        ensureLocalFallback(parsed);
         render(parseReport(parsed));
       } catch(e){
-        render(parseReport(raw));
+        // raw string fallback
+        const parsed = parseReport(raw);
+        ensureLocalFallback(parsed);
+        render(parsed);
       }
     })();
   </script>
