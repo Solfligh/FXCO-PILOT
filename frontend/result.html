@@ -127,6 +127,11 @@
       border-color: rgba(255,255,255,.08);
       box-shadow: 0 16px 40px rgba(11,18,32,.20);
     }
+    .btn.danger{
+      background: #fff;
+      color: var(--red);
+      border-color: rgba(239,68,68,.25);
+    }
 
     .hero{
       margin-top: 10px;
@@ -392,16 +397,43 @@
       padding: 10px 6px 0;
     }
 
+    .toast{
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(11,18,32,.92);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 16px 50px rgba(11,18,32,.25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+      z-index: 9999;
+    }
+    .toast.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(-2px);
+    }
+
     @media print{
-      .topbar .actions{ display:none; }
+      .topbar .actions{ display:none !important; }
       body{ background: #fff; }
       .hero, .card{ box-shadow: none; border: 1px solid #ddd; }
+      .wrap{ padding: 0; }
     }
   </style>
+
+  <!-- Client-side PDF libraries -->
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 
 <body>
-  <div class="wrap">
+  <div class="wrap" id="reportRoot">
     <div class="topbar">
       <div class="brand">
         <div class="mark"></div>
@@ -414,6 +446,8 @@
       <div class="actions">
         <button class="btn" id="btnBack">← Back</button>
         <button class="btn" id="btnCopy">Copy Summary</button>
+        <button class="btn" id="btnShare">Copy Share Link</button>
+        <button class="btn" id="btnPdf">Download PDF</button>
         <button class="btn" id="btnPrint">Print</button>
         <button class="btn primary" id="btnNew">New Validation</button>
       </div>
@@ -519,6 +553,8 @@
     </div>
   </div>
 
+  <div class="toast" id="toast">—</div>
+
   <script>
     // Storage keys (session first, local fallback)
     const REPORT_KEY = "fxcoReport";
@@ -539,14 +575,24 @@
       return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
     }
 
+    function toast(msg){
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1400);
+    }
+
+    function getQueryParam(name){
+      const u = new URL(window.location.href);
+      return (u.searchParams.get(name) || "").trim();
+    }
+
     // ✅ Normalize tier to underscores (backend truth)
     function normalizeTier(tier){
       const t = String(tier || "").trim().toUpperCase();
       if (!t || t === "—") return "";
-      // accept legacy hyphen forms
       if (t === "EXECUTE-IF") return "EXECUTE_IF";
       if (t === "DO-NOT-TRADE") return "DO_NOT_TRADE";
-      // accept any hyphen variant
       return t.replace(/-/g, "_");
     }
 
@@ -744,7 +790,9 @@
         signal_input: r.signal_input || r.signal || "",
         analysis: analysis || {},
         raw: r.raw || r,
-        generated_at: r.generated_at || Date.now()
+        generated_at: r.generated_at || Date.now(),
+        share_id: r.share_id || r.shareId || (analysis ? (analysis.share_id || analysis.shareId) : "") || "",
+        share_url: r.share_url || r.shareUrl || (analysis ? (analysis.share_url || analysis.shareUrl) : "") || ""
       };
     }
 
@@ -916,8 +964,33 @@
         direction: (sc.direction || a.bias || ""),
         rr: (sc.rr || ""),
         signal: report.signal_input,
-        reasoning: reasoning
+        reasoning: reasoning,
+        share_id: report.share_id || "",
+        share_url: report.share_url || ""
       };
+
+      // Share helpers
+      window.__fxco_report = report;
+    }
+
+    async function fetchSharedReport(shareId){
+      // Your backend route: GET /api/report/<id>
+      const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" }
+      });
+      if (!r.ok){
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `Failed to load share report (${r.status})`);
+      }
+      return await r.json();
+    }
+
+    function buildShareUrl(shareId){
+      const u = new URL(window.location.href);
+      u.searchParams.set("r", shareId);
+      u.searchParams.delete("from"); // keep clean if you add other params later
+      return u.toString();
     }
 
     // Actions
@@ -947,16 +1020,162 @@ Reasoning:
 ${fmt(d.reasoning)}`.trim();
 
         await navigator.clipboard.writeText(out);
-        const btn = document.getElementById("btnCopy");
-        const old = btn.textContent;
-        btn.textContent = "Copied ✓";
-        setTimeout(() => btn.textContent = old, 1100);
+        toast("Copied ✓");
       } catch(e){
         alert("Copy failed. Your browser may block clipboard access.");
       }
     });
 
+    document.getElementById("btnShare").addEventListener("click", async () => {
+      try{
+        const d = window.__fxco_copy || {};
+        const shareId = (d.share_id || "").trim() || getQueryParam("r");
+        if (!shareId){
+          alert("No share link yet for this report.\n\nRun a new validation, then open the report (it will include a share id).");
+          return;
+        }
+        const url = buildShareUrl(shareId);
+
+        // Try native share if available (mobile)
+        if (navigator.share){
+          try{
+            await navigator.share({ title: "FXCO-Pilot Report", url });
+            return;
+          }catch{}
+        }
+
+        await navigator.clipboard.writeText(url);
+        toast("Share link copied ✓");
+      }catch(e){
+        alert("Could not copy share link.");
+      }
+    });
+
+    document.getElementById("btnPdf").addEventListener("click", async () => {
+      const btn = document.getElementById("btnPdf");
+      const old = btn.textContent;
+
+      try{
+        // Wait for libs
+        if (!window.html2canvas || !window.jspdf){
+          alert("PDF tools not loaded yet. Please try again in 2 seconds.");
+          return;
+        }
+
+        btn.textContent = "Building PDF…";
+        btn.disabled = true;
+
+        // Hide action buttons temporarily
+        const actions = document.querySelector(".topbar .actions");
+        const prevDisplay = actions.style.display;
+        actions.style.display = "none";
+
+        // Render report to canvas
+        const root = document.getElementById("reportRoot");
+        const canvas = await window.html2canvas(root, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollY: -window.scrollY
+        });
+
+        // Restore actions
+        actions.style.display = prevDisplay;
+
+        const imgData = canvas.toDataURL("image/png");
+        const { jsPDF } = window.jspdf;
+
+        // A4 portrait
+        const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 8) {
+          position = position - pageHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+          heightLeft -= pageHeight;
+        }
+
+        const d = window.__fxco_copy || {};
+        const fname = `FXCO-Pilot_Report_${(d.pair || "PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
+        pdf.save(fname);
+
+        toast("PDF downloaded ✓");
+      } catch (e){
+        console.error(e);
+        alert("PDF download failed. Try Print → Save as PDF as a fallback.");
+      } finally {
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+
     (function init(){
+      const shareId = getQueryParam("r");
+
+      // If a share id is present, load report from backend (shareable report mode)
+      if (shareId){
+        (async () => {
+          try{
+            const shared = await fetchSharedReport(shareId);
+
+            // shared is expected to be { ok:true, report:{...} } or { report:{...} }
+            const payload = shared.report || shared.data || shared;
+            const parsed = parseReport(payload);
+
+            // Ensure share_id exists for button
+            if (!parsed.share_id) parsed.share_id = shareId;
+
+            ensureLocalFallback(payload);
+            render(parsed);
+            toast("Loaded shared report");
+          } catch (e){
+            console.error(e);
+            alert(String(e && e.message ? e.message : e) || "Failed to load shared report.");
+            // fallback to storage
+            const raw = getStoredReportRaw();
+            if (raw){
+              try{
+                const parsed = JSON.parse(raw);
+                ensureLocalFallback(parsed);
+                render(parseReport(parsed));
+              }catch{
+                render(parseReport(raw));
+              }
+            } else {
+              const fallback = {
+                pair_type: "—",
+                timeframe: "—",
+                signal_input: "—",
+                generated_at: Date.now(),
+                analysis: {
+                  confidence: 0,
+                  strength: 0,
+                  clarity: 0,
+                  invalidation_warnings: [],
+                  signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+                  reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
+                }
+              };
+              render(parseReport(fallback));
+            }
+          }
+        })();
+        return;
+      }
+
+      // Normal mode: use storage
       const raw = getStoredReportRaw();
 
       if (!raw){
@@ -980,11 +1199,9 @@ ${fmt(d.reasoning)}`.trim();
 
       try{
         const parsed = JSON.parse(raw);
-        // persist to local fallback so hard refresh / new tab still works
         ensureLocalFallback(parsed);
         render(parseReport(parsed));
       } catch(e){
-        // raw string fallback
         const parsed = parseReport(raw);
         ensureLocalFallback(parsed);
         render(parsed);
