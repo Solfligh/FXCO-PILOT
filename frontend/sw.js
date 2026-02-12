@@ -1,17 +1,41 @@
-/* FXCO-PILOT Service Worker (simple + safe) */
-const CACHE_NAME = "fxco-pilot-v1";
+/* sw.js — FXCO-PILOT PWA */
 
-// Add any other static assets you want pre-cached:
-const PRECACHE_URLS = [
+// Change this to force update when you deploy
+const VERSION = "fxco-pwa-v3";
+const CACHE_NAME = `fxco-cache-${VERSION}`;
+
+// Only cache the *pages* you want available offline.
+// Do NOT cache maintenance.html as a global fallback.
+const PRECACHE = [
   "/",
   "/index.html",
-  "/maintenance.html",
-  "/manifest.webmanifest"
+  "/result.html",
+  "/terms.html",
+  "/privacy.html",
+  "/manifest.webmanifest",
+  "/favicon.ico",
+  "/apple-touch-icon.png",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/icon-512-maskable.png"
 ];
+
+// Never let SW "fallback" to HTML for these asset types
+function isAssetRequest(url) {
+  return (
+    url.pathname === "/favicon.ico" ||
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/sw.js" ||
+    url.pathname === "/apple-touch-icon.png" ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/images/") ||
+    /\.(png|jpg|jpeg|webp|svg|ico|css|js|json|webmanifest)$/i.test(url.pathname)
+  );
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE))
   );
   self.skipWaiting();
 });
@@ -19,7 +43,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
+      Promise.all(keys.map((k) => (k.startsWith("fxco-cache-") && k !== CACHE_NAME) ? caches.delete(k) : null))
     )
   );
   self.clients.claim();
@@ -27,34 +51,35 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  const url = new URL(req.url);
 
-  // Don’t cache API calls to your Render backend
-  if (url.pathname.startsWith("/api/")) return;
-
-  // Only handle GET requests
+  // Only handle GET
   if (req.method !== "GET") return;
 
-  event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
+  const url = new URL(req.url);
 
-      return fetch(req)
-        .then((res) => {
-          // Cache successful same-origin responses
-          if (res.ok && url.origin === self.location.origin) {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => {
-          // If offline and requesting a page, fall back to index
-          if (req.headers.get("accept")?.includes("text/html")) {
-            return caches.match("/index.html");
-          }
-          throw new Error("Offline");
-        });
-    })
+  // Let API go straight to network
+  if (url.pathname.startsWith("/api/")) return;
+
+  // ✅ Assets: NETWORK-FIRST (never return HTML fallback)
+  if (isAssetRequest(url)) {
+    event.respondWith(
+      fetch(req).catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // ✅ Navigations (pages): try network, then cached index.html as fallback
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req)
+        .then((res) => res)
+        .catch(() => caches.match("/index.html"))
+    );
+    return;
+  }
+
+  // Other requests: cache-first
+  event.respondWith(
+    caches.match(req).then((cached) => cached || fetch(req))
   );
 });
