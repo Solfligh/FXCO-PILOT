@@ -421,7 +421,7 @@ def _get_paid_until(client_id: str) -> int:
     return int(dt.timestamp())
 
 
-def _is_client_unlocked(client_id: str) -> bool:
+def _is_client_unlocked(client_id: str) -> int:
     if not _require_payment():
         return True
     if not client_id:
@@ -882,6 +882,80 @@ def calculate_rr(entry, stop, targets):
 
 
 # ==========================
+# Timeframe + duration (NEW)
+# ==========================
+def _parse_duration_minutes(text: str) -> Optional[int]:
+    """
+    Extract duration like:
+      "2h 15m", "2h 15mins", "duration 2h 15mins", "135min"
+    """
+    t = (text or "").lower()
+
+    # direct minutes
+    m_only = re.search(r"\b(\d{1,4})\s*(m|min|mins|minute|minutes)\b", t)
+    h = re.search(r"\b(\d{1,3})\s*(h|hr|hrs|hour|hours)\b", t)
+
+    hours = int(h.group(1)) if h else 0
+    mins = int(m_only.group(1)) if m_only else 0
+
+    total = hours * 60 + mins
+    if total > 0:
+        return total
+
+    # alternative patterns e.g. "135 minutes" without "duration"
+    just_num_min = re.search(r"\b(\d{2,4})\s*(minutes)\b", t)
+    if just_num_min:
+        try:
+            return int(just_num_min.group(1))
+        except Exception:
+            return None
+
+    return None
+
+
+def _normalize_mode(tf: str) -> str:
+    t = (tf or "").strip().lower()
+    if t in ("scalp", "scalping"):
+        return "scalp"
+    if t in ("intraday", "intra"):
+        return "intraday"
+    if t in ("swing", "swinger", "swingtrade", "swing trading"):
+        return "swing"
+    return t or "intraday"
+
+
+def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, str]:
+    """
+    Returns (structure_tf, execution_tf) in TwelveData interval format.
+    Desk logic:
+      <=30m  => 5min structure, 1min execution
+      <=90m  => 15min structure, 5min execution
+      <=240m => 1h structure, 15min execution
+      >240m  => 4h structure, 1h execution
+    If hold_minutes missing, we fallback to mode defaults.
+    """
+    mode = _normalize_mode(mode)
+
+    if hold_minutes is None:
+        if mode == "scalp":
+            hold_minutes = 20
+        elif mode == "intraday":
+            hold_minutes = 135
+        elif mode == "swing":
+            hold_minutes = 1440
+        else:
+            hold_minutes = 135
+
+    if hold_minutes <= 30:
+        return "5min", "1min"
+    if hold_minutes <= 90:
+        return "15min", "5min"
+    if hold_minutes <= 240:
+        return "1h", "15min"
+    return "4h", "1h"
+
+
+# ==========================
 # Twelve Data calls (cached)
 # ==========================
 def td_price(symbol: str):
@@ -1181,6 +1255,11 @@ def _institutional_score(analysis: dict) -> int:
 def institutional_decision_engine(analysis: dict) -> dict:
     """
     Hard blocks => tiered institutional decision.
+
+    IMPORTANT CHANGE:
+    - Structure "unclear" becomes a HARD BLOCK only if it is unclear on the STRUCTURE TF.
+    - Execution TF uncertainty becomes EXECUTE_IF conditions, not auto NO TRADE.
+
     Output fields:
       decision_tier, decision_label, score, confidence,
       hard_blocks, conditions, rationale, reasoning_text
@@ -1199,6 +1278,11 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
     rr = sc.get("rr")
 
+    # Horizon metadata
+    horizon = analysis.get("assessment_horizon") or {}
+    structure_tf = _as_text(horizon.get("structure_tf")).lower() or "unknown"
+    execution_tf = _as_text(horizon.get("execution_tf")).lower() or "unknown"
+
     # --- HARD GUARDS (auto NO TRADE) ---
     if sc.get("entry") is None:
         hard_blocks.append("Missing entry level.")
@@ -1209,9 +1293,20 @@ def institutional_decision_engine(analysis: dict) -> dict:
     if isinstance(rr, (int, float)) and rr < 1.5:
         hard_blocks.append(f"Risk:Reward too low (RR≈{rr}). Minimum is 1.5 for execution.")
 
-    if any(x in structure for x in ["unclear", "chop", "choppy", "no structure"]):
-        hard_blocks.append("Market structure is unclear/choppy.")
+    # Structure: hard block ONLY if the STRUCTURE TF is unclear
+    # We tag structure strings like: ".... | Live(1h): bullish (...) | Exec(15min): unclear (...)"
+    struct_is_unclear = any(x in structure for x in ["unclear", "chop", "choppy", "no structure"])
+    structure_tf_unclear_tag = f"live({structure_tf})"
+    exec_tf_tag = f"exec({execution_tf})"
 
+    if struct_is_unclear and structure_tf_unclear_tag in structure:
+        hard_blocks.append("Market structure is unclear/choppy on the primary structure timeframe.")
+
+    # If execution TF is unclear, that's a condition (not a block)
+    if struct_is_unclear and exec_tf_tag in structure and structure_tf_unclear_tag not in structure:
+        conditions.append("Execution timeframe is choppy/unclear: wait for a clean trigger before entry.")
+
+    # Liquidity guard
     if any(x in liquidity for x in ["thin", "poor", "unknown", "low liquidity"]):
         hard_blocks.append("Liquidity conditions are poor/unclear.")
 
@@ -1219,7 +1314,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
     if ("long" in bias and "bearish" in structure) or ("short" in bias and "bullish" in structure):
         hard_blocks.append("Bias conflicts with structure (HTF/LTF conflict).")
 
-    # Include invalidation warnings from earlier logic if they look critical
     inv = analysis.get("invalidation_warnings") or []
     if isinstance(inv, list):
         critical = [w for w in inv if any(k in _as_text(w).lower() for k in ["hit sl", "invalidated", "structure conflict"])]
@@ -1244,7 +1338,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
         if not conditions and confidence < 65:
             conditions.append("Confidence is moderate: execute only with a clean trigger (confirm candle / reclaim).")
 
-        # rationale bullets (short)
         why = analysis.get("why_this_trade") or []
         if isinstance(why, list):
             for x in why[:6]:
@@ -1253,7 +1346,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
                     rationale.append(t)
 
     # --- TIERS ---
-    # EXECUTE requires both high score and adequate confidence.
     if hard_blocks:
         decision_tier = "DO_NOT_TRADE"
         decision_label = "AVOID TRADE"
@@ -1271,7 +1363,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
             decision_tier = "DO_NOT_TRADE"
             decision_label = "AVOID TRADE"
 
-    # --- REASONING TEXT (always non-empty) ---
     verdict_text = _as_text(analysis.get("verdict"))
     guidance = analysis.get("guidance") or []
     guidance_lines = []
@@ -1286,7 +1377,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
         if guidance_lines:
             reasoning_text += "\n\nExecution Notes:\n" + "\n".join(guidance_lines)
     else:
-        # fallback
         if guidance_lines:
             reasoning_text = "Execution Notes:\n" + "\n".join(guidance_lines)
         else:
@@ -1300,9 +1390,7 @@ def institutional_decision_engine(analysis: dict) -> dict:
     analysis["conditions"] = conditions[:12]
     analysis["rationale"] = rationale[:10]
     analysis["reasoning_text"] = reasoning_text
-
-    # Keep your legacy decision field for backward compatibility
-    analysis["decision"] = decision_label
+    analysis["decision"] = decision_label  # legacy
 
     return analysis
 
@@ -1399,12 +1487,33 @@ def analyze():
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
-    live_snapshot = td_price(symbol)
-    candles_snapshot = td_candles(symbol, interval="5min", limit=120)
+    # --- NEW: parse hold duration + select institutional timeframes ---
+    hold_minutes = _parse_duration_minutes(signal_text)
+    mode_norm = _normalize_mode(timeframe)
+    structure_tf, execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
+    hold_minutes = hold_minutes if hold_minutes is not None else (20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440)
 
-    struct_info = {"structure": "unclear", "broken": False, "details": ""}
-    if candles_snapshot.get("ok") and candles_snapshot.get("values"):
-        struct_info = structure_from_candles(candles_snapshot["values"])
+    assessment_horizon = {
+        "timeframe_mode": timeframe,
+        "mode_normalized": mode_norm,
+        "hold_minutes": int(hold_minutes),
+        "structure_tf": structure_tf,
+        "execution_tf": execution_tf,
+    }
+
+    live_snapshot = td_price(symbol)
+
+    # Use structure timeframe candles for STRUCTURE (verdict driver)
+    candles_structure = td_candles(symbol, interval=structure_tf, limit=120)
+    struct_info_structure = {"structure": "unclear", "broken": False, "details": ""}
+    if candles_structure.get("ok") and candles_structure.get("values"):
+        struct_info_structure = structure_from_candles(candles_structure["values"])
+
+    # Use execution timeframe candles for ENTRY quality only
+    candles_exec = td_candles(symbol, interval=execution_tf, limit=120)
+    struct_info_exec = {"structure": "unclear", "broken": False, "details": ""}
+    if candles_exec.get("ok") and candles_exec.get("values"):
+        struct_info_exec = structure_from_candles(candles_exec["values"])
 
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
@@ -1417,16 +1526,24 @@ You are FX CO-PILOT — an institutional-grade trade validation engine.
 
 You do NOT predict price. You evaluate execution quality: structure, liquidity, alignment, and risk plan.
 
+RISK-DESK RULE (NON-NEGOTIABLE):
+- The trade's verdict MUST be driven by the PRIMARY STRUCTURE timeframe (Structure TF).
+- The Execution TF may affect entry timing quality, but MUST NOT veto an otherwise valid intraday/swing setup by itself.
+
 User Context:
 - Pair type: {pair_type}
-- Timeframe mode: {timeframe}
+- Timeframe mode (user): {timeframe}
+- Intended hold duration (parsed): {hold_minutes} minutes
+- Structure TF (verdict driver): {structure_tf}
+- Execution TF (entry quality only): {execution_tf}
 - Raw signal:
 \"\"\"{signal_text}\"\"\"
 
 Live Market:
 - Symbol: {symbol}
 - {live_context}
-- 5min Structure (heuristic): {struct_info.get('structure')} ({struct_info.get('details')})
+- Structure snapshot (Live({structure_tf}) heuristic): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})
+- Execution snapshot (Exec({execution_tf}) heuristic): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})
 
 Return ONLY valid JSON (no markdown) that matches EXACTLY this schema:
 
@@ -1446,7 +1563,7 @@ Return ONLY valid JSON (no markdown) that matches EXACTLY this schema:
     "momentum": "string",
     "timeframe_alignment": "string"
   }},
-  "verdict": "A short narrative paragraph explaining the trade quality and why it is (or isn't) executable.",
+  "verdict": "A short narrative paragraph explaining the trade quality and why it is (or isn't) executable for the stated hold duration.",
   "guidance": ["string","string","string"]
 }}
 
@@ -1489,6 +1606,13 @@ Rules:
 
         rr = calculate_rr(sc.get("entry"), sc.get("stop_loss"), sc.get("targets"))
 
+        # Build structure string with explicit tags the decision engine understands
+        structure_text = (mc.get("structure") or "").strip()
+        structure_text = structure_text if structure_text else "Structure context not provided."
+
+        structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
+        structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
+
         analysis = {
             "bias": analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
@@ -1501,7 +1625,7 @@ Rules:
                 "rr": rr,
             },
             "market_context": {
-                "structure": (mc.get("structure") or "") + f" | Live(5m): {struct_info.get('structure')}",
+                "structure": structure_text,
                 "liquidity": mc.get("liquidity") or "",
                 "momentum": mc.get("momentum") or "",
                 "timeframe_alignment": mc.get("timeframe_alignment") or "",
@@ -1509,6 +1633,7 @@ Rules:
             "verdict": analysis_obj.get("verdict") or "No verdict returned.",
             "guidance": analysis_obj.get("guidance") or [],
             "live_snapshot": live_snapshot,
+            "assessment_horizon": assessment_horizon,
         }
 
         # Enrichment
