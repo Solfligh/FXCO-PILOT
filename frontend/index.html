@@ -1,3 +1,4 @@
+<!-- index.html (FULL FILE) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -764,7 +765,7 @@
         <div class="hint-pill">
           <div>✅</div>
           <div>
-            <strong>Reports now open in a dedicated page.</strong><br/>
+            <strong>Reports open in a dedicated page.</strong><br/>
             Run analysis to generate a professional validation report.
           </div>
         </div>
@@ -1209,6 +1210,32 @@
           </div>
         `;
       }).join("");
+    }
+
+    // -------------------------
+    // ✅ Client-side share payload helper (NO backend required)
+    // -------------------------
+    function b64UrlEncodeUnicode(str) {
+      try {
+        const utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+          String.fromCharCode(parseInt(p1, 16))
+        );
+        const b64 = btoa(utf8);
+        return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+      } catch {
+        return "";
+      }
+    }
+
+    function buildClientShareUrl(reportPayload) {
+      // WARNING: Very large payloads can exceed URL limits in some browsers.
+      // For now we keep it simple & client-only.
+      const json = JSON.stringify(reportPayload || {});
+      const enc = b64UrlEncodeUnicode(json);
+      if (!enc) return "";
+      const u = new URL(window.location.origin + "/result.html");
+      u.searchParams.set("p", enc);
+      return u.toString();
     }
 
     // -------------------------
@@ -1950,8 +1977,18 @@
           signal_input: signal,
           analysis: data?.analysis || null,
           raw: data || null,
-          generated_at: Date.now()
+          generated_at: Date.now(),
+
+          // ✅ If backend ever returns share_id/share_url, we keep it:
+          share_id: data?.share_id || data?.analysis?.share_id || "",
+          share_url: data?.share_url || data?.analysis?.share_url || ""
         };
+
+        // ✅ Always generate client-side share link too (works today)
+        // If backend share exists later, result.html will prefer ?r=
+        const clientShareUrl = buildClientShareUrl(reportPayload);
+        if (clientShareUrl) reportPayload.share_url = reportPayload.share_url || clientShareUrl;
+
         try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
         try { localStorage.setItem("fxcoReport_last_v1", JSON.stringify(reportPayload)); } catch {}
 
@@ -2025,6 +2062,12 @@
               <button class="topbtn" onclick="openPreview()">View Preview</button>
               <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
             </div>
+
+            ${clientShareUrl ? `
+              <div style="margin-top:10px;opacity:0.85;font-size:12px;line-height:1.5;">
+                <b>Share link ready:</b> <span style="opacity:0.95;">Use the report page → “Copy Share Link”.</span>
+              </div>
+            ` : ""}
           </div>
         `;
 
