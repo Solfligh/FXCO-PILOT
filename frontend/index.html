@@ -1702,6 +1702,8 @@
           generated_at: Date.now()
         };
         try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
+        try { localStorage.setItem("fxcoReport_last_v1", JSON.stringify(reportPayload)); } catch {}
+
 
         addToLocalReportsList(reportPayload);
         renderLocalHistory();
