@@ -133,6 +133,13 @@
       border-color: rgba(239,68,68,.25);
     }
 
+    .btn[disabled]{
+      opacity:.6;
+      cursor:not-allowed;
+      transform:none !important;
+      box-shadow: 0 10px 22px rgba(15,23,42,.06) !important;
+    }
+
     .hero{
       margin-top: 10px;
       border-radius: var(--radius);
@@ -427,7 +434,7 @@
     }
   </style>
 
-  <!-- Client-side PDF libraries -->
+  <!-- ✅ Client-side PDF libraries (with resilient fallbacks) -->
   <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
@@ -559,6 +566,10 @@
     // Storage keys (session first, local fallback)
     const REPORT_KEY = "fxcoReport";
     const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
+
+    // ✅ Share storage (for "copy share link" even without backend share_id)
+    // This enables "shareable reports" purely client-side (no DB) using ?p=<payload>
+    const SHARE_LOCAL_KEY = "fxco_share_payload_v1";
 
     function fmt(v){
       if (v === null || v === undefined || v === "") return "—";
@@ -819,6 +830,88 @@
       return "";
     }
 
+    // -------------------------
+    // ✅ Shareable reports (client-side)
+    // -------------------------
+    // We support TWO share modes:
+    // 1) ?r=<shareId>  -> fetch from backend (/api/report/<id>)  (your current flow)
+    // 2) ?p=<payload>  -> decode report payload directly (no backend needed)
+    //
+    // Payload is a compressed-url-safe string (deflate+base64url). If compression isn't available,
+    // we fallback to base64url(JSON).
+    //
+    // NOTE: URL payload length has limits. For huge reports, it may be too long.
+    // In that case, user needs backend share_id.
+    function b64urlEncode(bytesOrString){
+      const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
+      const b64 = btoa(unescape(encodeURIComponent(str)));
+      return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    }
+
+    function b64urlDecodeToString(b64url){
+      const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
+      const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+      const txt = decodeURIComponent(escape(atob(b64 + pad)));
+      return txt;
+    }
+
+    // Try to use CompressionStream / DecompressionStream if available (modern Chromium + some others)
+    async function compressToUrlSafe(jsonString){
+      // returns { payload, mode }
+      try{
+        if (!("CompressionStream" in window)) throw new Error("no CompressionStream");
+        const cs = new CompressionStream("deflate");
+        const writer = cs.writable.getWriter();
+        writer.write(new TextEncoder().encode(jsonString));
+        writer.close();
+        const compressed = await new Response(cs.readable).arrayBuffer();
+        const bytes = new Uint8Array(compressed);
+        return { payload: b64urlEncode(bytes), mode: "deflate" };
+      }catch{
+        return { payload: b64urlEncode(jsonString), mode: "b64json" };
+      }
+    }
+
+    async function decompressFromUrlSafe(payload, mode){
+      if (!payload) throw new Error("empty payload");
+      if (mode !== "deflate"){
+        const json = b64urlDecodeToString(payload);
+        return JSON.parse(json);
+      }
+      if (!("DecompressionStream" in window)) throw new Error("DecompressionStream not available");
+      const bytesStr = atob(String(payload).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4));
+      const bytes = new Uint8Array(bytesStr.length);
+      for (let i=0;i<bytesStr.length;i++) bytes[i] = bytesStr.charCodeAt(i);
+
+      const ds = new DecompressionStream("deflate");
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const decompressed = await new Response(ds.readable).arrayBuffer();
+      const json = new TextDecoder().decode(decompressed);
+      return JSON.parse(json);
+    }
+
+    function buildShareUrlFromPayload(payload, mode){
+      const u = new URL(window.location.href);
+      u.searchParams.delete("r");
+      u.searchParams.set("p", payload);
+      if (mode && mode !== "b64json") u.searchParams.set("pm", mode);
+      else u.searchParams.delete("pm");
+      return u.toString();
+    }
+
+    function buildShareUrlFromId(shareId){
+      const u = new URL(window.location.href);
+      u.searchParams.set("r", shareId);
+      u.searchParams.delete("p");
+      u.searchParams.delete("pm");
+      return u.toString();
+    }
+
+    // -------------------------
+    // Render
+    // -------------------------
     function render(report){
       // Meta line should reflect report generation time (not "now" on refresh)
       document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
@@ -969,12 +1062,12 @@
         share_url: report.share_url || ""
       };
 
-      // Share helpers
+      // Save for share building
       window.__fxco_report = report;
     }
 
+    // Backend share loader (existing)
     async function fetchSharedReport(shareId){
-      // Your backend route: GET /api/report/<id>
       const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
         method: "GET",
         headers: { "Accept": "application/json" }
@@ -986,14 +1079,9 @@
       return await r.json();
     }
 
-    function buildShareUrl(shareId){
-      const u = new URL(window.location.href);
-      u.searchParams.set("r", shareId);
-      u.searchParams.delete("from"); // keep clean if you add other params later
-      return u.toString();
-    }
-
+    // -------------------------
     // Actions
+    // -------------------------
     document.getElementById("btnBack").addEventListener("click", () => history.back());
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
     document.getElementById("btnPrint").addEventListener("click", () => window.print());
@@ -1026,38 +1114,89 @@ ${fmt(d.reasoning)}`.trim();
       }
     });
 
+    // ✅ Share: prefer backend share_id, else generate client payload link (?p=...)
     document.getElementById("btnShare").addEventListener("click", async () => {
+      const btn = document.getElementById("btnShare");
+      const old = btn.textContent;
+
       try{
+        btn.textContent = "Building link…";
+        btn.disabled = true;
+
         const d = window.__fxco_copy || {};
+        const report = window.__fxco_report || null;
+
+        // 1) If backend share_id exists -> use /result.html?r=<id>
         const shareId = (d.share_id || "").trim() || getQueryParam("r");
-        if (!shareId){
-          alert("No share link yet for this report.\n\nRun a new validation, then open the report (it will include a share id).");
+        if (shareId){
+          const url = buildShareUrlFromId(shareId);
+
+          // native share on mobile
+          if (navigator.share){
+            try { await navigator.share({ title:"FXCO-Pilot Report", url }); return; } catch {}
+          }
+
+          await navigator.clipboard.writeText(url);
+          toast("Share link copied ✓");
           return;
         }
-        const url = buildShareUrl(shareId);
 
-        // Try native share if available (mobile)
-        if (navigator.share){
-          try{
-            await navigator.share({ title: "FXCO-Pilot Report", url });
-            return;
-          }catch{}
+        // 2) No backend share id -> embed payload in URL (?p=...)
+        if (!report){
+          alert("No report loaded yet to share.");
+          return;
         }
 
+        // Keep payload lean (avoid gigantic raw blobs)
+        const shareObj = {
+          pair_type: report.pair_type || "",
+          timeframe: report.timeframe || "",
+          signal_input: report.signal_input || "",
+          generated_at: report.generated_at || Date.now(),
+          analysis: report.analysis || {}
+        };
+
+        const json = JSON.stringify(shareObj);
+        const { payload, mode } = await compressToUrlSafe(json);
+        const url = buildShareUrlFromPayload(payload, mode);
+
+        // Save latest share payload locally (nice fallback if someone pastes link into same device)
+        try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
+
+        if (navigator.share){
+          try { await navigator.share({ title:"FXCO-Pilot Report", url }); return; } catch {}
+        }
+
+        // Try clipboard
         await navigator.clipboard.writeText(url);
         toast("Share link copied ✓");
-      }catch(e){
-        alert("Could not copy share link.");
+
+      } catch (e){
+        console.error(e);
+        alert(
+          "Could not create a share link.\n\nIf the report text is very long, the URL may exceed limits.\nUse backend share IDs for long reports."
+        );
+      } finally {
+        btn.textContent = old;
+        btn.disabled = false;
       }
     });
 
+    // ✅ PDF: more reliable lib detection + restore UI even on failures
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
 
+      const actions = document.querySelector(".topbar .actions");
+      const prevDisplay = actions ? actions.style.display : "";
+
       try{
-        // Wait for libs
-        if (!window.html2canvas || !window.jspdf){
+        // Wait for libs (robust)
+        const html2canvasFn = window.html2canvas;
+        const jspdfNS = window.jspdf || window.jsPDF || null;
+        const jsPDFClass = jspdfNS?.jsPDF || window.jsPDF || null;
+
+        if (!html2canvasFn || !jsPDFClass){
           alert("PDF tools not loaded yet. Please try again in 2 seconds.");
           return;
         }
@@ -1066,27 +1205,21 @@ ${fmt(d.reasoning)}`.trim();
         btn.disabled = true;
 
         // Hide action buttons temporarily
-        const actions = document.querySelector(".topbar .actions");
-        const prevDisplay = actions.style.display;
-        actions.style.display = "none";
+        if (actions) actions.style.display = "none";
 
         // Render report to canvas
         const root = document.getElementById("reportRoot");
-        const canvas = await window.html2canvas(root, {
+        const canvas = await html2canvasFn(root, {
           scale: 2,
           useCORS: true,
           backgroundColor: "#ffffff",
           scrollY: -window.scrollY
         });
 
-        // Restore actions
-        actions.style.display = prevDisplay;
-
         const imgData = canvas.toDataURL("image/png");
-        const { jsPDF } = window.jspdf;
 
         // A4 portrait
-        const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+        const pdf = new jsPDFClass({ orientation: "p", unit: "pt", format: "a4" });
 
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
@@ -1116,25 +1249,72 @@ ${fmt(d.reasoning)}`.trim();
         console.error(e);
         alert("PDF download failed. Try Print → Save as PDF as a fallback.");
       } finally {
+        // Restore actions even if something crashes
+        if (actions) actions.style.display = prevDisplay;
         btn.textContent = old;
         btn.disabled = false;
       }
     });
 
+    // -------------------------
+    // Init
+    // -------------------------
     (function init(){
       const shareId = getQueryParam("r");
+      const payload = getQueryParam("p");
+      const payloadMode = getQueryParam("pm") || "b64json";
 
-      // If a share id is present, load report from backend (shareable report mode)
+      // 1) ✅ Payload share mode (?p=...)
+      if (payload){
+        (async () => {
+          try{
+            const obj = await decompressFromUrlSafe(payload, payloadMode);
+            ensureLocalFallback(obj);
+            render(parseReport(obj));
+            toast("Loaded shared report");
+          } catch (e){
+            console.error(e);
+            alert("Failed to load shared report payload.\nIt may be corrupted or too long.");
+            // fallback to storage
+            const raw = getStoredReportRaw();
+            if (raw){
+              try{
+                const parsed = JSON.parse(raw);
+                ensureLocalFallback(parsed);
+                render(parseReport(parsed));
+              }catch{
+                render(parseReport(raw));
+              }
+              return;
+            }
+            const fallback = {
+              pair_type: "—",
+              timeframe: "—",
+              signal_input: "—",
+              generated_at: Date.now(),
+              analysis: {
+                confidence: 0,
+                strength: 0,
+                clarity: 0,
+                invalidation_warnings: [],
+                signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+                reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
+              }
+            };
+            render(parseReport(fallback));
+          }
+        })();
+        return;
+      }
+
+      // 2) Backend share id mode (?r=...)
       if (shareId){
         (async () => {
           try{
             const shared = await fetchSharedReport(shareId);
-
-            // shared is expected to be { ok:true, report:{...} } or { report:{...} }
             const payload = shared.report || shared.data || shared;
             const parsed = parseReport(payload);
 
-            // Ensure share_id exists for button
             if (!parsed.share_id) parsed.share_id = shareId;
 
             ensureLocalFallback(payload);
@@ -1175,7 +1355,7 @@ ${fmt(d.reasoning)}`.trim();
         return;
       }
 
-      // Normal mode: use storage
+      // 3) Normal mode: use storage
       const raw = getStoredReportRaw();
 
       if (!raw){
