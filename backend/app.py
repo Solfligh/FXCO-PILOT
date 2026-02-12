@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+import uuid
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
@@ -34,7 +35,7 @@ app = Flask(__name__)
 #   PAYSTACK_CURRENCY=NGN
 #   PAYSTACK_ACCESS_DAYS=30
 #
-# Supabase (for OTP + trials + paid access persistence):
+# Supabase (for OTP + trials + paid access persistence + report shares):
 #   SUPABASE_URL
 #   SUPABASE_SERVICE_ROLE_KEY
 #
@@ -53,6 +54,9 @@ app = Flask(__name__)
 #   FREE_LIMIT_24H=50
 #   PAID_LIMIT_60S=60
 #   PAID_LIMIT_24H=2000
+#
+# Shareable reports:
+#   REPORT_SHARE_TTL_DAYS=30
 # ============================================================
 
 # ==========================
@@ -93,6 +97,10 @@ def _parse_iso(dt_str: str) -> Optional[datetime]:
         return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except Exception:
         return None
+
+
+def _ms_now() -> int:
+    return int(_now() * 1000)
 
 
 # ==========================
@@ -203,6 +211,29 @@ def _sb_update(table: str, filters: dict, patch: dict) -> bool:
         return False
 
 
+def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
+    """
+    Insert and return the created row (Prefer return=representation).
+    """
+    if not _sb_ok():
+        return None
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/{table}",
+            headers={**_sb_headers(), "Prefer": "return=representation"},
+            data=json.dumps(row),
+            timeout=12,
+        )
+        if r.status_code >= 400:
+            return None
+        rows = r.json()
+        if isinstance(rows, list) and rows:
+            return rows[0]
+        return None
+    except Exception:
+        return None
+
+
 # ==========================
 # Resend helpers
 # ==========================
@@ -249,6 +280,88 @@ def _trial_days() -> int:
         return max(1, int((os.getenv("TRIAL_DAYS", "14") or "14").strip()))
     except Exception:
         return 14
+
+
+# ==========================
+# Shareable report config
+# ==========================
+def _report_share_ttl_days() -> int:
+    try:
+        return max(1, int((os.getenv("REPORT_SHARE_TTL_DAYS", "30") or "30").strip()))
+    except Exception:
+        return 30
+
+
+def _origin_base_url() -> str:
+    """
+    Best-effort base URL for building share links.
+    If you're using Vercel rewrites, the origin should be your frontend domain.
+    """
+    origin = (request.headers.get("Origin") or "").strip()
+    if origin:
+        return origin.rstrip("/")
+    return request.host_url.rstrip("/")
+
+
+def _is_uuid_like(s: str) -> bool:
+    try:
+        uuid.UUID(str(s))
+        return True
+    except Exception:
+        return False
+
+
+def _store_share_report(report_obj: dict, client_id: str, email: Optional[str]) -> Optional[dict]:
+    """
+    Stores report in Supabase table fxco_reports. Returns {id, expires_at}.
+    """
+    if not _sb_ok():
+        return None
+
+    rid = str(uuid.uuid4())
+    expires_at = _utc_now_dt() + timedelta(days=_report_share_ttl_days())
+
+    row = {
+        "id": rid,
+        "report": report_obj,
+        "client_id": client_id or None,
+        "email": (email or "").strip().lower() or None,
+        "created_at": _dt_to_iso(_utc_now_dt()),
+        "expires_at": _dt_to_iso(expires_at),
+    }
+    created = _sb_insert_returning("fxco_reports", row)
+    if not created:
+        # If table has its own id defaults, try insert without explicit id
+        row2 = dict(row)
+        row2.pop("id", None)
+        created = _sb_insert_returning("fxco_reports", row2)
+
+    if not created:
+        return None
+
+    out_id = str(created.get("id") or rid)
+    out_expires = str(created.get("expires_at") or _dt_to_iso(expires_at))
+    return {"id": out_id, "expires_at": out_expires}
+
+
+def _load_share_report(share_id: str) -> Optional[dict]:
+    """
+    Loads share report by id, enforces expires_at if present.
+    """
+    if not _sb_ok():
+        return None
+    row = _sb_select_one("fxco_reports", {"id": share_id})
+    if not row:
+        return None
+
+    exp = _parse_iso(str(row.get("expires_at") or ""))
+    if exp and _utc_now_dt() > exp:
+        return None
+
+    report = row.get("report")
+    if not isinstance(report, dict):
+        return None
+    return report
 
 
 # ==========================
@@ -537,6 +650,69 @@ def health():
             "require_payment": _require_payment(),
         }
     ), 200
+
+
+# ==========================
+# Shareable report endpoints
+# ==========================
+@app.post("/api/report/share")
+def report_share():
+    """
+    Optional manual share creation:
+    POST { report: {...} } OR POST {...report...}
+    Returns share_id + share_url
+    """
+    if not _sb_ok():
+        return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
+
+    data = request.get_json(silent=True) or {}
+    report_obj = data.get("report") if isinstance(data, dict) else None
+    if not isinstance(report_obj, dict):
+        # accept the whole body as report
+        if isinstance(data, dict):
+            report_obj = data
+
+    if not isinstance(report_obj, dict) or not report_obj:
+        return jsonify({"ok": False, "error": "Missing report payload."}), 400
+
+    client_id = _get_client_id_header() or ("ip:" + _client_ip())
+    token = (request.headers.get("X-FXCO-Auth") or "").strip()
+    token_payload = _verify_token(token) if token else None
+    email = None
+    if token_payload and isinstance(token_payload, dict):
+        email = str(token_payload.get("email") or "").strip().lower() or None
+
+    created = _store_share_report(report_obj, client_id=client_id, email=email)
+    if not created:
+        return jsonify({"ok": False, "error": "Failed to create share report (db insert failed)."}), 502
+
+    share_id = created["id"]
+    share_url = f"{_origin_base_url()}/result.html?r={share_id}"
+    return jsonify({"ok": True, "share_id": share_id, "share_url": share_url}), 200
+
+
+@app.get("/api/report/<share_id>")
+def report_get(share_id: str):
+    """
+    Public fetch by share id.
+    """
+    if not _sb_ok():
+        return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
+
+    sid = (share_id or "").strip()
+    if not sid or not _is_uuid_like(sid):
+        return jsonify({"ok": False, "error": "Invalid report id."}), 400
+
+    report_obj = _load_share_report(sid)
+    if not report_obj:
+        return jsonify({"ok": False, "error": "Report not found (or expired)."}), 404
+
+    # Ensure the share_id is present in the returned report payload for the frontend button
+    if isinstance(report_obj, dict):
+        report_obj.setdefault("share_id", sid)
+        report_obj.setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
+
+    return jsonify({"ok": True, "report": report_obj}), 200
 
 
 # ==========================
@@ -1294,7 +1470,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
         hard_blocks.append(f"Risk:Reward too low (RR≈{rr}). Minimum is 1.5 for execution.")
 
     # Structure: hard block ONLY if the STRUCTURE TF is unclear
-    # We tag structure strings like: ".... | Live(1h): bullish (...) | Exec(15min): unclear (...)"
     struct_is_unclear = any(x in structure for x in ["unclear", "chop", "choppy", "no structure"])
     structure_tf_unclear_tag = f"live({structure_tf})"
     exec_tf_tag = f"exec({execution_tf})"
@@ -1408,8 +1583,11 @@ def analyze():
 
     trial_active = False
     trial_ends_epoch = 0
+    token_email = None
+
     if token_payload and isinstance(token_payload, dict):
-        email = str(token_payload.get("email") or "").strip().lower()
+        token_email = str(token_payload.get("email") or "").strip().lower() or None
+        email = token_email or ""
         trial_ends_epoch = int(token_payload.get("trial_ends") or 0)
         active, te = _trial_active(email)
         trial_active = active
@@ -1520,7 +1698,6 @@ def analyze():
     else:
         live_context = f"Live data error: {live_snapshot.get('error', 'unknown')}"
 
-    # IMPORTANT: Make the model output fields that our report page can always show.
     base_prompt = f"""
 You are FX CO-PILOT — an institutional-grade trade validation engine.
 
@@ -1591,6 +1768,8 @@ Rules:
             }
         )
 
+    generated_at = _ms_now()
+
     try:
         completion = oa.chat.completions.create(
             model="gpt-4.1-mini",
@@ -1644,7 +1823,43 @@ Rules:
         # Institutional decision + stable report fields
         analysis = institutional_decision_engine(analysis)
 
-        resp = jsonify({"blocked": False, "analysis": analysis, "mode": "twelvedata_live"})
+        # Build a clean report payload your frontend can store directly
+        report_payload = {
+            "pair_type": pair_type,
+            "timeframe": timeframe,
+            "signal_input": signal_text,
+            "analysis": analysis,
+            "generated_at": generated_at,
+        }
+
+        # Auto-create share id if Supabase is available (non-blocking)
+        share_id = None
+        share_url = None
+        if _sb_ok():
+            created = _store_share_report(report_payload, client_id=client_id, email=token_email)
+            if created:
+                share_id = created["id"]
+                share_url = f"{_origin_base_url()}/result.html?r={share_id}"
+                report_payload["share_id"] = share_id
+                report_payload["share_url"] = share_url
+                # also mirror into analysis for convenience
+                analysis["share_id"] = share_id
+                analysis["share_url"] = share_url
+
+        resp = jsonify(
+            {
+                "blocked": False,
+                "analysis": analysis,
+                "mode": "twelvedata_live",
+                "pair_type": pair_type,
+                "timeframe": timeframe,
+                "signal_input": signal_text,
+                "generated_at": generated_at,
+                "share_id": share_id,
+                "share_url": share_url,
+                "report": report_payload,
+            }
+        )
         for k, v in rl_headers.items():
             resp.headers[k] = v
         if trial_ends_epoch:
