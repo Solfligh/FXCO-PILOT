@@ -205,6 +205,8 @@
       color: #ffd86b;
       opacity: 0.95;
       display: none;
+      white-space: pre-wrap;
+      line-height: 1.55;
     }
 
     .output-box {
@@ -1222,6 +1224,35 @@
       }, 1000);
     }
 
+    // Show remaining counts (you asked for this)
+    function showRateRemainingFromHeaders(res) {
+      try {
+        const plan = res.headers.get("X-RateLimit-Plan") || "";
+        const rem60 = res.headers.get("X-RateLimit-Remaining-60s");
+        const lim60 = res.headers.get("X-RateLimit-Limit-60s");
+        const rem24 = res.headers.get("X-RateLimit-Remaining-24h");
+        const lim24 = res.headers.get("X-RateLimit-Limit-24h");
+
+        // Only show if we actually got numbers
+        const hasAny = (rem60 && lim60) || (rem24 && lim24);
+        if (!hasAny) return;
+
+        const bits = [];
+        if (plan) bits.push(`Plan: ${plan}`);
+        if (rem60 && lim60) bits.push(`Requests left (60s): ${rem60}/${lim60}`);
+        if (rem24 && lim24) bits.push(`Requests left (24h): ${rem24}/${lim24}`);
+
+        setRateHint(bits.join(" • "), true);
+
+        // auto-hide after a bit (doesn't hide if rateTimer is running)
+        if (!rateTimer) {
+          setTimeout(() => {
+            if (!rateTimer) setRateHint("", false);
+          }, 6000);
+        }
+      } catch {}
+    }
+
     // -------------------------
     // Consent gate
     // -------------------------
@@ -1465,6 +1496,17 @@
     }
 
     // -------------------------
+    // Tier helpers (normalize)
+    // -------------------------
+    function normalizeTier(tier){
+      const t = String(tier || "").trim().toUpperCase();
+      // accept old hyphen forms too
+      if (t === "EXECUTE-IF") return "EXECUTE_IF";
+      if (t === "DO-NOT-TRADE") return "DO_NOT_TRADE";
+      return t;
+    }
+
+    // -------------------------
     // Desk verdict helpers (1% feel)
     // -------------------------
     function parseRR(rr){
@@ -1518,9 +1560,9 @@
 
       let tier = "WAIT";
       if (score >= 78 && !hardNo) tier = "EXECUTE";
-      else if (score >= 62) tier = "EXECUTE-IF";
+      else if (score >= 62) tier = "EXECUTE_IF";
       else if (score >= 48) tier = "WAIT";
-      else tier = "DO-NOT-TRADE";
+      else tier = "DO_NOT_TRADE";
 
       const reasons = [];
       reasons.push(`Edge ${Math.round(score)}/100`);
@@ -1536,7 +1578,7 @@
       if (tier === "EXECUTE") {
         why = "Edge is confirmed. Ticket is complete and flags are acceptable.";
         action = "Execute with strict size, hard SL, and no revenge entries.";
-      } else if (tier === "EXECUTE-IF") {
+      } else if (tier === "EXECUTE_IF") {
         why = "Edge exists but needs confirmation. Conditions must be met before entry.";
         action = "Reduce size + require confirmation (break/close, sweep, or retest).";
       } else if (tier === "WAIT") {
@@ -1630,6 +1672,9 @@
         const res = await fetch("/api/analyze", { method: "POST", body: formData, headers });
         const ct = res.headers.get("content-type") || "";
 
+        // ✅ show remaining counts whenever headers exist
+        showRateRemainingFromHeaders(res);
+
         const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
         if (trialEndsHdr) {
           const n = Number(trialEndsHdr);
@@ -1704,12 +1749,23 @@
         try { sessionStorage.setItem(REPORT_KEY, JSON.stringify(reportPayload)); } catch {}
         try { localStorage.setItem("fxcoReport_last_v1", JSON.stringify(reportPayload)); } catch {}
 
-
         addToLocalReportsList(reportPayload);
         renderLocalHistory();
         updateViewReportButton();
 
-        const v = computeDeskVerdict(reportPayload.analysis || {});
+        // Prefer backend tier if available, else compute fallback
+        const backendTier = normalizeTier(reportPayload?.analysis?.decision_tier || "");
+        const backendScore = Number(reportPayload?.analysis?.score);
+        const backendConf = Number(reportPayload?.analysis?.confidence);
+
+        let v = computeDeskVerdict(reportPayload.analysis || {});
+        if (backendTier) {
+          // keep the nice "desk" narration but align tier/score with server
+          v.tier = backendTier;
+          if (isFinite(backendScore)) v.score = Math.round(backendScore);
+          if (isFinite(backendConf)) v.conf = Math.round(backendConf);
+        }
+
         const ticket = reportPayload.analysis?.signal_check || {};
         const entry = ticket.entry ?? "—";
         const sl = ticket.stop_loss ?? "—";
@@ -1717,7 +1773,7 @@
 
         const tierColor =
           v.tier === "EXECUTE" ? "#00d46a" :
-          v.tier === "EXECUTE-IF" ? "#fbbf24" :
+          v.tier === "EXECUTE_IF" ? "#fbbf24" :
           v.tier === "WAIT" ? "#94a3b8" :
           "#ff5a5f";
 
@@ -1778,10 +1834,10 @@
           banner.classList.add("dec-ok");
           document.getElementById("previewIcon").textContent = "✓";
           document.getElementById("previewTier").textContent = "EXECUTE (DESK-OK)";
-        } else if (v.tier === "EXECUTE-IF"){
+        } else if (v.tier === "EXECUTE_IF"){
           banner.classList.add("dec-cond");
           document.getElementById("previewIcon").textContent = "!";
-          document.getElementById("previewTier").textContent = "EXECUTE-IF (CONDITIONS)";
+          document.getElementById("previewTier").textContent = "EXECUTE_IF (CONDITIONS)";
         } else if (v.tier === "WAIT"){
           banner.classList.add("dec-wait");
           document.getElementById("previewIcon").textContent = "⏸";
@@ -1789,7 +1845,7 @@
         } else {
           banner.classList.add("dec-bad");
           document.getElementById("previewIcon").textContent = "×";
-          document.getElementById("previewTier").textContent = "DO-NOT-TRADE (BLOCKED)";
+          document.getElementById("previewTier").textContent = "DO_NOT_TRADE (BLOCKED)";
         }
 
         document.getElementById("previewWhy").textContent = `${v.why} ${v.action}`;
@@ -1828,8 +1884,7 @@
     function hardenButtonClicks() {
       const btn = document.getElementById("analyzeBtn");
       if (btn) {
-        btn.addEventListener("click", (e) => {
-          // if inline onclick failed for any reason, this guarantees it still runs
+        btn.addEventListener("click", () => {
           if (typeof window.analyze === "function") window.analyze();
         });
       }
