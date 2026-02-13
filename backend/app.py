@@ -320,11 +320,35 @@ def _report_share_ttl_days() -> int:
 def _origin_base_url() -> str:
     """
     Best-effort base URL for building share links.
-    If you're using Vercel rewrites, the origin should be your frontend domain.
+
+    Priority:
+    1) X-Forwarded-Proto + X-Forwarded-Host (common on Render/NGINX)
+    2) Origin header (browser fetch)
+    3) Referer header (browser navigation)
+    4) request.host_url (fallback)
     """
+    xf_host = (request.headers.get("X-Forwarded-Host") or "").strip()
+    xf_proto = (request.headers.get("X-Forwarded-Proto") or "").strip()
+    if xf_host:
+        proto = xf_proto or "https"
+        return f"{proto}://{xf_host}".rstrip("/")
+
     origin = (request.headers.get("Origin") or "").strip()
     if origin:
         return origin.rstrip("/")
+
+    ref = (request.headers.get("Referer") or "").strip()
+    if ref:
+        try:
+            u = ref.split("#", 1)[0]
+            u = u.split("?", 1)[0]
+            # keep scheme://host
+            parts = u.split("/")
+            if len(parts) >= 3:
+                return (parts[0] + "//" + parts[2]).rstrip("/")
+        except Exception:
+            pass
+
     return request.host_url.rstrip("/")
 
 
@@ -736,6 +760,14 @@ def report_get(share_id: str):
     if isinstance(report_obj, dict):
         report_obj.setdefault("share_id", sid)
         report_obj.setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
+
+        # also mirror into analysis if present (nice for your result.html)
+        try:
+            if isinstance(report_obj.get("analysis"), dict):
+                report_obj["analysis"].setdefault("share_id", sid)
+                report_obj["analysis"].setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
+        except Exception:
+            pass
 
     return jsonify({"ok": True, "report": report_obj}), 200
 
@@ -1377,9 +1409,13 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:10]
 
 
-def _pick_first(data: dict, keys: list[str]) -> str:
+def _pick_first(data, keys):
     for k in keys:
-        v = data.get(k)
+        v = None
+        try:
+            v = data.get(k)
+        except Exception:
+            v = None
         if v is not None and str(v).strip() != "":
             return str(v).strip()
     return ""
@@ -1487,7 +1523,7 @@ def institutional_decision_engine(analysis: dict) -> dict:
     """
     Hard blocks => tiered institutional decision.
 
-    IMPORTANT CHANGE:
+    IMPORTANT:
     - Structure "unclear" becomes a HARD BLOCK only if it is unclear on the STRUCTURE TF.
     - Execution TF uncertainty becomes EXECUTE_IF conditions, not auto NO TRADE.
 
@@ -1751,7 +1787,6 @@ def analyze():
 
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
-        # optionally include snapshot time in prompt context
         if live_snapshot.get("timestamp_utc"):
             live_context += f" | snapshot_utc: {live_snapshot.get('timestamp_utc')} | session: {live_snapshot.get('session')}"
     else:
@@ -1882,6 +1917,11 @@ Rules:
         # Institutional decision + stable report fields
         analysis = institutional_decision_engine(analysis)
 
+        # Truthful blocked flag (your frontend can use this if needed)
+        decision_tier = str(analysis.get("decision_tier") or "").strip().upper()
+        hard_blocks = analysis.get("hard_blocks") or []
+        is_blocked = bool(hard_blocks) or (decision_tier == "DO_NOT_TRADE")
+
         # Build a clean report payload your frontend can store directly
         report_payload = {
             "pair_type": pair_type,
@@ -1901,13 +1941,12 @@ Rules:
                 share_url = f"{_origin_base_url()}/result.html?r={share_id}"
                 report_payload["share_id"] = share_id
                 report_payload["share_url"] = share_url
-                # also mirror into analysis for convenience
                 analysis["share_id"] = share_id
                 analysis["share_url"] = share_url
 
         resp = jsonify(
             {
-                "blocked": False,
+                "blocked": is_blocked,
                 "analysis": analysis,
                 "mode": "twelvedata_live",
                 "pair_type": pair_type,
