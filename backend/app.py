@@ -92,6 +92,31 @@ def _dt_to_iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
 
+def _utc_now_iso_z() -> str:
+    """
+    ISO timestamp like: 2026-02-12T14:03:12Z
+    """
+    return _utc_now_dt().replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _fx_session_from_utc(dt_utc: datetime) -> str:
+    """
+    Simple FX session labeling by UTC hour.
+      Asia:     00:00–08:00 UTC
+      London:   08:00–13:00 UTC
+      New York: 13:00–22:00 UTC
+      Off-hours:22:00–24:00 UTC
+    """
+    h = dt_utc.hour
+    if 0 <= h < 8:
+        return "Asia"
+    if 8 <= h < 13:
+        return "London"
+    if 13 <= h < 22:
+        return "New York"
+    return "Off-hours"
+
+
 def _parse_iso(dt_str: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
@@ -1135,6 +1160,10 @@ def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, st
 # Twelve Data calls (cached)
 # ==========================
 def td_price(symbol: str):
+    """
+    Returns a near-live market snapshot (REST).
+    Includes timestamp/session to make the snapshot transparent to users.
+    """
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
@@ -1145,20 +1174,46 @@ def td_price(symbol: str):
     if cached is not None:
         return cached
 
+    # snapshot metadata (captured regardless of API success)
+    snap_dt = _utc_now_dt()
+    snap_ts = snap_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    snap_session = _fx_session_from_utc(snap_dt)
+
     try:
         r = requests.get(f"{TD_BASE}/price", params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}, timeout=10)
         data = r.json()
         if data.get("status") == "error":
-            out = {"ok": False, "error": data.get("message", "Twelve Data error")}
+            out = {
+                "ok": False,
+                "symbol": symbol,
+                "error": data.get("message", "Twelve Data error"),
+                "source": "twelvedata",
+                "timestamp_utc": snap_ts,
+                "session": snap_session,
+            }
             _cache_set(cache_key, out, ttl=15)
             return out
 
         p = float(data["price"])
-        out = {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata"}
+        out = {
+            "ok": True,
+            "symbol": symbol,
+            "price": p,
+            "source": "twelvedata",
+            "timestamp_utc": snap_ts,
+            "session": snap_session,
+        }
         _cache_set(cache_key, out, ttl=15)
         return out
     except Exception as e:
-        out = {"ok": False, "error": str(e)}
+        out = {
+            "ok": False,
+            "symbol": symbol,
+            "error": str(e),
+            "source": "twelvedata",
+            "timestamp_utc": snap_ts,
+            "session": snap_session,
+        }
         _cache_set(cache_key, out, ttl=15)
         return out
 
@@ -1679,6 +1734,7 @@ def analyze():
         "execution_tf": execution_tf,
     }
 
+    # ✅ live_snapshot now includes timestamp_utc + session
     live_snapshot = td_price(symbol)
 
     # Use structure timeframe candles for STRUCTURE (verdict driver)
@@ -1695,6 +1751,9 @@ def analyze():
 
     if live_snapshot.get("ok"):
         live_context = f"Live price: {live_snapshot.get('price')} ({symbol})"
+        # optionally include snapshot time in prompt context
+        if live_snapshot.get("timestamp_utc"):
+            live_context += f" | snapshot_utc: {live_snapshot.get('timestamp_utc')} | session: {live_snapshot.get('session')}"
     else:
         live_context = f"Live data error: {live_snapshot.get('error', 'unknown')}"
 
