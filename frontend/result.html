@@ -1,13 +1,10 @@
-result.html  =  
-
-
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FXCO-Pilot — Trade Validation Report</title>
+  <title>FXCO-Pilot Trade Validation Report</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -454,12 +451,11 @@ result.html  =
         </div>
       </div>
 
+      <!-- ✅ CLEANED ACTIONS: Back • Share Report • Save PDF • New Validation -->
       <div class="actions">
         <button class="btn" id="btnBack">← Back</button>
-        <button class="btn" id="btnCopy">Copy Summary</button>
-        <button class="btn" id="btnShare">Copy Share Link</button>
-        <button class="btn" id="btnPdf">Download PDF</button>
-        <button class="btn" id="btnPrint">Print</button>
+        <button class="btn" id="btnShare">Share Report</button>
+        <button class="btn" id="btnPdf">Save PDF</button>
         <button class="btn primary" id="btnNew">New Validation</button>
       </div>
     </div>
@@ -521,7 +517,7 @@ result.html  =
           </div>
 
           <p class="muted" style="margin: 12px 2px 0;">
-            Institutional-style output: guards first, then score, then tier. This is decision support — not a signal.
+            Institutional-style output: guards first, then score, then tier. This is decision support not a signal.
           </p>
         </div>
 
@@ -571,8 +567,8 @@ result.html  =
     const REPORT_KEY = "fxcoReport";
     const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
 
-    // ✅ Share storage (for "copy share link" even without backend share_id)
-    // This enables "shareable reports" purely client-side (no DB) using ?p=<payload>
+    // ✅ Share storage (for "Share Report" even without backend share_id)
+    // Enables shareable reports purely client-side (no DB) using ?p=<payload>
     const SHARE_LOCAL_KEY = "fxco_share_payload_v1";
 
     function fmt(v){
@@ -837,15 +833,6 @@ result.html  =
     // -------------------------
     // ✅ Shareable reports (client-side)
     // -------------------------
-    // We support TWO share modes:
-    // 1) ?r=<shareId>  -> fetch from backend (/api/report/<id>)  (your current flow)
-    // 2) ?p=<payload>  -> decode report payload directly (no backend needed)
-    //
-    // Payload is a compressed-url-safe string (deflate+base64url). If compression isn't available,
-    // we fallback to base64url(JSON).
-    //
-    // NOTE: URL payload length has limits. For huge reports, it may be too long.
-    // In that case, user needs backend share_id.
     function b64urlEncode(bytesOrString){
       const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
       const b64 = btoa(unescape(encodeURIComponent(str)));
@@ -859,7 +846,7 @@ result.html  =
       return txt;
     }
 
-    // Try to use CompressionStream / DecompressionStream if available (modern Chromium + some others)
+    // Try to use CompressionStream / DecompressionStream if available
     async function compressToUrlSafe(jsonString){
       // returns { payload, mode }
       try{
@@ -1050,7 +1037,7 @@ result.html  =
 
       document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned.";
 
-      // Copy payload
+      // Save for share building / file naming
       window.__fxco_copy = {
         tier: tier,
         decision: label,
@@ -1066,7 +1053,6 @@ result.html  =
         share_url: report.share_url || ""
       };
 
-      // Save for share building
       window.__fxco_report = report;
     }
 
@@ -1084,39 +1070,10 @@ result.html  =
     }
 
     // -------------------------
-    // Actions
+    // Actions (CLEANED)
     // -------------------------
     document.getElementById("btnBack").addEventListener("click", () => history.back());
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
-    document.getElementById("btnPrint").addEventListener("click", () => window.print());
-
-    document.getElementById("btnCopy").addEventListener("click", async () => {
-      try{
-        const d = window.__fxco_copy || {};
-        const out =
-`FXCO-Pilot Trade Validation Report
-Tier: ${fmt(d.tier)}
-Decision: ${fmt(d.decision)}
-Score: ${fmt(d.score)}
-Confidence: ${fmt(d.confidence)}%
-
-Pair: ${fmt(d.pair)}
-Timeframe: ${fmt(d.timeframe)}
-Direction: ${fmt(d.direction)}
-RR: ${fmt(d.rr)}
-
-Signal:
-${fmt(d.signal)}
-
-Reasoning:
-${fmt(d.reasoning)}`.trim();
-
-        await navigator.clipboard.writeText(out);
-        toast("Copied ✓");
-      } catch(e){
-        alert("Copy failed. Your browser may block clipboard access.");
-      }
-    });
 
     // ✅ Share: prefer backend share_id, else generate client payload link (?p=...)
     document.getElementById("btnShare").addEventListener("click", async () => {
@@ -1124,7 +1081,7 @@ ${fmt(d.reasoning)}`.trim();
       const old = btn.textContent;
 
       try{
-        btn.textContent = "Building link…";
+        btn.textContent = "Sharing…";
         btn.disabled = true;
 
         const d = window.__fxco_copy || {};
@@ -1137,7 +1094,7 @@ ${fmt(d.reasoning)}`.trim();
 
           // native share on mobile
           if (navigator.share){
-            try { await navigator.share({ title:"FXCO-Pilot Report", url }); return; } catch {}
+            try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
           }
 
           await navigator.clipboard.writeText(url);
@@ -1164,21 +1121,20 @@ ${fmt(d.reasoning)}`.trim();
         const { payload, mode } = await compressToUrlSafe(json);
         const url = buildShareUrlFromPayload(payload, mode);
 
-        // Save latest share payload locally (nice fallback if someone pastes link into same device)
+        // Save latest share payload locally
         try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
 
         if (navigator.share){
-          try { await navigator.share({ title:"FXCO-Pilot Report", url }); return; } catch {}
+          try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
         }
 
-        // Try clipboard
         await navigator.clipboard.writeText(url);
         toast("Share link copied ✓");
 
       } catch (e){
         console.error(e);
         alert(
-          "Could not create a share link.\n\nIf the report text is very long, the URL may exceed limits.\nUse backend share IDs for long reports."
+          "Could not share this report.\n\nIf the report text is very long, the URL may exceed limits.\nUse backend share IDs for long reports."
         );
       } finally {
         btn.textContent = old;
@@ -1186,7 +1142,7 @@ ${fmt(d.reasoning)}`.trim();
       }
     });
 
-    // ✅ PDF: more reliable lib detection + restore UI even on failures
+    // ✅ PDF: reliable lib detection + restore UI even on failures
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
@@ -1205,7 +1161,7 @@ ${fmt(d.reasoning)}`.trim();
           return;
         }
 
-        btn.textContent = "Building PDF…";
+        btn.textContent = "Saving…";
         btn.disabled = true;
 
         // Hide action buttons temporarily
@@ -1248,12 +1204,11 @@ ${fmt(d.reasoning)}`.trim();
         const fname = `FXCO-Pilot_Report_${(d.pair || "PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
         pdf.save(fname);
 
-        toast("PDF downloaded ✓");
+        toast("PDF saved ✓");
       } catch (e){
         console.error(e);
-        alert("PDF download failed. Try Print → Save as PDF as a fallback.");
+        alert("PDF save failed. If needed, use your browser Print → Save as PDF as a fallback.");
       } finally {
-        // Restore actions even if something crashes
         if (actions) actions.style.display = prevDisplay;
         btn.textContent = old;
         btn.disabled = false;
@@ -1394,3 +1349,4 @@ ${fmt(d.reasoning)}`.trim();
   </script>
 </body>
 </html>
+```
