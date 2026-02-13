@@ -1,10 +1,10 @@
-<!-- index.html (FULL FILE) -->
+<!-- index.html (FULL FILE • cleaned: removed API status pill + health polling) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FX Co-Pilot – AI Trade Validator</title>
+  <title>FX Co-Pilot AI Trade Validator</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- PWA / Install -->
@@ -703,9 +703,6 @@
       <!-- ✅ Install button (desktop/Android prompt OR iOS tip) -->
       <button id="installAppBtn" class="topbtn install" onclick="installApp()" style="display:none;">Install App</button>
 
-      <!-- ✅ API status -->
-      <span id="apiStatus" class="topbtn" style="cursor:default;opacity:0.92;">API: …</span>
-
       <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
       <button id="trialBtn" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
       <button class="topbtn" onclick="openPricing()">Pricing</button>
@@ -1097,28 +1094,6 @@
     }
     window.addEventListener("online", setOfflineUI);
     window.addEventListener("offline", setOfflineUI);
-
-    // -------------------------
-    // API Health Indicator
-    // -------------------------
-    async function refreshApiHealth() {
-      const el = document.getElementById("apiStatus");
-      if (!el) return;
-      try {
-        const res = await fetch("/api/health", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
-        if (res.ok && j?.ok) {
-          el.textContent = "API: Online ✅";
-          el.className = "topbtn ok";
-          return;
-        }
-        el.textContent = "API: Issue ⚠️";
-        el.className = "topbtn warn";
-      } catch {
-        el.textContent = "API: Down ❌";
-        el.className = "topbtn bad";
-      }
-    }
 
     // -------------------------
     // Client ID
@@ -2148,9 +2123,6 @@
       setInterval(updateClock, 1000);
 
       setOfflineUI();
-
-      refreshApiHealth();
-      setInterval(refreshApiHealth, 30000);
 
       document.getElementById("authBackdrop")?.addEventListener("click", closeAuth);
       document.getElementById("legalBackdrop")?.addEventListener("click", closeLegal);
