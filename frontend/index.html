@@ -1,13 +1,27 @@
-<!-- index.html (FULL FILE • cleaned: removed API status pill + health polling) -->
+<!-- index.html (FULL FILE • optimized for 100s without removing features) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FX Co-Pilot AI Trade Validator</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- PWA / Install -->
+  <title>FX Co-Pilot AI Trade Validator</title>
+
+  <!-- ✅ SEO -->
+  <meta name="description" content="FX Co-Pilot is an AI trade validator. Paste a signal or upload a chart to get structured analysis, risk flags, and a decision-grade report before you enter a trade." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://fxco-pilot.solflightech.org/" />
+
+  <!-- ✅ Open Graph / Social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="FX Co-Pilot AI Trade Validator" />
+  <meta property="og:description" content="Validate a trade before you click Buy/Sell. Get structure, liquidity context, risk flags, and a professional report." />
+  <meta property="og:url" content="https://fxco-pilot.solflightech.org/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="FX Co-Pilot AI Trade Validator" />
+  <meta name="twitter:description" content="Validate a trade before you click Buy/Sell. Structure + liquidity context + risk flags + report." />
+
+  <!-- ✅ PWA / Install -->
   <meta name="theme-color" content="#05070b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,14 +29,45 @@
   <!-- Vercel serves frontend/public/* at / -->
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-
   <link rel="manifest" href="/manifest.webmanifest">
 
+  <!-- ✅ Reduce render-blocking + reduce font CLS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Preload stylesheet (non-blocking) -->
+  <link rel="preload"
+        as="style"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'">
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </noscript>
+
+  <!-- ✅ Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"SoftwareApplication",
+    "name":"FX Co-Pilot",
+    "applicationCategory":"FinanceApplication",
+    "operatingSystem":"Web",
+    "description":"AI trade validator for forex and related markets. Paste a signal or upload a chart to get structured analysis, risk flags, and a decision-grade report.",
+    "url":"https://fxco-pilot.solflightech.org/"
+  }
+  </script>
+
+  <!-- ✅ Preload background image to reduce late paint/jank -->
+  <link rel="preload" as="image" href="/images/bg_fx_4k.png" fetchpriority="high">
+
   <style>
+    /* ✅ Prevent font swap layout shift: keep a stable fallback stack + consistent metrics */
+    :root { color-scheme: dark; }
+
     body {
       margin: 0;
       padding: 0;
-      font-family: "Poppins", sans-serif;
+      font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       background-image: url("/images/bg_fx_4k.png");
       background-size: cover;
       background-position: center;
@@ -30,6 +75,13 @@
       background-attachment: fixed;
       background-color: #05070b;
       padding-bottom: 90px;
+      /* ✅ Avoid unexpected horizontal shifts */
+      overflow-x: hidden;
+    }
+
+    /* ✅ Mobile performance win: background-attachment: fixed is expensive on mobile and can cause jank */
+    @media (max-width: 900px){
+      body { background-attachment: scroll; }
     }
 
     .bg-overlay {
@@ -51,7 +103,7 @@
       user-select: none;
       pointer-events: none;
       z-index: 999;
-      font-family: "Poppins", sans-serif;
+      font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 
       background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
       -webkit-background-clip: text;
@@ -77,6 +129,9 @@
       box-shadow: 0 4px 18px rgba(0,0,0,0.4);
       gap: 12px;
       box-sizing: border-box;
+
+      /* ✅ Reserve stable height to reduce CLS from topbar wrapping */
+      min-height: 56px;
     }
 
     .topbar-right {
@@ -85,6 +140,17 @@
       gap: 10px;
       flex-wrap: wrap;
       justify-content: flex-end;
+    }
+
+    /* ✅ On narrow screens, keep buttons from reflowing unpredictably when font loads */
+    @media (max-width: 520px){
+      .topbar-right{
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        max-width: 56vw;
+      }
+      .topbar-right::-webkit-scrollbar{ height: 0; }
     }
 
     .topbtn {
@@ -146,7 +212,7 @@
     .offline-banner {
       display:none;
       position: sticky;
-      top: 52px;
+      top: 56px; /* match topbar min-height */
       z-index: 899;
       margin: 10px auto 0;
       max-width: 1300px;
@@ -173,6 +239,9 @@
       display: flex;
       gap: 40px;
       box-sizing: border-box;
+
+      /* ✅ Helps avoid small paint/layout jank on load */
+      contain: layout paint;
     }
 
     h1 {
@@ -180,6 +249,7 @@
       color: #ffffff;
       font-weight: 700;
       margin-bottom: 5px;
+      line-height: 1.15; /* ✅ stable line height */
     }
 
     .badge {
@@ -213,7 +283,14 @@
       box-sizing: border-box;
     }
 
-    textarea { height: 110px; resize: none; }
+    /* ✅ CLS Fix: reserve stable height for the signal textarea */
+    textarea {
+      height: 140px;
+      min-height: 140px;
+      resize: none;
+      line-height: 1.4;
+      box-sizing: border-box;
+    }
 
     .btn {
       appearance: none;
@@ -261,6 +338,9 @@
       overflow-y: auto;
       border: 1px solid rgba(255,255,255,0.05);
       backdrop-filter: blur(8px);
+      /* ✅ Helps Lighthouse with heavy content */
+      content-visibility: auto;
+      contain-intrinsic-size: 260px;
     }
 
     .title-small {
@@ -721,29 +801,30 @@
         Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
       </p>
 
-      <label>Pair Type</label>
-      <select id="pairType">
+      <!-- ✅ Accessibility: associate labels with controls -->
+      <label for="pairType">Pair Type</label>
+      <select id="pairType" name="pairType">
         <option>Forex</option>
         <option>Gold</option>
         <option>Crypto</option>
         <option>Indices</option>
       </select>
 
-      <label>Timeframe Mode</label>
-      <select id="timeframe">
+      <label for="timeframe">Timeframe Mode</label>
+      <select id="timeframe" name="timeframe">
         <option>Scalp</option>
         <option>Intraday</option>
         <option>Swing</option>
       </select>
 
-      <label>Chart (optional)</label>
-      <input type="file" id="chart">
+      <label for="chart">Chart (optional)</label>
+      <input type="file" id="chart" name="chart" />
 
-      <label>Your signal</label>
-      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+      <label for="signal">Your signal</label>
+      <textarea id="signal" name="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
       <div class="consent-row">
-        <input type="checkbox" id="acceptLegal" />
+        <input type="checkbox" id="acceptLegal" name="acceptLegal" />
         <div class="consent-text">
           I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
           <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
@@ -769,7 +850,7 @@
       </div>
 
       <div class="title-small" style="margin-top:20px;">Recent Reports (local)</div>
-      <div id="history" class="output-box" style="min-height:120px;">
+      <div id="history" class="output-box" style="min-height:120px; contain-intrinsic-size:120px;">
         <div style="opacity:0.9;">No reports yet.</div>
       </div>
     </div>
@@ -891,8 +972,8 @@
         </p>
       </div>
 
-      <label>Email</label>
-      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
+      <label for="authEmail">Email</label>
+      <input type="email" id="authEmail" name="authEmail" placeholder="you@example.com" autocomplete="email" />
 
       <div class="auth-row">
         <button class="topbtn primary" onclick="authSendCode()">Send code</button>
@@ -901,8 +982,8 @@
 
       <div style="height:10px"></div>
 
-      <label>6-digit code</label>
-      <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" />
+      <label for="authCode">6-digit code</label>
+      <input type="text" id="authCode" name="authCode" placeholder="123456" inputmode="numeric" maxlength="6" />
 
       <div class="auth-row">
         <button class="topbtn primary" onclick="authVerifyCode()">Verify & Start Trial</button>
@@ -1203,8 +1284,6 @@
     }
 
     function buildClientShareUrl(reportPayload) {
-      // WARNING: Very large payloads can exceed URL limits in some browsers.
-      // For now we keep it simple & client-only.
       const json = JSON.stringify(reportPayload || {});
       const enc = b64UrlEncodeUnicode(json);
       if (!enc) return "";
@@ -1953,14 +2032,10 @@
           analysis: data?.analysis || null,
           raw: data || null,
           generated_at: Date.now(),
-
-          // ✅ If backend ever returns share_id/share_url, we keep it:
           share_id: data?.share_id || data?.analysis?.share_id || "",
           share_url: data?.share_url || data?.analysis?.share_url || ""
         };
 
-        // ✅ Always generate client-side share link too (works today)
-        // If backend share exists later, result.html will prefer ?r=
         const clientShareUrl = buildClientShareUrl(reportPayload);
         if (clientShareUrl) reportPayload.share_url = reportPayload.share_url || clientShareUrl;
 
