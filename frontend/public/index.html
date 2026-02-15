@@ -27,10 +27,12 @@
   <!-- ✅ Fonts: reduce render-blocking + stabilize -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
 
   <!-- ✅ Performance: preload responsive background (first paint) -->
-  <link rel="preload" as="image" href="/images/bg_fx_1280.webp" fetchpriority="high">
 
   <!-- ✅ Optional but useful (won't break anything even if sitemap isn't present yet) -->
   <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
@@ -112,8 +114,12 @@
 
     /* ✅ Mobile: fixed backgrounds often slow paint */
     @media (max-width: 900px){
-      body { background-attachment: scroll; }
-    }
+  body {
+    background-image: none;
+    background-color: #05070b;
+  }
+}
+
 
     .bg-overlay {
       position: fixed;
