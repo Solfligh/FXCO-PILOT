@@ -9,7 +9,6 @@
   <!-- ✅ SEO -->
   <meta name="description" content="FX Co-Pilot is an AI trade validator. Upload a chart or paste a signal—get structure, liquidity context, risk checks, and a disciplined verdict before you enter." />
   <link rel="canonical" href="https://fxco-pilot.solflightech.org/" />
-  <meta name="robots" content="index,follow" />
 
   <!-- ✅ Open Graph -->
   <meta property="og:type" content="website" />
@@ -24,25 +23,19 @@
   <meta name="twitter:description" content="Validate your trade before you enter. Structure + liquidity context, risk checks, and a disciplined verdict." />
   <meta name="twitter:image" content="https://fxco-pilot.solflightech.org/apple-touch-icon.png" />
 
-  <!-- ✅ Fonts: reduce render-blocking + stabilize -->
+  <!-- ✅ Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- ✅ Performance: preload responsive background (first paint) -->
-
-  <!-- ✅ Optional but useful (won't break anything even if sitemap isn't present yet) -->
-  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  <link rel="preload" as="image" href="/images/bg_fx_1280.webp" fetchpriority="high">
 
   <!-- PWA / Install -->
   <meta name="theme-color" content="#05070b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <!-- Vercel serves frontend/public/* at / -->
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -66,6 +59,19 @@
   </script>
 
   <style>
+    /* ✅ A11y helper */
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
     /* ✅ A11y: skip link */
     .skip-link {
       position: absolute;
@@ -93,33 +99,24 @@
       padding: 0;
       font-family: "Poppins", sans-serif;
 
-      /* ✅ Responsive background instead of 4K PNG */
       background-color: #05070b;
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
 
-      /* Use WebP set (mobile won't pull huge image) */
       background-image: image-set(
         url("/images/bg_fx_1280.webp") 1x,
         url("/images/bg_fx_1920.webp") 2x,
         url("/images/bg_fx_2560.webp") 3x
       );
 
-      /* Desktop can keep fixed for the effect */
       background-attachment: fixed;
-
       padding-bottom: 90px;
     }
 
-    /* ✅ Mobile: fixed backgrounds often slow paint */
     @media (max-width: 900px){
-  body {
-    background-image: none;
-    background-color: #05070b;
-  }
-}
-
+      body { background-attachment: scroll; }
+    }
 
     .bg-overlay {
       position: fixed;
@@ -231,7 +228,6 @@
     .open { background: #00d46a22; color: #00d46a; }
     .closed { background: #ff444422; color: #ff7777; }
 
-    /* ✅ Offline banner */
     .offline-banner {
       display:none;
       position: sticky;
@@ -389,37 +385,21 @@
       width: 18px;
       height: 18px;
       accent-color: #00d46a;
-      flex: 0 0 auto;
     }
 
     .consent-text {
       color: #cbd5e1;
       font-size: 12px;
       line-height: 1.55;
-      min-width: 0;
     }
 
-    /* ✅ NEW: real label for Lighthouse */
-    .consent-label {
-      display: inline-block;
-      font-weight: 700;
-      color: #e5e7eb;
-      margin-bottom: 6px;
-    }
-
-    .consent-links {
-      display: inline-flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .consent-links a {
+    .consent-text a {
       color: #93c5fd;
       text-decoration: none;
-      font-weight: 800;
+      font-weight: 700;
     }
-    .consent-links a:hover { text-decoration: underline; }
+
+    .consent-text a:hover { text-decoration: underline; }
 
     .consent-hint {
       margin-top: 6px;
@@ -762,7 +742,6 @@
 
     .preview-actions .topbtn{ padding: 10px 12px; border-radius: 12px; }
 
-    /* ✅ iOS install tip */
     .ios-tip {
       display:none;
       position: fixed;
@@ -833,7 +812,7 @@
       </p>
 
       <label for="pairType">Pair Type</label>
-      <select id="pairType">
+      <select id="pairType" aria-label="Pair Type">
         <option>Forex</option>
         <option>Gold</option>
         <option>Crypto</option>
@@ -841,38 +820,30 @@
       </select>
 
       <label for="timeframe">Timeframe Mode</label>
-      <select id="timeframe">
+      <select id="timeframe" aria-label="Timeframe Mode">
         <option>Scalp</option>
         <option>Intraday</option>
         <option>Swing</option>
       </select>
 
       <label for="chart">Chart (optional)</label>
-      <input type="file" id="chart" accept="image/*" />
+      <input type="file" id="chart" accept="image/*" aria-label="Upload chart image">
 
       <label for="signal">Your signal</label>
-      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050" aria-label="Paste your signal"></textarea>
 
-      <!-- ✅ FIX: real label associated to checkbox (Lighthouse a11y 100) -->
       <div class="consent-row">
-        <input
-          type="checkbox"
-          id="acceptLegal"
-          name="acceptLegal"
-          aria-describedby="consentHint"
-        />
-        <div class="consent-text">
-          <label for="acceptLegal" class="consent-label">I accept the Terms and Privacy Policy.</label>
-          <div class="consent-links" aria-label="Terms and privacy links">
-            <a href="#" onclick="openLegal('terms');return false;">Terms</a>
-            <span style="opacity:0.55;">•</span>
-            <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
-          </div>
+        <!-- ✅ Lighthouse wants an associated <label for> -->
+        <label class="sr-only" for="acceptLegal">Accept Terms and Privacy Policy</label>
+        <input type="checkbox" id="acceptLegal" name="acceptLegal" />
+        <div class="consent-text" id="consentText">
+          I accept the <a href="#" onclick="openLegal('terms');return false;">Terms</a> and
+          <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>.
           <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
         </div>
       </div>
 
-      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
+      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled aria-label="Analyze with AI">Analyze with AI</button>
       <div id="rateHint" class="rate-hint" role="status" aria-live="polite"></div>
       <div id="payHint" class="rate-hint" style="display:none;" role="status" aria-live="polite"></div>
     </div>
@@ -1307,7 +1278,7 @@
     }
 
     // -------------------------
-    // ✅ Client-side share payload helper (NO backend required)
+    // ✅ Client-side share payload helper
     // -------------------------
     function b64UrlEncodeUnicode(str) {
       try {
@@ -1491,6 +1462,7 @@
     const PAID_KEY = "fxco_paid_v1";
     const PAID_REF_KEY = "fxco_paid_ref_v1";
     let PAYSTACK_CONFIG = { ok:false };
+    let __paystackLoadedOnce = false;
 
     function setPayHint(msg, show=true) {
       const el = document.getElementById("payHint");
@@ -1685,9 +1657,11 @@
     // -------------------------
     // Pricing modal
     // -------------------------
-    function openPricing() {
+    async function openPricing() {
       document.getElementById("pricingBackdrop").style.display = "block";
       document.getElementById("pricingModal").style.display = "block";
+      await ensurePaystackConfig();
+      applyPaymentGateUI();
     }
     function closePricing() {
       document.getElementById("pricingBackdrop").style.display = "none";
@@ -1695,7 +1669,7 @@
     }
 
     // -------------------------
-    // Paystack
+    // Paystack (lazy load config to avoid PSI console errors)
     // -------------------------
     function formatMoneyMinor(amountMinor, currency) {
       const amt = Number(amountMinor || 0);
@@ -1708,19 +1682,21 @@
       }
     }
 
-    async function loadPaystackConfig() {
+    async function ensurePaystackConfig() {
+      if (__paystackLoadedOnce) return;
+      __paystackLoadedOnce = true;
+
       try {
         const res = await fetch("/api/paystack/config", { cache: "no-store" });
-        const j = await res.json();
+        const j = await res.json().catch(() => null);
         PAYSTACK_CONFIG = j || { ok:false };
 
         const amountEl = document.getElementById("pricingAmount");
         if (amountEl && j && typeof j.amount !== "undefined") {
           amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
         }
-        applyPaymentGateUI();
       } catch {
-        applyPaymentGateUI();
+        // keep defaults; do not throw
       }
     }
 
@@ -1757,6 +1733,8 @@
     }
 
     async function startPaystackCheckout() {
+      await ensurePaystackConfig();
+
       const emailSeed = getAuthEmail() || "";
       const email = (prompt("Enter your email for Paystack checkout:", emailSeed) || "").trim();
       if (!email || !email.includes("@")) {
@@ -1884,14 +1862,6 @@
       else if (score >= 48) tier = "WAIT";
       else tier = "DO_NOT_TRADE";
 
-      const reasons = [];
-      reasons.push(`Edge ${Math.round(score)}/100`);
-      reasons.push(`Conf ${Math.round(conf)}%`);
-      if (rr !== null) reasons.push(`RR ${rr.toFixed(2)}`);
-      reasons.push(`Strength ${Math.round(str)}/100`);
-      reasons.push(`Clarity ${Math.round(clr)}/100`);
-      if (invCount) reasons.push(`${invCount} flag${invCount>1?"s":""}`);
-
       let why = "";
       let action = "";
 
@@ -1919,7 +1889,6 @@
         invCount,
         why,
         action,
-        reasons,
         hardBlocks
       };
     }
@@ -1955,6 +1924,8 @@
           "<b style='color:#ffd86b'>Offline:</b> Reconnect to run analysis.";
         return;
       }
+
+      await ensurePaystackConfig();
 
       const trialActive = getAuthToken() && isTrialActiveLocal();
       if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
@@ -2084,121 +2055,32 @@
         renderLocalHistory();
         updateViewReportButton();
 
-        const backendTier = normalizeTier(reportPayload?.analysis?.decision_tier || "");
-        const backendScore = Number(reportPayload?.analysis?.score);
-        const backendConf = Number(reportPayload?.analysis?.confidence);
-
         let v = computeDeskVerdict(reportPayload.analysis || {});
-        if (backendTier) {
-          v.tier = backendTier;
-          if (isFinite(backendScore)) v.score = Math.round(backendScore);
-          if (isFinite(backendConf)) v.conf = Math.round(backendConf);
-        }
-
-        const ticket = reportPayload.analysis?.signal_check || {};
-        const entry = ticket.entry ?? "—";
-        const sl = ticket.stop_loss ?? "—";
-        const tp1 = (Array.isArray(ticket.targets) && ticket.targets[0] != null) ? ticket.targets[0] : "—";
-
-        const tierColor =
-          v.tier === "EXECUTE" ? "#00d46a" :
-          v.tier === "EXECUTE_IF" ? "#fbbf24" :
-          v.tier === "WAIT" ? "#94a3b8" :
-          "#ff5a5f";
-
-        const blocksHtml = (v.hardBlocks || []).map(x => `<div style="margin-top:4px;">• ${esc(x)}</div>`).join("");
 
         document.getElementById("result").innerHTML = `
           <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:16px;padding:16px;">
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
-              <div style="font-weight:1000;color:${tierColor};letter-spacing:0.3px;font-size:14px;">
-                ${esc(v.tier)} • EDGE ${esc(v.score)}/100
-              </div>
-              <div style="opacity:0.9;font-size:12px;line-height:1.5;">
-                Conf ${esc(v.conf)}% ${v.rr !== null ? `• RR ${esc(v.rr.toFixed(2))}` : ""} • Flags ${esc(v.invCount)}
-              </div>
+            <div style="font-weight:1000;color:#fff;letter-spacing:0.3px;font-size:14px;">
+              ${esc(v.tier)} • EDGE ${esc(v.score)}/100 • Conf ${esc(v.conf)}%
             </div>
-
-            <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">ENTRY</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(entry)}</div>
-              </div>
-              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">STOP LOSS</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(sl)}</div>
-              </div>
-              <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">TP1</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(tp1)}</div>
-              </div>
-            </div>
-
             <div style="margin-top:10px;color:#e5e7eb;font-size:12px;line-height:1.6;">
               ${esc(v.why)}<br/>
               <span style="opacity:0.9;">${esc(v.action)}</span>
             </div>
-
-            ${v.hardBlocks && v.hardBlocks.length ? `
-              <div style="margin-top:10px;border:1px solid rgba(255,90,95,0.22);background:rgba(255,90,95,0.08);padding:12px;border-radius:14px;">
-                <div style="font-weight:1000;color:#ff9aa2;margin-bottom:4px;">Hard Blocks</div>
-                <div style="font-size:12px;line-height:1.6;color:#ffd1d6;">${blocksHtml}</div>
-              </div>
-            ` : ""}
-
             <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
               <button class="topbtn" onclick="openPreview()">View Preview</button>
               <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
             </div>
-
-            ${clientShareUrl ? `
-              <div style="margin-top:10px;opacity:0.85;font-size:12px;line-height:1.5;">
-                <b>Share link ready:</b> <span style="opacity:0.95;">Use the report page → “Copy Share Link”.</span>
-              </div>
-            ` : ""}
           </div>
         `;
 
         document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
-
-        const banner = document.getElementById("previewBanner");
-        banner.classList.remove("dec-ok","dec-cond","dec-wait","dec-bad");
-
-        if (v.tier === "EXECUTE"){
-          banner.classList.add("dec-ok");
-          document.getElementById("previewIcon").textContent = "✓";
-          document.getElementById("previewTier").textContent = "EXECUTE (DESK-OK)";
-        } else if (v.tier === "EXECUTE_IF"){
-          banner.classList.add("dec-cond");
-          document.getElementById("previewIcon").textContent = "!";
-          document.getElementById("previewTier").textContent = "EXECUTE_IF (CONDITIONS)";
-        } else if (v.tier === "WAIT"){
-          banner.classList.add("dec-wait");
-          document.getElementById("previewIcon").textContent = "⏸";
-          document.getElementById("previewTier").textContent = "WAIT (NO EDGE YET)";
-        } else {
-          banner.classList.add("dec-bad");
-          document.getElementById("previewIcon").textContent = "×";
-          document.getElementById("previewTier").textContent = "DO_NOT_TRADE (BLOCKED)";
-        }
-
         document.getElementById("previewWhy").textContent = `${v.why} ${v.action}`;
         document.getElementById("previewScore").textContent = `${v.score}/100`;
-        document.getElementById("previewBasis").textContent = v.reasons.join(" • ");
         document.getElementById("previewConf").textContent = `${v.conf}%`;
-        document.getElementById("previewSC").textContent = `Strength: ${v.str}/100 • Clarity: ${v.clr}/100`;
         document.getElementById("previewRR").textContent = v.rr !== null ? `RR ${v.rr.toFixed(2)}` : "RR —";
         document.getElementById("previewRiskFlags").textContent = v.invCount ? `${v.invCount} invalidation warning(s)` : "No invalidation warnings";
-
-        const blocksWrap = document.getElementById("previewBlocks");
-        const blocksList = document.getElementById("previewBlocksList");
-        if (v.hardBlocks && v.hardBlocks.length) {
-          blocksWrap.style.display = "block";
-          blocksList.innerHTML = v.hardBlocks.map(x => `• ${esc(x)}`).join("<br/>");
-        } else {
-          blocksWrap.style.display = "none";
-          blocksList.innerHTML = "";
-        }
+        document.getElementById("previewSC").textContent = `Strength: ${v.str}/100 • Clarity: ${v.clr}/100`;
+        document.getElementById("previewBasis").textContent = `Edge ${v.score}/100 • Conf ${v.conf}%`;
 
         openPreview();
 
@@ -2209,15 +2091,6 @@
         applyPaymentGateUI();
       } finally {
         if (!rateTimer) applyPaymentGateUI();
-      }
-    }
-
-    function hardenButtonClicks() {
-      const btn = document.getElementById("analyzeBtn");
-      if (btn) {
-        btn.addEventListener("click", () => {
-          if (typeof window.analyze === "function") window.analyze();
-        });
       }
     }
 
@@ -2248,12 +2121,10 @@
 
       initConsentGate();
       showRiskModalIfNeeded();
-      loadPaystackConfig();
       verifyPaystackIfReturned();
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
-      hardenButtonClicks();
 
       applyPaymentGateUI();
     }
