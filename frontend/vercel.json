@@ -4,12 +4,24 @@
 
     {
       "src": "/api/(.*)",
-      "dest": "https://fxco-pilot.onrender.com/api/$1"
+      "dest": "https://fxco-pilot.onrenderer.com/api/$1"
     },
 
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
+    { "src": "/robots.txt", "dest": "/public/robots.txt" },
+    { "src": "/sitemap.xml", "dest": "/public/sitemap.xml" },
+
+    { "src": "/favicon.ico", "dest": "/public/favicon.ico" },
+    { "src": "/apple-touch-icon.png", "dest": "/public/apple-touch-icon.png" },
+    { "src": "/manifest.webmanifest", "dest": "/public/manifest.webmanifest" },
+    { "src": "/sw.js", "dest": "/public/sw.js" },
+
+    { "src": "/privacy.html", "dest": "/public/privacy.html" },
+    { "src": "/terms.html", "dest": "/public/terms.html" },
+    { "src": "/maintenance.html", "dest": "/public/maintenance.html" },
+    { "src": "/result.html", "dest": "/public/result.html" },
+
+    { "src": "/images/(.*)", "dest": "/public/images/$1" },
+
+    { "src": "/(.*)", "dest": "/public/index.html" }
   ]
 }
