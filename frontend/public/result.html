@@ -1,0 +1,1352 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FXCO-Pilot Trade Validation Report</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#f7f9ff;
+      --bg2:#ffffff;
+      --ink:#0b1220;
+      --muted:#5c667a;
+      --card:#ffffff;
+      --line:rgba(15, 23, 42, .10);
+      --shadow: 0 18px 60px rgba(15, 23, 42, .08);
+      --shadow2: 0 10px 30px rgba(15, 23, 42, .08);
+      --radius: 18px;
+      --radius2: 14px;
+
+      --green:#22c55e;
+      --red:#ef4444;
+      --amber:#f59e0b;
+      --slate:#64748b;
+
+      --greenBg: rgba(34,197,94,.10);
+      --redBg: rgba(239,68,68,.10);
+      --amberBg: rgba(245,158,11,.10);
+      --slateBg: rgba(100,116,139,.10);
+
+      --btn:#0b1220;
+      --btnInk:#ffffff;
+      --btn2:#ffffff;
+      --btn2Ink:#0b1220;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      font-family: Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 15% 10%, rgba(14,165,233,.10), transparent 60%),
+        radial-gradient(900px 450px at 85% 0%, rgba(34,197,94,.10), transparent 60%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .wrap{
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 28px 18px 70px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      padding: 10px 4px 18px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+    }
+
+    .mark{
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      background:
+        radial-gradient(12px 12px at 30% 30%, rgba(255,255,255,.8), transparent 55%),
+        linear-gradient(135deg, rgba(14,165,233,.95), rgba(34,197,94,.90));
+      box-shadow: 0 10px 30px rgba(14,165,233,.18);
+      border: 1px solid rgba(255,255,255,.6);
+    }
+
+    .brand h1{
+      font-size: 14px;
+      margin:0;
+      letter-spacing: .2px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .brand p{
+      margin:2px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.1;
+    }
+
+    .actions{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn{
+      border: 1px solid var(--line);
+      background: var(--btn2);
+      color: var(--btn2Ink);
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 10px 22px rgba(15,23,42,.06);
+      cursor: pointer;
+      transition: transform .12s ease, box-shadow .12s ease;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      user-select: none;
+    }
+    .btn:hover{ transform: translateY(-1px); box-shadow: 0 14px 28px rgba(15,23,42,.09); }
+    .btn.primary{
+      background: var(--btn);
+      color: var(--btnInk);
+      border-color: rgba(255,255,255,.08);
+      box-shadow: 0 16px 40px rgba(11,18,32,.20);
+    }
+    .btn.danger{
+      background: #fff;
+      color: var(--red);
+      border-color: rgba(239,68,68,.25);
+    }
+
+    .btn[disabled]{
+      opacity:.6;
+      cursor:not-allowed;
+      transform:none !important;
+      box-shadow: 0 10px 22px rgba(15,23,42,.06) !important;
+    }
+
+    .hero{
+      margin-top: 10px;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.82);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      backdrop-filter: blur(10px);
+    }
+
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 900px){
+      .heroGrid{ grid-template-columns: 1fr; }
+    }
+
+    .titleRow{
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .hero h2{
+      margin:0;
+      font-size: 18px;
+      letter-spacing: .2px;
+      font-weight: 700;
+    }
+
+    .sub{
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    /* Decision Banner */
+    .decisionBanner{
+      margin-top: 12px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .decisionLeft{
+      display:flex;
+      align-items:flex-start;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .seal{
+      width: 40px; height: 40px;
+      border-radius: 14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight: 900;
+      font-size: 14px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(15,23,42,.12);
+    }
+
+    .decisionTitle{
+      margin:0;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: .25px;
+    }
+
+    .decisionMeta{
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .pillRow{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items:center;
+      justify-content:flex-end;
+    }
+
+    .pill{
+      border-radius: 999px;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      border: 1px solid rgba(15,23,42,.12);
+      background: rgba(255,255,255,.7);
+      white-space: nowrap;
+    }
+
+    .pill.good{ color: var(--green); background: var(--greenBg); border-color: rgba(34,197,94,.25); }
+    .pill.warn{ color: var(--amber); background: var(--amberBg); border-color: rgba(245,158,11,.25); }
+    .pill.bad{ color: var(--red); background: var(--redBg); border-color: rgba(239,68,68,.25); }
+    .pill.neutral{ color: var(--slate); background: var(--slateBg); border-color: rgba(100,116,139,.25); }
+
+    /* KPIs */
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    @media (max-width: 900px){
+      .kpis{ grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px){
+      .kpis{ grid-template-columns: 1fr; }
+    }
+
+    .kpi{
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.68);
+      padding: 12px;
+      box-shadow: var(--shadow2);
+    }
+    .kpi .label{
+      color: var(--muted);
+      font-size: 11px;
+      margin:0 0 6px;
+      font-weight: 600;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .kpi .value{
+      margin:0;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      word-break: break-word;
+    }
+
+    /* Confidence bar */
+    .barWrap{
+      margin-top: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.65);
+      padding: 10px 12px;
+    }
+    .barTop{
+      display:flex;
+      justify-content:space-between;
+      gap: 10px;
+      align-items:center;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .track{
+      margin-top: 8px;
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(15,23,42,.08);
+      overflow:hidden;
+      border: 1px solid rgba(15,23,42,.08);
+    }
+    .fill{
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(239,68,68,.9), rgba(245,158,11,.9), rgba(34,197,94,.9));
+      transition: width 400ms ease;
+    }
+
+    /* Below layout */
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.86);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow2);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .card h3{
+      margin:0 0 10px;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+
+    .list{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+
+    .row{
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.68);
+      border-radius: 14px;
+      padding: 12px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .row .left{ min-width: 0; }
+    .row .key{
+      font-size: 11px;
+      color: var(--muted);
+      margin:0 0 4px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+    }
+    .row .val{
+      margin:0;
+      font-size: 13px;
+      font-weight: 700;
+      word-wrap: break-word;
+    }
+
+    .analysis{
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.68);
+      border-radius: 14px;
+      padding: 14px;
+      line-height: 1.75;
+      color: #0b1220;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
+
+    .foot{
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.6;
+      text-align: center;
+      padding: 10px 6px 0;
+    }
+
+    .toast{
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(11,18,32,.92);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 16px 50px rgba(11,18,32,.25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+      z-index: 9999;
+    }
+    .toast.show{
+      opacity: 1;
+      transform: translateX(-50%) translateY(-2px);
+    }
+
+    @media print{
+      .topbar .actions{ display:none !important; }
+      body{ background: #fff; }
+      .hero, .card{ box-shadow: none; border: 1px solid #ddd; }
+      .wrap{ padding: 0; }
+    }
+  </style>
+
+  <!-- ✅ Client-side PDF libraries (with resilient fallbacks) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+  <div class="wrap" id="reportRoot">
+    <div class="topbar">
+      <div class="brand">
+        <div class="mark"></div>
+        <div>
+          <h1>FXCO-Pilot</h1>
+          <p>AI Trade Validator • Report</p>
+        </div>
+      </div>
+
+      <!-- ✅ CLEANED ACTIONS: Back • Share Report • Save PDF • New Validation -->
+      <div class="actions">
+        <button class="btn" id="btnBack">← Back</button>
+        <button class="btn" id="btnShare">Share Report</button>
+        <button class="btn" id="btnPdf">Save PDF</button>
+        <button class="btn primary" id="btnNew">New Validation</button>
+      </div>
+    </div>
+
+    <section class="hero">
+      <div class="heroGrid">
+        <div>
+          <div class="titleRow">
+            <div>
+              <h2>Trade Validation Report</h2>
+              <p class="sub" id="metaLine">Generated —</p>
+            </div>
+          </div>
+
+          <!-- Big decision banner -->
+          <div class="decisionBanner" id="decisionBanner">
+            <div class="decisionLeft">
+              <div class="seal" id="seal">—</div>
+              <div style="min-width:0">
+                <p class="decisionTitle" id="decisionTitle">—</p>
+                <p class="decisionMeta" id="decisionMeta">—</p>
+              </div>
+            </div>
+
+            <div class="pillRow">
+              <span class="pill" id="pillTier">Tier —</span>
+              <span class="pill neutral" id="pillScore">Score —</span>
+              <span class="pill neutral" id="pillConfidence">Confidence —</span>
+            </div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi">
+              <p class="label">Pair</p>
+              <p class="value" id="kpiPair">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Timeframe</p>
+              <p class="value" id="kpiTf">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Direction / Bias</p>
+              <p class="value" id="kpiSide">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">R:R (approx)</p>
+              <p class="value" id="kpiRR">—</p>
+            </div>
+          </div>
+
+          <div class="barWrap" aria-label="Confidence">
+            <div class="barTop">
+              <span>AI Confidence</span>
+              <span id="confText">—%</span>
+            </div>
+            <div class="track">
+              <div class="fill" id="confFill"></div>
+            </div>
+          </div>
+
+          <p class="muted" style="margin: 12px 2px 0;">
+            Institutional-style output: guards first, then score, then tier. This is decision support not a signal.
+          </p>
+        </div>
+
+        <div>
+          <div class="card" style="padding: 14px;">
+            <h3 style="margin-bottom: 10px;">Snapshot</h3>
+            <div class="list" id="snapshotList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h3>Blocks & Conditions</h3>
+        <div class="list" id="blocksList"></div>
+        <p class="muted" style="margin: 12px 2px 0;">
+          Red items = execution blocked. Yellow items = “execute only if…” conditions.
+        </p>
+      </section>
+
+      <section class="card">
+        <h3>AI Reasoning</h3>
+        <div class="analysis" id="analysisBox">Loading…</div>
+      </section>
+
+      <section class="card">
+        <h3>Key Checks</h3>
+        <div class="list" id="checksList"></div>
+      </section>
+
+      <section class="card">
+        <h3>Signal</h3>
+        <div class="analysis" id="signalBox">—</div>
+      </section>
+    </div>
+
+    <div class="foot">
+      FXCO-Pilot helps you validate decisions before execution. Always confirm on your chart and follow your plan.
+    </div>
+  </div>
+
+  <div class="toast" id="toast">—</div>
+
+  <script>
+    // Storage keys (session first, local fallback)
+    const REPORT_KEY = "fxcoReport";
+    const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
+
+    // ✅ Share storage (for "Share Report" even without backend share_id)
+    // Enables shareable reports purely client-side (no DB) using ?p=<payload>
+    const SHARE_LOCAL_KEY = "fxco_share_payload_v1";
+
+    function fmt(v){
+      if (v === null || v === undefined || v === "") return "—";
+      return String(v);
+    }
+
+    function safeUpper(v){ return fmt(v).toUpperCase(); }
+
+    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+
+    function stampFrom(ts){
+      const n = Number(ts || 0);
+      const d = n ? new Date(n) : new Date();
+      return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+    }
+
+    function toast(msg){
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1400);
+    }
+
+    function getQueryParam(name){
+      const u = new URL(window.location.href);
+      return (u.searchParams.get(name) || "").trim();
+    }
+
+    // ✅ Normalize tier to underscores (backend truth)
+    function normalizeTier(tier){
+      const t = String(tier || "").trim().toUpperCase();
+      if (!t || t === "—") return "";
+      if (t === "EXECUTE-IF") return "EXECUTE_IF";
+      if (t === "DO-NOT-TRADE") return "DO_NOT_TRADE";
+      return t.replace(/-/g, "_");
+    }
+
+    function pillToneForTier(tier){
+      const t = normalizeTier(tier);
+      if (t === "EXECUTE") return "good";
+      if (t === "EXECUTE_IF") return "warn";
+      if (t === "WAIT") return "neutral";
+      if (t === "DO_NOT_TRADE") return "bad";
+      return "neutral";
+    }
+
+    function setDecisionUI(tier, label, meta, score, confidence){
+      const seal = document.getElementById("seal");
+      const title = document.getElementById("decisionTitle");
+      const metaEl = document.getElementById("decisionMeta");
+      const pillTier = document.getElementById("pillTier");
+      const pillScore = document.getElementById("pillScore");
+      const pillConf = document.getElementById("pillConfidence");
+
+      const T = normalizeTier(tier);
+      const tone = pillToneForTier(T);
+
+      const sealMap = {
+        "EXECUTE": "GO",
+        "EXECUTE_IF": "IF",
+        "WAIT": "WAIT",
+        "DO_NOT_TRADE": "NO"
+      };
+
+      const toneMap = {
+        good: { bg:"rgba(34,197,94,.12)", fg:"rgba(34,197,94,.95)" },
+        warn: { bg:"rgba(245,158,11,.12)", fg:"rgba(245,158,11,.95)" },
+        bad: { bg:"rgba(239,68,68,.12)", fg:"rgba(239,68,68,.95)" },
+        neutral: { bg:"rgba(100,116,139,.12)", fg:"rgba(100,116,139,.95)" }
+      };
+
+      const colors = toneMap[tone] || toneMap.neutral;
+
+      seal.textContent = sealMap[T] || "—";
+      seal.style.background = colors.bg;
+      seal.style.color = colors.fg;
+
+      title.textContent = label || "—";
+      metaEl.textContent = meta || "—";
+
+      pillTier.className = "pill " + tone;
+      pillTier.textContent = "Tier: " + (T || "—");
+
+      pillScore.className = "pill " + (score >= 78 ? "good" : score >= 62 ? "warn" : score >= 48 ? "neutral" : "bad");
+      pillScore.textContent = "Score: " + (Number.isFinite(score) ? score : "—");
+
+      pillConf.className = "pill " + (confidence >= 70 ? "good" : confidence >= 55 ? "warn" : confidence >= 40 ? "neutral" : "bad");
+      pillConf.textContent = "Confidence: " + (Number.isFinite(confidence) ? confidence + "%" : "—%");
+    }
+
+    function chipClass(level){
+      const v = (level || "").toLowerCase();
+      if (v.includes("good") || v.includes("low") || v.includes("pass") || v.includes("ok")) return "pill good";
+      if (v.includes("warn") || v.includes("medium") || v.includes("caution") || v.includes("conditional") || v.includes("if")) return "pill warn";
+      if (v.includes("bad") || v.includes("high") || v.includes("fail") || v.includes("block") || v.includes("risk") || v.includes("no")) return "pill bad";
+      return "pill neutral";
+    }
+
+    function addRow(container, key, val, chipText){
+      const el = document.createElement("div");
+      el.className = "row";
+      el.innerHTML = `
+        <div class="left">
+          <p class="key">${key}</p>
+          <p class="val">${val}</p>
+        </div>
+        ${chipText ? `<span class="${chipClass(chipText)}">${chipText}</span>` : ""}
+      `;
+      container.appendChild(el);
+    }
+
+    function parseRR(rr){
+      if (rr === null || rr === undefined) return null;
+      if (typeof rr === "number" && isFinite(rr)) return rr;
+      const s = String(rr);
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return isFinite(n) ? n : null;
+    }
+
+    // 1% "desk model" verdict computed client-side when backend doesn't provide a tier/score
+    function computeDeskVerdict(analysis){
+      const a = analysis || {};
+      const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
+
+      const strRaw = Number(a.strength ?? 0);
+      const clrRaw = Number(a.clarity ?? 0);
+      const str = clamp(strRaw <= 10 ? (strRaw * 10) : strRaw, 0, 100);
+      const clr = clamp(clrRaw <= 10 ? (clrRaw * 10) : clrRaw, 0, 100);
+
+      const sc = a.signal_check || {};
+      const rr = parseRR(sc.rr);
+      const hasEntry = sc.entry != null && String(sc.entry).trim() !== "";
+      const hasSL = sc.stop_loss != null && String(sc.stop_loss).trim() !== "";
+      const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
+
+      const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const invCount = inv.length;
+
+      const hardBlocks = [];
+      if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
+      if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
+      if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
+      if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
+
+      const hardNo = hardBlocks.length > 0;
+
+      const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
+
+      let score =
+        (conf * 0.52) +
+        (str * 0.16) +
+        (clr * 0.22) +
+        (rrScore * 0.10);
+
+      if (invCount >= 1) score -= 10;
+      if (invCount >= 2) score -= 10;
+      if (!hasEntry || !hasSL || !hasTP) score -= 12;
+
+      score = clamp(score, 0, 100);
+
+      let tier = "WAIT";
+      if (score >= 78 && !hardNo) tier = "EXECUTE";
+      else if (score >= 62) tier = "EXECUTE_IF";
+      else if (score >= 48) tier = "WAIT";
+      else tier = "DO_NOT_TRADE";
+
+      const conditions = [];
+      if (tier === "EXECUTE_IF") {
+        conditions.push("Require confirmation before entry (break/close, sweep, or retest).");
+        conditions.push("Reduce size; treat as conditional execution.");
+      }
+      if (tier === "WAIT") {
+        conditions.push("Set alerts at levels; reassess when structure aligns.");
+      }
+      if (tier === "DO_NOT_TRADE") {
+        conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
+      }
+
+      const label =
+        tier === "EXECUTE" ? "EXECUTE (DESK-GRADE)" :
+        tier === "EXECUTE_IF" ? "EXECUTE IF CONFIRMED" :
+        tier === "WAIT" ? "WAIT (NO CLEAN EDGE)" :
+        "DO NOT TRADE";
+
+      const why =
+        tier === "EXECUTE"
+          ? "Edge is confirmed. Ticket is complete and risk flags are acceptable."
+          : tier === "EXECUTE_IF"
+          ? "Edge exists but needs confirmation. Conditions must be met before entry."
+          : tier === "WAIT"
+          ? "No clear edge yet. Market context is not aligned or information is incomplete."
+          : "Fails desk rules (expectancy / completeness / risk flags).";
+
+      const action =
+        tier === "EXECUTE"
+          ? "Execute with defined size, hard SL, and no revenge entries."
+          : tier === "EXECUTE_IF"
+          ? "Reduce size + require confirmation. No impulse entries."
+          : tier === "WAIT"
+          ? "No trade now. Set alert + reassess."
+          : "Stand down. Find a higher-quality setup.";
+
+      return {
+        tier,
+        label,
+        score: Math.round(score),
+        confidence: Math.round(conf),
+        hardBlocks,
+        conditions,
+        why,
+        action
+      };
+    }
+
+    function parseReport(raw){
+      // Expected storage from index.html:
+      // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
+      const r = raw || {};
+      if (typeof r === "string"){
+        return { pair_type:"", timeframe:"", signal_input:"", analysis:{ reasoning_text: r }, raw: { }, generated_at: Date.now() };
+      }
+
+      const analysis = r.analysis || r.result || r.raw?.analysis || {};
+      return {
+        pair_type: r.pair_type || r.pairType || "",
+        timeframe: r.timeframe || "",
+        signal_input: r.signal_input || r.signal || "",
+        analysis: analysis || {},
+        raw: r.raw || r,
+        generated_at: r.generated_at || Date.now(),
+        share_id: r.share_id || r.shareId || (analysis ? (analysis.share_id || analysis.shareId) : "") || "",
+        share_url: r.share_url || r.shareUrl || (analysis ? (analysis.share_url || analysis.shareUrl) : "") || ""
+      };
+    }
+
+    function ensureLocalFallback(reportObj){
+      // Save a fallback copy so refresh / new tab still works
+      try{
+        localStorage.setItem(REPORT_FALLBACK_KEY, JSON.stringify(reportObj));
+      }catch{}
+    }
+
+    function getStoredReportRaw(){
+      // 1) sessionStorage (best)
+      try{
+        const s = sessionStorage.getItem(REPORT_KEY);
+        if (s) return s;
+      }catch{}
+
+      // 2) localStorage fallback
+      try{
+        const l = localStorage.getItem(REPORT_FALLBACK_KEY);
+        if (l) return l;
+      }catch{}
+
+      return "";
+    }
+
+    // -------------------------
+    // ✅ Shareable reports (client-side)
+    // -------------------------
+    function b64urlEncode(bytesOrString){
+      const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
+      const b64 = btoa(unescape(encodeURIComponent(str)));
+      return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    }
+
+    function b64urlDecodeToString(b64url){
+      const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
+      const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+      const txt = decodeURIComponent(escape(atob(b64 + pad)));
+      return txt;
+    }
+
+    // Try to use CompressionStream / DecompressionStream if available
+    async function compressToUrlSafe(jsonString){
+      // returns { payload, mode }
+      try{
+        if (!("CompressionStream" in window)) throw new Error("no CompressionStream");
+        const cs = new CompressionStream("deflate");
+        const writer = cs.writable.getWriter();
+        writer.write(new TextEncoder().encode(jsonString));
+        writer.close();
+        const compressed = await new Response(cs.readable).arrayBuffer();
+        const bytes = new Uint8Array(compressed);
+        return { payload: b64urlEncode(bytes), mode: "deflate" };
+      }catch{
+        return { payload: b64urlEncode(jsonString), mode: "b64json" };
+      }
+    }
+
+    async function decompressFromUrlSafe(payload, mode){
+      if (!payload) throw new Error("empty payload");
+      if (mode !== "deflate"){
+        const json = b64urlDecodeToString(payload);
+        return JSON.parse(json);
+      }
+      if (!("DecompressionStream" in window)) throw new Error("DecompressionStream not available");
+      const bytesStr = atob(String(payload).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((payload.length + 3) % 4));
+      const bytes = new Uint8Array(bytesStr.length);
+      for (let i=0;i<bytesStr.length;i++) bytes[i] = bytesStr.charCodeAt(i);
+
+      const ds = new DecompressionStream("deflate");
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const decompressed = await new Response(ds.readable).arrayBuffer();
+      const json = new TextDecoder().decode(decompressed);
+      return JSON.parse(json);
+    }
+
+    function buildShareUrlFromPayload(payload, mode){
+      const u = new URL(window.location.href);
+      u.searchParams.delete("r");
+      u.searchParams.set("p", payload);
+      if (mode && mode !== "b64json") u.searchParams.set("pm", mode);
+      else u.searchParams.delete("pm");
+      return u.toString();
+    }
+
+    function buildShareUrlFromId(shareId){
+      const u = new URL(window.location.href);
+      u.searchParams.set("r", shareId);
+      u.searchParams.delete("p");
+      u.searchParams.delete("pm");
+      return u.toString();
+    }
+
+    // -------------------------
+    // Render
+    // -------------------------
+    function render(report){
+      // Meta line should reflect report generation time (not "now" on refresh)
+      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
+
+      const a = report.analysis || {};
+      const sc = a.signal_check || {};
+      const mc = a.market_context || {};
+
+      // If backend doesn't provide a proper decision tier/score, compute with desk model
+      const backendTierRaw =
+        (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString().trim();
+      const backendTier = normalizeTier(backendTierRaw);
+      const hasBackendTier = !!backendTier;
+
+      // Score fields (sometimes backend uses different names)
+      const backendScoreCandidate =
+        Number.isFinite(Number(a.score)) ? Number(a.score) :
+        Number.isFinite(Number(a.edge_score)) ? Number(a.edge_score) :
+        Number.isFinite(Number(a.edgeScore)) ? Number(a.edgeScore) :
+        (Number.isFinite(Number(a.strength)) ? (Number(a.strength) <= 10 ? Number(a.strength) * 10 : Number(a.strength)) : NaN);
+
+      const backendConf = Number.isFinite(Number(a.confidence)) ? Number(a.confidence) : 0;
+
+      const desk = computeDeskVerdict(a);
+
+      const tier = hasBackendTier ? backendTier : normalizeTier(desk.tier);
+
+      const label =
+        (a.decision || a.decision_label || a.verdict || "").toString().trim()
+          ? (a.decision || a.decision_label || a.verdict)
+          : desk.label;
+
+      const score =
+        Number.isFinite(backendScoreCandidate) ? Math.round(backendScoreCandidate)
+        : desk.score;
+
+      const confidence =
+        Number.isFinite(backendConf) && backendConf > 0 ? Math.round(backendConf)
+        : desk.confidence;
+
+      const metaBits = [];
+      if (mc.structure) metaBits.push("Structure: " + fmt(mc.structure));
+      if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
+      if (mc.timeframe_alignment) metaBits.push("Alignment: " + fmt(mc.timeframe_alignment));
+      const meta = metaBits.length ? metaBits.join(" • ") : `${desk.why} ${desk.action}`;
+
+      setDecisionUI(tier, label, meta, score, confidence);
+
+      // KPIs
+      document.getElementById("kpiPair").textContent = fmt(report.pair_type);
+      document.getElementById("kpiTf").textContent = fmt(report.timeframe);
+      document.getElementById("kpiSide").textContent = safeUpper(sc.direction || a.bias || "—");
+      document.getElementById("kpiRR").textContent = fmt(sc.rr || "—");
+
+      // Confidence bar
+      const c = clamp(Number(confidence) || 0, 0, 100);
+      document.getElementById("confText").textContent = c + "%";
+      requestAnimationFrame(() => { document.getElementById("confFill").style.width = c + "%"; });
+
+      // Snapshot (ticket + completeness feel)
+      const snapshotList = document.getElementById("snapshotList");
+      snapshotList.innerHTML = "";
+
+      const targetsText = Array.isArray(sc.targets) ? sc.targets.join(", ") : (sc.targets || "");
+      const entry = sc.entry ?? "";
+      const sl = sc.stop_loss ?? "";
+      const rr = sc.rr ?? "";
+      const hasEntry = String(entry || "").trim() !== "";
+      const hasSL = String(sl || "").trim() !== "";
+      const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
+
+      const completeness = [hasEntry, hasSL, hasTP].filter(Boolean).length; // 0..3
+      const compPct = Math.round((completeness / 3) * 100);
+      const compTone = compPct >= 100 ? "OK" : compPct >= 67 ? "WARN" : "BLOCK";
+
+      addRow(snapshotList, "Ticket Completeness", `${compPct}% (Entry/SL/TP)`, compTone);
+      addRow(snapshotList, "Entry", fmt(entry), hasEntry ? "OK" : "BLOCK");
+      addRow(snapshotList, "Stop Loss", fmt(sl), hasSL ? "OK" : "BLOCK");
+      addRow(snapshotList, "Targets", fmt(targetsText), hasTP ? "OK" : "BLOCK");
+      addRow(snapshotList, "Approx RR", fmt(rr), rr ? "OK" : "WARN");
+      if (a.bias) addRow(snapshotList, "Bias", fmt(a.bias), "OK");
+
+      // Blocks & Conditions (prefer backend if present, else desk computed)
+      const blocksList = document.getElementById("blocksList");
+      blocksList.innerHTML = "";
+
+      const backendHard = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
+      const backendCond = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
+      const invalids = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+
+      const hardBlocks = backendHard.length ? backendHard : (desk.hardBlocks || []);
+      const conditions = backendCond.length ? backendCond : (desk.conditions || []);
+
+      if (hardBlocks.length){
+        hardBlocks.slice(0, 10).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
+      }
+      if (conditions.length){
+        conditions.slice(0, 12).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "EXECUTE_IF"));
+      }
+      if (!hardBlocks.length && !conditions.length){
+        addRow(blocksList, "Status", "No blocks or conditions returned.", "OK");
+      }
+      if (invalids.length){
+        invalids.slice(0, 10).forEach(x => addRow(blocksList, "INVALIDATION", fmt(x), "WARN"));
+      }
+
+      // Key Checks (structured market context if present)
+      const checksList = document.getElementById("checksList");
+      checksList.innerHTML = "";
+
+      const checks = [];
+      if (mc.structure) checks.push({ label:"Structure", detail: mc.structure, level: "" });
+      if (mc.liquidity) checks.push({ label:"Liquidity", detail: mc.liquidity, level: "" });
+      if (mc.momentum) checks.push({ label:"Momentum", detail: mc.momentum, level: "" });
+      if (mc.timeframe_alignment) checks.push({ label:"Timeframe Alignment", detail: mc.timeframe_alignment, level: "" });
+
+      if (!checks.length){
+        addRow(checksList, "Checks", "No structured checks returned. (Backend can optionally send market_context.* fields.)", "");
+      } else {
+        checks.forEach(it => addRow(checksList, it.label, fmt(it.detail), it.level));
+      }
+
+      // Signal
+      document.getElementById("signalBox").textContent = fmt(report.signal_input);
+
+      // Reasoning text (fallback to desk summary if missing)
+      const reasoning =
+        (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
+        : (typeof a.reasoning === "string" && a.reasoning.trim()) ? a.reasoning.trim()
+        : (Array.isArray(a.guidance) && a.guidance.length) ? ("Guidance:\n- " + a.guidance.slice(0, 12).join("\n- "))
+        : `${desk.why}\n\nAction:\n- ${desk.action}`;
+
+      document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned.";
+
+      // Save for share building / file naming
+      window.__fxco_copy = {
+        tier: tier,
+        decision: label,
+        score: Number.isFinite(score) ? score : "",
+        confidence: confidence,
+        pair: report.pair_type,
+        timeframe: report.timeframe,
+        direction: (sc.direction || a.bias || ""),
+        rr: (sc.rr || ""),
+        signal: report.signal_input,
+        reasoning: reasoning,
+        share_id: report.share_id || "",
+        share_url: report.share_url || ""
+      };
+
+      window.__fxco_report = report;
+    }
+
+    // Backend share loader (existing)
+    async function fetchSharedReport(shareId){
+      const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" }
+      });
+      if (!r.ok){
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `Failed to load share report (${r.status})`);
+      }
+      return await r.json();
+    }
+
+    // -------------------------
+    // Actions (CLEANED)
+    // -------------------------
+    document.getElementById("btnBack").addEventListener("click", () => history.back());
+    document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
+
+    // ✅ Share: prefer backend share_id, else generate client payload link (?p=...)
+    document.getElementById("btnShare").addEventListener("click", async () => {
+      const btn = document.getElementById("btnShare");
+      const old = btn.textContent;
+
+      try{
+        btn.textContent = "Sharing…";
+        btn.disabled = true;
+
+        const d = window.__fxco_copy || {};
+        const report = window.__fxco_report || null;
+
+        // 1) If backend share_id exists -> use /result.html?r=<id>
+        const shareId = (d.share_id || "").trim() || getQueryParam("r");
+        if (shareId){
+          const url = buildShareUrlFromId(shareId);
+
+          // native share on mobile
+          if (navigator.share){
+            try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
+          }
+
+          await navigator.clipboard.writeText(url);
+          toast("Share link copied ✓");
+          return;
+        }
+
+        // 2) No backend share id -> embed payload in URL (?p=...)
+        if (!report){
+          alert("No report loaded yet to share.");
+          return;
+        }
+
+        // Keep payload lean (avoid gigantic raw blobs)
+        const shareObj = {
+          pair_type: report.pair_type || "",
+          timeframe: report.timeframe || "",
+          signal_input: report.signal_input || "",
+          generated_at: report.generated_at || Date.now(),
+          analysis: report.analysis || {}
+        };
+
+        const json = JSON.stringify(shareObj);
+        const { payload, mode } = await compressToUrlSafe(json);
+        const url = buildShareUrlFromPayload(payload, mode);
+
+        // Save latest share payload locally
+        try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
+
+        if (navigator.share){
+          try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
+        }
+
+        await navigator.clipboard.writeText(url);
+        toast("Share link copied ✓");
+
+      } catch (e){
+        console.error(e);
+        alert(
+          "Could not share this report.\n\nIf the report text is very long, the URL may exceed limits.\nUse backend share IDs for long reports."
+        );
+      } finally {
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+
+    // ✅ PDF: reliable lib detection + restore UI even on failures
+    document.getElementById("btnPdf").addEventListener("click", async () => {
+      const btn = document.getElementById("btnPdf");
+      const old = btn.textContent;
+
+      const actions = document.querySelector(".topbar .actions");
+      const prevDisplay = actions ? actions.style.display : "";
+
+      try{
+        // Wait for libs (robust)
+        const html2canvasFn = window.html2canvas;
+        const jspdfNS = window.jspdf || window.jsPDF || null;
+        const jsPDFClass = jspdfNS?.jsPDF || window.jsPDF || null;
+
+        if (!html2canvasFn || !jsPDFClass){
+          alert("PDF tools not loaded yet. Please try again in 2 seconds.");
+          return;
+        }
+
+        btn.textContent = "Saving…";
+        btn.disabled = true;
+
+        // Hide action buttons temporarily
+        if (actions) actions.style.display = "none";
+
+        // Render report to canvas
+        const root = document.getElementById("reportRoot");
+        const canvas = await html2canvasFn(root, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollY: -window.scrollY
+        });
+
+        const imgData = canvas.toDataURL("image/png");
+
+        // A4 portrait
+        const pdf = new jsPDFClass({ orientation: "p", unit: "pt", format: "a4" });
+
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 8) {
+          position = position - pageHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight, undefined, "FAST");
+          heightLeft -= pageHeight;
+        }
+
+        const d = window.__fxco_copy || {};
+        const fname = `FXCO-Pilot_Report_${(d.pair || "PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
+        pdf.save(fname);
+
+        toast("PDF saved ✓");
+      } catch (e){
+        console.error(e);
+        alert("PDF save failed. If needed, use your browser Print → Save as PDF as a fallback.");
+      } finally {
+        if (actions) actions.style.display = prevDisplay;
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+
+    // -------------------------
+    // Init
+    // -------------------------
+    (function init(){
+      const shareId = getQueryParam("r");
+      const payload = getQueryParam("p");
+      const payloadMode = getQueryParam("pm") || "b64json";
+
+      // 1) ✅ Payload share mode (?p=...)
+      if (payload){
+        (async () => {
+          try{
+            const obj = await decompressFromUrlSafe(payload, payloadMode);
+            ensureLocalFallback(obj);
+            render(parseReport(obj));
+            toast("Loaded shared report");
+          } catch (e){
+            console.error(e);
+            alert("Failed to load shared report payload.\nIt may be corrupted or too long.");
+            // fallback to storage
+            const raw = getStoredReportRaw();
+            if (raw){
+              try{
+                const parsed = JSON.parse(raw);
+                ensureLocalFallback(parsed);
+                render(parseReport(parsed));
+              }catch{
+                render(parseReport(raw));
+              }
+              return;
+            }
+            const fallback = {
+              pair_type: "—",
+              timeframe: "—",
+              signal_input: "—",
+              generated_at: Date.now(),
+              analysis: {
+                confidence: 0,
+                strength: 0,
+                clarity: 0,
+                invalidation_warnings: [],
+                signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+                reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
+              }
+            };
+            render(parseReport(fallback));
+          }
+        })();
+        return;
+      }
+
+      // 2) Backend share id mode (?r=...)
+      if (shareId){
+        (async () => {
+          try{
+            const shared = await fetchSharedReport(shareId);
+            const payload = shared.report || shared.data || shared;
+            const parsed = parseReport(payload);
+
+            if (!parsed.share_id) parsed.share_id = shareId;
+
+            ensureLocalFallback(payload);
+            render(parsed);
+            toast("Loaded shared report");
+          } catch (e){
+            console.error(e);
+            alert(String(e && e.message ? e.message : e) || "Failed to load shared report.");
+            // fallback to storage
+            const raw = getStoredReportRaw();
+            if (raw){
+              try{
+                const parsed = JSON.parse(raw);
+                ensureLocalFallback(parsed);
+                render(parseReport(parsed));
+              }catch{
+                render(parseReport(raw));
+              }
+            } else {
+              const fallback = {
+                pair_type: "—",
+                timeframe: "—",
+                signal_input: "—",
+                generated_at: Date.now(),
+                analysis: {
+                  confidence: 0,
+                  strength: 0,
+                  clarity: 0,
+                  invalidation_warnings: [],
+                  signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+                  reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
+                }
+              };
+              render(parseReport(fallback));
+            }
+          }
+        })();
+        return;
+      }
+
+      // 3) Normal mode: use storage
+      const raw = getStoredReportRaw();
+
+      if (!raw){
+        const fallback = {
+          pair_type: "—",
+          timeframe: "—",
+          signal_input: "—",
+          generated_at: Date.now(),
+          analysis: {
+            confidence: 0,
+            strength: 0,
+            clarity: 0,
+            invalidation_warnings: [],
+            signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
+            reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
+          }
+        };
+        render(parseReport(fallback));
+        return;
+      }
+
+      try{
+        const parsed = JSON.parse(raw);
+        ensureLocalFallback(parsed);
+        render(parseReport(parsed));
+      } catch(e){
+        const parsed = parseReport(raw);
+        ensureLocalFallback(parsed);
+        render(parsed);
+      }
+    })();
+  </script>
+</body>
+</html>
+```
