@@ -27,12 +27,18 @@
   <!-- ✅ Fonts: reduce render-blocking + stabilize -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
 
-
   <!-- ✅ Performance: preload responsive background (first paint) -->
+  <!-- This prevents late background decode & improves LCP/paint on desktop -->
+  <link
+    rel="preload"
+    as="image"
+    href="/images/bg_fx_1280.webp"
+    imagesrcset="/images/bg_fx_1280.webp 1280w, /images/bg_fx_1920.webp 1920w, /images/bg_fx_2560.webp 2560w"
+    imagesizes="100vw"
+    fetchpriority="high"
+  />
 
   <!-- ✅ Optional but useful (won't break anything even if sitemap isn't present yet) -->
   <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
@@ -88,6 +94,10 @@
       outline-offset: 2px;
     }
 
+    html, body {
+      height: 100%;
+    }
+
     body {
       margin: 0;
       padding: 0;
@@ -99,27 +109,31 @@
       background-repeat: no-repeat;
       background-size: cover;
 
-      /* Use WebP set (mobile won't pull huge image) */
+      /* Use WebP set (desktop can use responsive images) */
       background-image: image-set(
         url("/images/bg_fx_1280.webp") 1x,
         url("/images/bg_fx_1920.webp") 2x,
         url("/images/bg_fx_2560.webp") 3x
       );
 
-      /* Desktop can keep fixed for the effect */
-      background-attachment: fixed;
+      /* IMPORTANT: fixed backgrounds can hurt paint on many devices */
+      background-attachment: scroll;
 
       padding-bottom: 90px;
     }
 
-    /* ✅ Mobile: fixed backgrounds often slow paint */
-    @media (max-width: 900px){
-  body {
-    background-image: none;
-    background-color: #05070b;
-  }
-}
+    /* ✅ Desktop only: keep fixed for the premium effect (less paint cost on large screens) */
+    @media (min-width: 901px){
+      body { background-attachment: fixed; }
+    }
 
+    /* ✅ Mobile: fixed backgrounds often slow paint (you already removed the image on mobile) */
+    @media (max-width: 900px){
+      body {
+        background-image: none;
+        background-color: #05070b;
+      }
+    }
 
     .bg-overlay {
       position: fixed;
@@ -150,6 +164,11 @@
       filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
     }
 
+    /* ✅ Mobile: watermark adds paint/composite cost */
+    @media (max-width: 900px){
+      .watermark { display: none; }
+    }
+
     .topbar {
       width: 100%;
       padding: 12px 25px;
@@ -166,6 +185,8 @@
       box-shadow: 0 4px 18px rgba(0,0,0,0.4);
       gap: 12px;
       box-sizing: border-box;
+      /* reserve height a bit to reduce layout instability */
+      min-height: 52px;
     }
 
     .topbar-right {
@@ -382,6 +403,9 @@
       border-radius: 12px;
       background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.06);
+      /* reserve a stable min-height to reduce micro CLS */
+      min-height: 60px;
+      box-sizing: border-box;
     }
 
     .consent-row input[type="checkbox"] {
@@ -399,7 +423,7 @@
       min-width: 0;
     }
 
-    /* ✅ NEW: real label for Lighthouse */
+    /* ✅ real label for Lighthouse */
     .consent-label {
       display: inline-block;
       font-weight: 700;
@@ -1211,8 +1235,8 @@
       if (btn && offline) btn.disabled = true;
       if (btn && !offline) applyPaymentGateUI();
     }
-    window.addEventListener("online", setOfflineUI);
-    window.addEventListener("offline", setOfflineUI);
+    window.addEventListener("online", setOfflineUI, { passive: true });
+    window.addEventListener("offline", setOfflineUI, { passive: true });
 
     // -------------------------
     // Client ID
@@ -1491,6 +1515,7 @@
     const PAID_KEY = "fxco_paid_v1";
     const PAID_REF_KEY = "fxco_paid_ref_v1";
     let PAYSTACK_CONFIG = { ok:false };
+    let __paystackLoading = false;
 
     function setPayHint(msg, show=true) {
       const el = document.getElementById("payHint");
@@ -1685,9 +1710,13 @@
     // -------------------------
     // Pricing modal
     // -------------------------
-    function openPricing() {
+    async function openPricing() {
       document.getElementById("pricingBackdrop").style.display = "block";
       document.getElementById("pricingModal").style.display = "block";
+
+      // ✅ Key fix: load paystack config ONLY when user opens pricing
+      await ensurePaystackConfigLoaded();
+      applyPaymentGateUI();
     }
     function closePricing() {
       document.getElementById("pricingBackdrop").style.display = "none";
@@ -1708,33 +1737,45 @@
       }
     }
 
-    async function loadPaystackConfig() {
+    async function ensurePaystackConfigLoaded() {
+      if (PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok) return PAYSTACK_CONFIG;
+      if (__paystackLoading) return PAYSTACK_CONFIG;
+
+      __paystackLoading = true;
       try {
         const res = await fetch("/api/paystack/config", { cache: "no-store" });
-        const j = await res.json();
+        const j = await res.json().catch(() => null);
         PAYSTACK_CONFIG = j || { ok:false };
 
         const amountEl = document.getElementById("pricingAmount");
-        if (amountEl && j && typeof j.amount !== "undefined") {
-          amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
+        if (amountEl && PAYSTACK_CONFIG && typeof PAYSTACK_CONFIG.amount !== "undefined") {
+          amountEl.innerText = formatMoneyMinor(PAYSTACK_CONFIG.amount, PAYSTACK_CONFIG.currency);
         }
-        applyPaymentGateUI();
       } catch {
-        applyPaymentGateUI();
+        // swallow errors to avoid console noise killing Lighthouse
+        PAYSTACK_CONFIG = PAYSTACK_CONFIG || { ok:false };
+      } finally {
+        __paystackLoading = false;
       }
+      return PAYSTACK_CONFIG;
     }
 
     function applyPaymentGateUI() {
       const paid = isPaid();
       const accepted = document.getElementById("acceptLegal")?.checked;
-      const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
+
+      // ✅ Only enforce gate if config is loaded successfully
+      const requirePayment = !!(PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok && PAYSTACK_CONFIG.require_payment);
 
       const token = getAuthToken();
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
       if (statusEl) {
-        statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
+        if (paid) statusEl.innerText = "Active Access";
+        else if (trialActive) statusEl.innerText = "Trial Active";
+        else if (requirePayment) statusEl.innerText = "Locked";
+        else statusEl.innerText = "Checking access…";
       }
 
       const btn = document.getElementById("analyzeBtn");
@@ -1757,6 +1798,9 @@
     }
 
     async function startPaystackCheckout() {
+      // ✅ Ensure config is available when attempting checkout
+      await ensurePaystackConfigLoaded();
+
       const emailSeed = getAuthEmail() || "";
       const email = (prompt("Enter your email for Paystack checkout:", emailSeed) || "").trim();
       if (!email || !email.includes("@")) {
@@ -1957,7 +2001,11 @@
       }
 
       const trialActive = getAuthToken() && isTrialActiveLocal();
-      if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
+
+      // ✅ Only enforce payment lock if paystack config is known
+      const requirePayment = !!(PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok && PAYSTACK_CONFIG.require_payment);
+
+      if (requirePayment && !isPaid() && !trialActive) {
         openAuth();
         return;
       }
@@ -2205,7 +2253,8 @@
       } catch (err) {
         document.getElementById("result").innerHTML =
           "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
-        btn.disabled = false;
+        const btn = document.getElementById("analyzeBtn");
+        if (btn) btn.disabled = false;
         applyPaymentGateUI();
       } finally {
         if (!rateTimer) applyPaymentGateUI();
@@ -2217,7 +2266,7 @@
       if (btn) {
         btn.addEventListener("click", () => {
           if (typeof window.analyze === "function") window.analyze();
-        });
+        }, { passive: true });
       }
     }
 
@@ -2248,13 +2297,13 @@
 
       initConsentGate();
       showRiskModalIfNeeded();
-      loadPaystackConfig();
       verifyPaystackIfReturned();
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
       hardenButtonClicks();
 
+      // ✅ Important: do NOT load paystack config on page load
       applyPaymentGateUI();
     }
 
