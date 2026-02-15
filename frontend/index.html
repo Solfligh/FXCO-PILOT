@@ -8,8 +8,8 @@
 
   <!-- ✅ SEO -->
   <meta name="description" content="FX Co-Pilot is an AI trade validator. Upload a chart or paste a signal—get structure, liquidity context, risk checks, and a disciplined verdict before you enter." />
-  <meta name="robots" content="index,follow" />
   <link rel="canonical" href="https://fxco-pilot.solflightech.org/" />
+  <meta name="robots" content="index,follow" />
 
   <!-- ✅ Open Graph -->
   <meta property="og:type" content="website" />
@@ -24,13 +24,16 @@
   <meta name="twitter:description" content="Validate your trade before you enter. Structure + liquidity context, risk checks, and a disciplined verdict." />
   <meta name="twitter:image" content="https://fxco-pilot.solflightech.org/apple-touch-icon.png" />
 
-  <!-- ✅ Fonts -->
+  <!-- ✅ Fonts: reduce render-blocking + stabilize -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- ✅ Performance: preload background (first paint) -->
+  <!-- ✅ Performance: preload responsive background (first paint) -->
   <link rel="preload" as="image" href="/images/bg_fx_1280.webp" fetchpriority="high">
+
+  <!-- ✅ Optional but useful (won't break anything even if sitemap isn't present yet) -->
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
   <!-- PWA / Install -->
   <meta name="theme-color" content="#05070b" />
@@ -81,12 +84,6 @@
     :focus-visible {
       outline: 3px solid rgba(147,197,253,0.65);
       outline-offset: 2px;
-    }
-
-    /* ✅ Reduced motion support */
-    @media (prefers-reduced-motion: reduce) {
-      * { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
-      .topbtn:hover, .btn:hover { transform: none !important; }
     }
 
     body {
@@ -196,17 +193,20 @@
       background: rgba(251,191,36,0.14);
       color: #fff3c4;
     }
+
     .topbtn.install {
       border: 1px solid rgba(147,197,253,0.35);
       background: rgba(147,197,253,0.12);
       color: #dbeafe;
     }
+
     .topbtn.ok {
       border: 1px solid rgba(34,197,94,0.30);
       background: rgba(34,197,94,0.12);
       color: #bbf7d0;
       cursor: default;
     }
+
     .topbtn.bad {
       border: 1px solid rgba(239,68,68,0.30);
       background: rgba(239,68,68,0.12);
@@ -383,29 +383,37 @@
       width: 18px;
       height: 18px;
       accent-color: #00d46a;
+      flex: 0 0 auto;
     }
 
     .consent-text {
       color: #cbd5e1;
       font-size: 12px;
       line-height: 1.55;
+      min-width: 0;
     }
 
-    /* ✅ Replace href="#" links with real buttons styled like links */
-    .linkbtn {
-      appearance: none;
-      border: none;
-      background: transparent;
-      padding: 0;
-      margin: 0;
+    /* ✅ NEW: real label for Lighthouse */
+    .consent-label {
+      display: inline-block;
+      font-weight: 700;
+      color: #e5e7eb;
+      margin-bottom: 6px;
+    }
+
+    .consent-links {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .consent-links a {
       color: #93c5fd;
       text-decoration: none;
-      font-weight: 700;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: inherit;
+      font-weight: 800;
     }
-    .linkbtn:hover { text-decoration: underline; }
+    .consent-links a:hover { text-decoration: underline; }
 
     .consent-hint {
       margin-top: 6px;
@@ -441,6 +449,13 @@
       opacity: 0.95;
     }
 
+    .fx-legal a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .fx-legal a:hover { text-decoration: underline; }
     .fx-legal .sep { color: rgba(255,255,255,0.25); }
 
     .legal-backdrop {
@@ -490,6 +505,7 @@
       padding: 8px 12px;
       font-weight: 800;
     }
+
     .legal-close:hover { background: rgba(255,255,255,0.12); }
 
     .legal-modal-content {
@@ -513,6 +529,7 @@
       border-radius: 14px;
       margin: 12px 0;
     }
+
     .legal-callout strong { color: #fbbf24; }
 
     .fx-ul {
@@ -541,7 +558,10 @@
       font-weight: 900;
       color: #ffffff;
     }
-    .per { font-size: 12px; opacity: 0.85; }
+    .per {
+      font-size: 12px;
+      opacity: 0.85;
+    }
     .pill {
       display:inline-flex;
       gap:8px;
@@ -666,16 +686,28 @@
       color: rgba(226,232,240,0.95);
     }
 
-    .dec-ok{ background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.25); }
+    .dec-ok{
+      background: rgba(34,197,94,0.14);
+      border-color: rgba(34,197,94,0.25);
+    }
     .dec-ok .decision-icon{ background: rgba(34,197,94,0.22); color: #bbf7d0; }
 
-    .dec-cond{ background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.26); }
+    .dec-cond{
+      background: rgba(245,158,11,0.14);
+      border-color: rgba(245,158,11,0.26);
+    }
     .dec-cond .decision-icon{ background: rgba(245,158,11,0.20); color: #fde68a; }
 
-    .dec-wait{ background: rgba(148,163,184,0.12); border-color: rgba(148,163,184,0.22); }
+    .dec-wait{
+      background: rgba(148,163,184,0.12);
+      border-color: rgba(148,163,184,0.22);
+    }
     .dec-wait .decision-icon{ background: rgba(148,163,184,0.18); color: #e2e8f0; }
 
-    .dec-bad{ background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.24); }
+    .dec-bad{
+      background: rgba(239,68,68,0.12);
+      border-color: rgba(239,68,68,0.24);
+    }
     .dec-bad .decision-icon{ background: rgba(239,68,68,0.16); color: #fecaca; }
 
     .preview-grid{
@@ -762,8 +794,8 @@
     </div>
   </noscript>
 
-  <div class="bg-overlay" aria-hidden="true"></div>
-  <div class="watermark" aria-hidden="true">FX CO-PILOT • AI TRADE VALIDATOR</div>
+  <div class="bg-overlay"></div>
+  <div class="watermark">FX CO-PILOT • AI TRADE VALIDATOR</div>
 
   <header class="topbar" role="banner" aria-label="Top bar">
     <div id="clock" aria-live="polite">Loading time...</div>
@@ -775,15 +807,14 @@
     </div>
 
     <div class="topbar-right" aria-label="Top actions">
-      <button id="installAppBtn" type="button" class="topbtn install" onclick="installApp()" style="display:none;">Install App</button>
+      <button id="installAppBtn" class="topbtn install" onclick="installApp()" style="display:none;" aria-label="Install app">Install App</button>
 
-      <button id="viewReportBtn" type="button" class="topbtn primary" onclick="goToLastReport()" style="display:none;">View Report</button>
-      <button id="trialBtn" type="button" class="topbtn warn" onclick="openAuth()">Start Free Trial</button>
-      <button type="button" class="topbtn" onclick="openPricing()">Pricing</button>
+      <button id="viewReportBtn" class="topbtn primary" onclick="goToLastReport()" style="display:none;" aria-label="View last report">View Report</button>
+      <button id="trialBtn" class="topbtn warn" onclick="openAuth()" aria-label="Start free trial">Start Free Trial</button>
+      <button class="topbtn" onclick="openPricing()" aria-label="Open pricing">Pricing</button>
     </div>
   </header>
 
-  <!-- ✅ Offline banner -->
   <div id="offlineBanner" class="offline-banner" role="status" aria-live="polite">
     You’re offline. Analysis and payments may not work until you reconnect.
   </div>
@@ -792,11 +823,11 @@
     <div class="section">
       <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
       <p style="color:#cfd3d8; margin-bottom:25px;">
-        Upload a chart or paste a signal. AI analyzes structure, liquidity &amp; probabilities.
+        Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
       </p>
 
       <label for="pairType">Pair Type</label>
-      <select id="pairType" name="pairType">
+      <select id="pairType">
         <option>Forex</option>
         <option>Gold</option>
         <option>Crypto</option>
@@ -804,30 +835,38 @@
       </select>
 
       <label for="timeframe">Timeframe Mode</label>
-      <select id="timeframe" name="timeframe">
+      <select id="timeframe">
         <option>Scalp</option>
         <option>Intraday</option>
         <option>Swing</option>
       </select>
 
       <label for="chart">Chart (optional)</label>
-      <input type="file" id="chart" name="chart" accept="image/*">
+      <input type="file" id="chart" accept="image/*" />
 
       <label for="signal">Your signal</label>
-      <textarea id="signal" name="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
+      <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
+      <!-- ✅ FIX: real label associated to checkbox (Lighthouse a11y 100) -->
       <div class="consent-row">
-        <input type="checkbox" id="acceptLegal" name="acceptLegal" />
-        <div class="consent-text" id="consentText">
-          I accept the
-          <button type="button" class="linkbtn" onclick="openLegal('terms')">Terms</button>
-          and
-          <button type="button" class="linkbtn" onclick="openLegal('privacy')">Privacy Policy</button>.
-          <div id="consentHint" class="consent-hint">Please accept Terms &amp; Privacy to enable analysis.</div>
+        <input
+          type="checkbox"
+          id="acceptLegal"
+          name="acceptLegal"
+          aria-describedby="consentHint"
+        />
+        <div class="consent-text">
+          <label for="acceptLegal" class="consent-label">I accept the Terms and Privacy Policy.</label>
+          <div class="consent-links" aria-label="Terms and privacy links">
+            <a href="#" onclick="openLegal('terms');return false;">Terms</a>
+            <span style="opacity:0.55;">•</span>
+            <a href="#" onclick="openLegal('privacy');return false;">Privacy Policy</a>
+          </div>
+          <div id="consentHint" class="consent-hint">Please accept Terms & Privacy to enable analysis.</div>
         </div>
       </div>
 
-      <button id="analyzeBtn" type="button" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
+      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
       <div id="rateHint" class="rate-hint" role="status" aria-live="polite"></div>
       <div id="payHint" class="rate-hint" style="display:none;" role="status" aria-live="polite"></div>
     </div>
@@ -861,28 +900,28 @@
     </p>
 
     <div class="fx-legal" aria-label="Legal links">
-      <button type="button" class="linkbtn" onclick="openLegal('terms')">Terms</button>
-      <span class="sep" aria-hidden="true">•</span>
-      <button type="button" class="linkbtn" onclick="openLegal('privacy')">Privacy</button>
+      <a href="#" onclick="openLegal('terms');return false;">Terms</a>
+      <span class="sep">•</span>
+      <a href="#" onclick="openLegal('privacy');return false;">Privacy</a>
     </div>
   </footer>
 
   <!-- Legal modal -->
-  <div id="legalBackdrop" class="legal-backdrop" aria-hidden="true"></div>
-  <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle" aria-describedby="legalContent" tabindex="-1">
+  <div id="legalBackdrop" class="legal-backdrop"></div>
+  <div id="legalModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="legalTitle">
     <div class="legal-modal-header">
       <div id="legalTitle" class="legal-modal-title">Legal</div>
-      <button id="legalCloseBtn" type="button" class="legal-close" onclick="closeLegal()">Close</button>
+      <button class="legal-close" onclick="closeLegal()" aria-label="Close legal modal">Close</button>
     </div>
     <div id="legalContent" class="legal-modal-content"></div>
   </div>
 
   <!-- Risk modal -->
-  <div id="riskBackdrop" class="legal-backdrop" aria-hidden="true"></div>
-  <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle" tabindex="-1">
+  <div id="riskBackdrop" class="legal-backdrop"></div>
+  <div id="riskModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="riskTitle">
     <div class="legal-modal-header">
       <div id="riskTitle" class="legal-modal-title">Risk Warning</div>
-      <button id="riskOkBtn" type="button" class="legal-close" onclick="acknowledgeRisk()">I Understand</button>
+      <button class="legal-close" onclick="acknowledgeRisk()" aria-label="Acknowledge risk and continue">I Understand</button>
     </div>
 
     <div class="legal-modal-content">
@@ -913,11 +952,11 @@
   </div>
 
   <!-- Pricing modal -->
-  <div id="pricingBackdrop" class="legal-backdrop" aria-hidden="true"></div>
-  <div id="pricingModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="pricingTitle" tabindex="-1">
+  <div id="pricingBackdrop" class="legal-backdrop"></div>
+  <div id="pricingModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="pricingTitle">
     <div class="legal-modal-header">
       <div id="pricingTitle" class="legal-modal-title">Pricing</div>
-      <button type="button" class="legal-close" onclick="closePricing()">Close</button>
+      <button class="legal-close" onclick="closePricing()" aria-label="Close pricing modal">Close</button>
     </div>
 
     <div class="legal-modal-content">
@@ -944,7 +983,7 @@
           <li>History of your recent analyses</li>
         </ul>
 
-        <button type="button" class="btn" style="margin-top:14px;" onclick="startPaystackCheckout()">Pay with Paystack</button>
+        <button class="btn" style="margin-top:14px;" onclick="startPaystackCheckout()" aria-label="Pay with Paystack">Pay with Paystack</button>
         <p class="small muted" style="margin-top:10px;">
           After payment, you’ll be returned here automatically and your access will unlock.
         </p>
@@ -953,11 +992,11 @@
   </div>
 
   <!-- Auth (OTP) modal -->
-  <div id="authBackdrop" class="legal-backdrop" aria-hidden="true"></div>
-  <div id="authModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle" tabindex="-1">
+  <div id="authBackdrop" class="legal-backdrop"></div>
+  <div id="authModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <div class="legal-modal-header">
       <div id="authTitle" class="legal-modal-title">Start Free Trial</div>
-      <button type="button" class="legal-close" onclick="closeAuth()">Close</button>
+      <button class="legal-close" onclick="closeAuth()" aria-label="Close start free trial modal">Close</button>
     </div>
 
     <div class="legal-modal-content">
@@ -968,21 +1007,21 @@
       </div>
 
       <label for="authEmail">Email</label>
-      <input type="email" id="authEmail" name="authEmail" placeholder="you@example.com" autocomplete="email" />
+      <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
 
       <div class="auth-row">
-        <button type="button" class="topbtn primary" onclick="authSendCode()">Send code</button>
-        <button type="button" class="topbtn" onclick="authPasteSavedEmail()">Use saved</button>
+        <button class="topbtn primary" onclick="authSendCode()" aria-label="Send verification code">Send code</button>
+        <button class="topbtn" onclick="authPasteSavedEmail()" aria-label="Use saved email">Use saved</button>
       </div>
 
       <div style="height:10px"></div>
 
       <label for="authCode">6-digit code</label>
-      <input type="text" id="authCode" name="authCode" placeholder="123456" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+      <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
 
       <div class="auth-row">
-        <button type="button" class="topbtn primary" onclick="authVerifyCode()">Verify &amp; Start Trial</button>
-        <button type="button" class="topbtn" onclick="authLogout()">Sign out</button>
+        <button class="topbtn primary" onclick="authVerifyCode()" aria-label="Verify code and start trial">Verify & Start Trial</button>
+        <button class="topbtn" onclick="authLogout()" aria-label="Sign out">Sign out</button>
       </div>
 
       <div id="authStatus" class="auth-status" role="status" aria-live="polite"></div>
@@ -994,19 +1033,19 @@
   </div>
 
   <!-- ✅ Desk Verdict Preview -->
-  <div id="previewBackdrop" class="preview-backdrop" aria-hidden="true"></div>
-  <div id="previewModal" class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" tabindex="-1">
+  <div id="previewBackdrop" class="preview-backdrop"></div>
+  <div id="previewModal" class="preview-modal" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
     <div class="preview-head">
       <div class="preview-title">
         <b id="previewTitle">Desk Verdict Preview</b>
         <span id="previewMeta">—</span>
       </div>
-      <button type="button" class="legal-close" onclick="closePreview()">Close</button>
+      <button class="legal-close" onclick="closePreview()" aria-label="Close preview">Close</button>
     </div>
 
     <div class="preview-body">
       <div id="previewBanner" class="decision-banner dec-wait">
-        <div class="decision-icon" id="previewIcon" aria-hidden="true">⏸</div>
+        <div class="decision-icon" id="previewIcon">⏸</div>
         <div class="decision-text">
           <b id="previewTier">WAIT (NO EDGE YET)</b>
           <p id="previewWhy">Loading…</p>
@@ -1037,8 +1076,8 @@
       </div>
 
       <div class="preview-actions">
-        <button type="button" class="topbtn" onclick="closePreview()">Stay Here</button>
-        <button type="button" class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
+        <button class="topbtn" onclick="closePreview()" aria-label="Close preview and stay here">Stay Here</button>
+        <button class="topbtn primary" onclick="openFullReport()" aria-label="Open full report">Open Full Report</button>
       </div>
 
       <div class="small muted" style="margin-top:10px; color: rgba(203,213,225,0.85);">
@@ -1048,66 +1087,25 @@
   </div>
 
   <!-- ✅ iOS Install Tip -->
-  <div id="iosInstallTip" class="ios-tip" role="dialog" aria-modal="true" aria-label="Install instructions for iOS">
+  <div id="iosInstallTip" class="ios-tip">
     <div style="font-weight:900;margin-bottom:4px;">Install FXCO-PILOT on iPhone</div>
     <div style="font-size:12px;line-height:1.55;opacity:0.95;">
       Tap <b>Share</b> → <b>Add to Home Screen</b>.
     </div>
     <div style="margin-top:10px;display:flex;justify-content:flex-end;">
-      <button type="button" class="topbtn" onclick="hideIosTip()">Got it</button>
+      <button class="topbtn" onclick="hideIosTip()" aria-label="Hide iOS install tip">Got it</button>
     </div>
   </div>
 
   <script>
     // -------------------------
-    // Simple focus helper for dialogs
-    // -------------------------
-    let __lastFocus = null;
-    function focusFirst(el) {
-      if (!el) return;
-      const focusable = el.querySelector('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])');
-      if (focusable) focusable.focus();
-      else el.focus();
-    }
-
-    function showModal(backdropId, modalId) {
-      const b = document.getElementById(backdropId);
-      const m = document.getElementById(modalId);
-      if (!b || !m) return;
-
-      __lastFocus = document.activeElement;
-
-      b.style.display = "block";
-      m.style.display = "block";
-      b.setAttribute("aria-hidden", "false");
-
-      document.body.style.overflow = "hidden";
-      focusFirst(m);
-    }
-
-    function hideModal(backdropId, modalId) {
-      const b = document.getElementById(backdropId);
-      const m = document.getElementById(modalId);
-      if (!b || !m) return;
-
-      b.style.display = "none";
-      m.style.display = "none";
-      b.setAttribute("aria-hidden", "true");
-
-      document.body.style.overflow = "";
-
-      if (__lastFocus && typeof __lastFocus.focus === "function") {
-        __lastFocus.focus();
-      }
-      __lastFocus = null;
-    }
-
-    // -------------------------
     // PWA Install + Service Worker
     // -------------------------
     let __deferredPrompt = null;
 
-    function isIos() { return /iphone|ipad|ipod/i.test(navigator.userAgent || ""); }
+    function isIos() {
+      return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    }
     function isSafari() {
       const ua = (navigator.userAgent || "").toLowerCase();
       return ua.includes("safari") && !ua.includes("chrome") && !ua.includes("crios") && !ua.includes("fxios");
@@ -1179,15 +1177,9 @@
     // -------------------------
     function updateClock() {
       const now = new Date();
-      const clock = document.getElementById("clock");
-      if (clock) clock.innerText = now.toUTCString().replace("GMT", "UTC");
-
+      document.getElementById("clock").innerText = now.toUTCString().replace("GMT", "UTC");
       const hour = now.getUTCHours();
-      function setStatus(id, open) {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.className = open ? "open" : "closed";
-      }
+      function setStatus(id, open) { document.getElementById(id).className = open ? "open" : "closed"; }
       setStatus("london", hour >= 7 && hour < 16);
       setStatus("newyork", hour >= 12 && hour < 21);
       setStatus("tokyo", hour >= 0 && hour < 9);
@@ -1244,7 +1236,9 @@
     function hasLastReport() {
       try { return !!sessionStorage.getItem(REPORT_KEY); } catch { return false; }
     }
-    function goToLastReport() { window.location.href = "/result.html"; }
+    function goToLastReport() {
+      window.location.href = "/result.html";
+    }
     function updateViewReportButton() {
       const btn = document.getElementById("viewReportBtn");
       if (!btn) return;
@@ -1382,13 +1376,15 @@
     }
 
     function openAuth() {
+      document.getElementById("authBackdrop").style.display = "block";
+      document.getElementById("authModal").style.display = "block";
       const email = getAuthEmail();
       if (email) document.getElementById("authEmail").value = email;
       setAuthStatus("", "");
-      showModal("authBackdrop", "authModal");
     }
     function closeAuth() {
-      hideModal("authBackdrop", "authModal");
+      document.getElementById("authBackdrop").style.display = "none";
+      document.getElementById("authModal").style.display = "none";
       setAuthStatus("", "");
     }
 
@@ -1602,8 +1598,11 @@
     // Legal modal
     // -------------------------
     function openLegal(which) {
+      const backdrop = document.getElementById("legalBackdrop");
+      const modal = document.getElementById("legalModal");
       const title = document.getElementById("legalTitle");
       const content = document.getElementById("legalContent");
+
       const updated = new Date().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
       const termsHtml = `
@@ -1624,7 +1623,7 @@
         <h2>2) No Financial Advice</h2>
         <p>The Service is not a broker, dealer, or financial advisor. Outputs may be inaccurate or unsuitable. You are solely responsible for your trading decisions and outcomes.</p>
 
-        <h2>3) AI Outputs &amp; Limitations</h2>
+        <h2>3) AI Outputs & Limitations</h2>
         <p>AI outputs are probabilistic. Any “confidence” score is an estimate, not a guarantee.</p>
       `;
 
@@ -1644,12 +1643,14 @@
         content.innerHTML = privacyHtml;
       }
 
-      showModal("legalBackdrop", "legalModal");
-      const closeBtn = document.getElementById("legalCloseBtn");
-      if (closeBtn) closeBtn.focus();
+      backdrop.style.display = "block";
+      modal.style.display = "block";
     }
 
-    function closeLegal() { hideModal("legalBackdrop", "legalModal"); }
+    function closeLegal() {
+      document.getElementById("legalBackdrop").style.display = "none";
+      document.getElementById("legalModal").style.display = "none";
+    }
 
     // -------------------------
     // Risk modal
@@ -1658,22 +1659,34 @@
       try {
         const seen = localStorage.getItem("fxco_risk_ack_v1");
         if (seen === "1") return;
-      } catch {}
-      showModal("riskBackdrop", "riskModal");
-      const ok = document.getElementById("riskOkBtn");
-      if (ok) ok.focus();
+        document.getElementById("riskBackdrop").style.display = "block";
+        document.getElementById("riskModal").style.display = "block";
+        document.body.style.overflow = "hidden";
+      } catch {
+        document.getElementById("riskBackdrop").style.display = "block";
+        document.getElementById("riskModal").style.display = "block";
+        document.body.style.overflow = "hidden";
+      }
     }
 
     function acknowledgeRisk() {
       try { localStorage.setItem("fxco_risk_ack_v1", "1"); } catch {}
-      hideModal("riskBackdrop", "riskModal");
+      document.getElementById("riskBackdrop").style.display = "none";
+      document.getElementById("riskModal").style.display = "none";
+      document.body.style.overflow = "";
     }
 
     // -------------------------
     // Pricing modal
     // -------------------------
-    function openPricing() { showModal("pricingBackdrop", "pricingModal"); }
-    function closePricing() { hideModal("pricingBackdrop", "pricingModal"); }
+    function openPricing() {
+      document.getElementById("pricingBackdrop").style.display = "block";
+      document.getElementById("pricingModal").style.display = "block";
+    }
+    function closePricing() {
+      document.getElementById("pricingBackdrop").style.display = "none";
+      document.getElementById("pricingModal").style.display = "none";
+    }
 
     // -------------------------
     // Paystack
@@ -1722,7 +1735,10 @@
       if (!btn) return;
       if (rateTimer) return;
 
-      if (!navigator.onLine) { btn.disabled = true; return; }
+      if (!navigator.onLine) {
+        btn.disabled = true;
+        return;
+      }
 
       if (requirePayment && !paid && !trialActive) {
         btn.disabled = true;
@@ -1905,8 +1921,16 @@
     // -------------------------
     // Preview modal
     // -------------------------
-    function openPreview() { showModal("previewBackdrop", "previewModal"); }
-    function closePreview() { hideModal("previewBackdrop", "previewModal"); }
+    function openPreview() {
+      document.getElementById("previewBackdrop").style.display = "block";
+      document.getElementById("previewModal").style.display = "block";
+      document.body.style.overflow = "hidden";
+    }
+    function closePreview() {
+      document.getElementById("previewBackdrop").style.display = "none";
+      document.getElementById("previewModal").style.display = "none";
+      document.body.style.overflow = "";
+    }
     function openFullReport(){
       closePreview();
       window.location.href = "/result.html";
@@ -2117,9 +2141,15 @@
             ` : ""}
 
             <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
-              <button type="button" class="topbtn" onclick="openPreview()">View Preview</button>
-              <button type="button" class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
+              <button class="topbtn" onclick="openPreview()">View Preview</button>
+              <button class="topbtn primary" onclick="openFullReport()">Open Full Report</button>
             </div>
+
+            ${clientShareUrl ? `
+              <div style="margin-top:10px;opacity:0.85;font-size:12px;line-height:1.5;">
+                <b>Share link ready:</b> <span style="opacity:0.95;">Use the report page → “Copy Share Link”.</span>
+              </div>
+            ` : ""}
           </div>
         `;
 
@@ -2176,13 +2206,21 @@
       }
     }
 
+    function hardenButtonClicks() {
+      const btn = document.getElementById("analyzeBtn");
+      if (btn) {
+        btn.addEventListener("click", () => {
+          if (typeof window.analyze === "function") window.analyze();
+        });
+      }
+    }
+
     // -------------------------
     // DOM init
     // -------------------------
     function initAll() {
       registerServiceWorker();
 
-      // iOS: show install button as a tip trigger
       if (isIos() && isSafari() && !isInStandalone()) {
         showInstallButton(true);
       }
@@ -2196,8 +2234,6 @@
       document.getElementById("legalBackdrop")?.addEventListener("click", closeLegal);
       document.getElementById("pricingBackdrop")?.addEventListener("click", closePricing);
       document.getElementById("previewBackdrop")?.addEventListener("click", closePreview);
-
-      // Risk backdrop blocks close until user acknowledges
       document.getElementById("riskBackdrop")?.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
 
       document.addEventListener("keydown", (e) => {
@@ -2211,6 +2247,8 @@
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
+      hardenButtonClicks();
+
       applyPaymentGateUI();
     }
 
