@@ -1,4 +1,4 @@
-<!-- index.html (FULL FILE • optimized: responsive background + a11y + SEO; no features removed) -->
+<!-- index.html (FULL FILE • perf: non-blocking fonts + CLS fixes + SEO/a11y; no features removed) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,26 +24,7 @@
   <meta name="twitter:description" content="Validate your trade before you enter. Structure + liquidity context, risk checks, and a disciplined verdict." />
   <meta name="twitter:image" content="https://fxco-pilot.solflightech.org/apple-touch-icon.png" />
 
-  <!-- ✅ Fonts: reduce render-blocking + stabilize -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
-
-  <!-- ✅ Performance: preload responsive background (first paint) -->
-  <!-- This prevents late background decode & improves LCP/paint on desktop -->
-  <link
-    rel="preload"
-    as="image"
-    href="/images/bg_fx_1280.webp"
-    imagesrcset="/images/bg_fx_1280.webp 1280w, /images/bg_fx_1920.webp 1920w, /images/bg_fx_2560.webp 2560w"
-    imagesizes="100vw"
-    fetchpriority="high"
-  />
-
-  <!-- ✅ Optional but useful (won't break anything even if sitemap isn't present yet) -->
-  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
-
-  <!-- PWA / Install -->
+  <!-- ✅ PWA / Install -->
   <meta name="theme-color" content="#05070b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -52,6 +33,25 @@
   <link rel="icon" href="/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.webmanifest">
+
+  <!-- ✅ Sitemap -->
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+  <!-- ✅ Fonts: FIX render-blocking + reduce CLS
+       - preconnect once
+       - preload stylesheet and swap rel onload (non render-blocking)
+       - display=optional reduces late font swap => reduces CLS -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    rel="preload"
+    as="style"
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=optional"
+    onload="this.onload=null;this.rel='stylesheet'"
+  />
+  <noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=optional">
+  </noscript>
 
   <!-- ✅ Structured data (SEO) -->
   <script type="application/ld+json">
@@ -94,14 +94,18 @@
       outline-offset: 2px;
     }
 
-    html, body {
-      height: 100%;
-    }
-
+    /* ✅ CLS guard: stabilize typography even if webfont arrives later */
+    html { text-size-adjust: 100%; }
     body {
       margin: 0;
       padding: 0;
-      font-family: "Poppins", sans-serif;
+
+      /* Fallback stack first (fast paint). Poppins is added when available without shifting layout hard. */
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Poppins", sans-serif;
+
+      /* CLS guard: stable baseline */
+      line-height: 1.45;
+      font-size: 14px;
 
       /* ✅ Responsive background instead of 4K PNG */
       background-color: #05070b;
@@ -109,29 +113,25 @@
       background-repeat: no-repeat;
       background-size: cover;
 
-      /* Use WebP set (desktop can use responsive images) */
+      /* Use WebP set (desktop can pick larger) */
       background-image: image-set(
         url("/images/bg_fx_1280.webp") 1x,
         url("/images/bg_fx_1920.webp") 2x,
         url("/images/bg_fx_2560.webp") 3x
       );
 
-      /* IMPORTANT: fixed backgrounds can hurt paint on many devices */
-      background-attachment: scroll;
+      /* Desktop effect */
+      background-attachment: fixed;
 
       padding-bottom: 90px;
     }
 
-    /* ✅ Desktop only: keep fixed for the premium effect (less paint cost on large screens) */
-    @media (min-width: 901px){
-      body { background-attachment: fixed; }
-    }
-
-    /* ✅ Mobile: fixed backgrounds often slow paint (you already removed the image on mobile) */
+    /* ✅ Mobile: fixed backgrounds often slow paint */
     @media (max-width: 900px){
       body {
         background-image: none;
         background-color: #05070b;
+        background-attachment: scroll;
       }
     }
 
@@ -154,7 +154,6 @@
       user-select: none;
       pointer-events: none;
       z-index: 999;
-      font-family: "Poppins", sans-serif;
 
       background: linear-gradient(to right, rgba(255,255,255,0.18), rgba(255,255,255,0.28), rgba(255,255,255,0.18));
       -webkit-background-clip: text;
@@ -164,13 +163,10 @@
       filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
     }
 
-    /* ✅ Mobile: watermark adds paint/composite cost */
-    @media (max-width: 900px){
-      .watermark { display: none; }
-    }
-
+    /* ✅ CLS guard: fixed topbar height so font swaps don’t move layout */
     .topbar {
       width: 100%;
+      min-height: 52px; /* stable */
       padding: 12px 25px;
       background: rgba(0,0,0,0.55);
       backdrop-filter: blur(8px);
@@ -185,8 +181,6 @@
       box-shadow: 0 4px 18px rgba(0,0,0,0.4);
       gap: 12px;
       box-sizing: border-box;
-      /* reserve height a bit to reduce layout instability */
-      min-height: 52px;
     }
 
     .topbar-right {
@@ -208,6 +202,7 @@
       cursor: pointer;
       transition: 0.15s;
       white-space: nowrap;
+      line-height: 1; /* CLS guard */
     }
     .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
     .topbtn.primary {
@@ -220,20 +215,17 @@
       background: rgba(251,191,36,0.14);
       color: #fff3c4;
     }
-
     .topbtn.install {
       border: 1px solid rgba(147,197,253,0.35);
       background: rgba(147,197,253,0.12);
       color: #dbeafe;
     }
-
     .topbtn.ok {
       border: 1px solid rgba(34,197,94,0.30);
       background: rgba(34,197,94,0.12);
       color: #bbf7d0;
       cursor: default;
     }
-
     .topbtn.bad {
       border: 1px solid rgba(239,68,68,0.30);
       background: rgba(239,68,68,0.12);
@@ -245,8 +237,9 @@
       margin-right: 20px;
       padding: 4px 10px;
       border-radius: 6px;
-      font-weight: 500;
+      font-weight: 600;
       white-space: nowrap;
+      line-height: 1.1;
     }
 
     .open { background: #00d46a22; color: #00d46a; }
@@ -290,15 +283,17 @@
       color: #ffffff;
       font-weight: 700;
       margin-bottom: 5px;
+      line-height: 1.1; /* CLS guard */
     }
 
     .badge {
       background: #00d46a;
       padding: 4px 10px;
-      font-weight: 600;
+      font-weight: 700;
       color: black;
       font-size: 12px;
       border-radius: 8px;
+      line-height: 1; /* CLS guard */
     }
 
     .section { flex: 1; }
@@ -308,6 +303,7 @@
       margin-bottom: 6px;
       font-size: 14px;
       display: block;
+      line-height: 1.2;
     }
 
     select, textarea, input[type="file"], input[type="email"], input[type="text"] {
@@ -321,9 +317,17 @@
       color: #cfd3d8;
       font-size: 14px;
       box-sizing: border-box;
+      font-family: inherit;
+      line-height: 1.35; /* CLS guard */
     }
 
-    textarea { height: 110px; resize: none; }
+    /* ✅ CLS guard: fixed textarea height + stable line box */
+    textarea {
+      height: 110px;
+      min-height: 110px;
+      max-height: 110px;
+      resize: none;
+    }
 
     .btn {
       appearance: none;
@@ -332,11 +336,12 @@
       border-radius: 10px;
       border: none;
       font-size: 18px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
       color: #fff;
       background: linear-gradient(90deg, #00d46a, #0ebb53);
       transition: 0.2s;
+      line-height: 1.15; /* CLS guard */
     }
 
     .btn:hover {
@@ -378,6 +383,7 @@
       opacity: 0.8;
       font-size: 15px;
       margin-bottom: 10px;
+      line-height: 1.2;
     }
 
     .hint-pill {
@@ -403,9 +409,6 @@
       border-radius: 12px;
       background: rgba(255,255,255,0.04);
       border: 1px solid rgba(255,255,255,0.06);
-      /* reserve a stable min-height to reduce micro CLS */
-      min-height: 60px;
-      box-sizing: border-box;
     }
 
     .consent-row input[type="checkbox"] {
@@ -423,12 +426,12 @@
       min-width: 0;
     }
 
-    /* ✅ real label for Lighthouse */
     .consent-label {
       display: inline-block;
-      font-weight: 700;
+      font-weight: 800;
       color: #e5e7eb;
       margin-bottom: 6px;
+      line-height: 1.2;
     }
 
     .consent-links {
@@ -524,7 +527,7 @@
       border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
-    .legal-modal-title { font-weight: 800; color: #fff; letter-spacing: 0.2px; }
+    .legal-modal-title { font-weight: 900; color: #fff; letter-spacing: 0.2px; }
 
     .legal-close {
       cursor: pointer;
@@ -533,7 +536,8 @@
       color: #fff;
       border-radius: 12px;
       padding: 8px 12px;
-      font-weight: 800;
+      font-weight: 900;
+      line-height: 1;
     }
 
     .legal-close:hover { background: rgba(255,255,255,0.12); }
@@ -548,6 +552,7 @@
       color: #fff;
       margin: 18px 0 8px;
       font-size: 15px;
+      line-height: 1.2;
     }
 
     .legal-modal-content ul { padding-left: 18px; margin: 10px 0; }
@@ -587,10 +592,12 @@
       font-size: 28px;
       font-weight: 900;
       color: #ffffff;
+      line-height: 1.1;
     }
     .per {
       font-size: 12px;
       opacity: 0.85;
+      line-height: 1.2;
     }
     .pill {
       display:inline-flex;
@@ -602,7 +609,9 @@
       color: #b8ffdd;
       padding: 6px 10px;
       border-radius: 999px;
-      font-weight: 800;
+      font-weight: 900;
+      line-height: 1;
+      white-space: nowrap;
     }
     .muted { opacity: 0.85; }
     .small { font-size: 12px; line-height: 1.6; }
@@ -620,6 +629,7 @@
       color: #ffd86b;
       opacity: 0.95;
       display:none;
+      line-height: 1.5;
     }
     .auth-ok { color: #b8ffdd; }
     .auth-danger { color: #ff9aa2; }
@@ -671,11 +681,13 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      line-height: 1.2;
     }
 
     .preview-title span{
       font-size: 12px;
       color: rgba(203,213,225,0.9);
+      line-height: 1.2;
     }
 
     .preview-body{
@@ -702,12 +714,14 @@
       font-size: 18px;
       border: 1px solid rgba(255,255,255,0.10);
       flex: 0 0 auto;
+      line-height: 1;
     }
 
     .decision-text b{
       display:block;
       font-size: 13px;
       letter-spacing: .25px;
+      line-height: 1.2;
     }
     .decision-text p{
       margin: 6px 0 0;
@@ -760,14 +774,16 @@
       font-size: 11px;
       color: rgba(203,213,225,0.85);
       margin-bottom: 6px;
-      font-weight: 700;
+      font-weight: 800;
       letter-spacing: .2px;
       text-transform: uppercase;
+      line-height: 1.2;
     }
     .preview-kpi .v{
       font-size: 14px;
       font-weight: 900;
       color: #fff;
+      line-height: 1.2;
     }
     .preview-kpi .s{
       margin-top: 6px;
@@ -819,7 +835,7 @@
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <noscript>
-    <div style="max-width:1300px;margin:12px auto;padding:12px 16px;border-radius:14px;border:1px solid rgba(251,191,36,0.28);background:rgba(251,191,36,0.16);color:#fff3c4;font-family:Poppins,sans-serif;">
+    <div style="max-width:1300px;margin:12px auto;padding:12px 16px;border-radius:14px;border:1px solid rgba(251,191,36,0.28);background:rgba(251,191,36,0.16);color:#fff3c4;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
       JavaScript is required for FX Co-Pilot to run analysis, payments, and reports.
     </div>
   </noscript>
@@ -852,7 +868,7 @@
   <main id="main" class="container" role="main">
     <div class="section">
       <h1>FX Co-Pilot <span class="badge">AI TRADE VALIDATOR</span></h1>
-      <p style="color:#cfd3d8; margin-bottom:25px;">
+      <p style="color:#cfd3d8; margin-bottom:25px; line-height:1.55;">
         Upload a chart or paste a signal. AI analyzes structure, liquidity & probabilities.
       </p>
 
@@ -877,7 +893,6 @@
       <label for="signal">Your signal</label>
       <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
-      <!-- ✅ FIX: real label associated to checkbox (Lighthouse a11y 100) -->
       <div class="consent-row">
         <input
           type="checkbox"
@@ -921,7 +936,7 @@
   </main>
 
   <footer class="fx-disclaimer">
-    <p style="margin:0;">
+    <p style="margin:0; line-height:1.55;">
       <strong>Disclaimer:</strong>
       FXCO-PILOT provides AI-assisted market analysis for
       <strong>educational and informational purposes only</strong>.
@@ -1235,8 +1250,8 @@
       if (btn && offline) btn.disabled = true;
       if (btn && !offline) applyPaymentGateUI();
     }
-    window.addEventListener("online", setOfflineUI, { passive: true });
-    window.addEventListener("offline", setOfflineUI, { passive: true });
+    window.addEventListener("online", setOfflineUI);
+    window.addEventListener("offline", setOfflineUI);
 
     // -------------------------
     // Client ID
@@ -1515,7 +1530,6 @@
     const PAID_KEY = "fxco_paid_v1";
     const PAID_REF_KEY = "fxco_paid_ref_v1";
     let PAYSTACK_CONFIG = { ok:false };
-    let __paystackLoading = false;
 
     function setPayHint(msg, show=true) {
       const el = document.getElementById("payHint");
@@ -1710,13 +1724,9 @@
     // -------------------------
     // Pricing modal
     // -------------------------
-    async function openPricing() {
+    function openPricing() {
       document.getElementById("pricingBackdrop").style.display = "block";
       document.getElementById("pricingModal").style.display = "block";
-
-      // ✅ Key fix: load paystack config ONLY when user opens pricing
-      await ensurePaystackConfigLoaded();
-      applyPaymentGateUI();
     }
     function closePricing() {
       document.getElementById("pricingBackdrop").style.display = "none";
@@ -1737,45 +1747,33 @@
       }
     }
 
-    async function ensurePaystackConfigLoaded() {
-      if (PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok) return PAYSTACK_CONFIG;
-      if (__paystackLoading) return PAYSTACK_CONFIG;
-
-      __paystackLoading = true;
+    async function loadPaystackConfig() {
       try {
         const res = await fetch("/api/paystack/config", { cache: "no-store" });
-        const j = await res.json().catch(() => null);
+        const j = await res.json();
         PAYSTACK_CONFIG = j || { ok:false };
 
         const amountEl = document.getElementById("pricingAmount");
-        if (amountEl && PAYSTACK_CONFIG && typeof PAYSTACK_CONFIG.amount !== "undefined") {
-          amountEl.innerText = formatMoneyMinor(PAYSTACK_CONFIG.amount, PAYSTACK_CONFIG.currency);
+        if (amountEl && j && typeof j.amount !== "undefined") {
+          amountEl.innerText = formatMoneyMinor(j.amount, j.currency);
         }
+        applyPaymentGateUI();
       } catch {
-        // swallow errors to avoid console noise killing Lighthouse
-        PAYSTACK_CONFIG = PAYSTACK_CONFIG || { ok:false };
-      } finally {
-        __paystackLoading = false;
+        applyPaymentGateUI();
       }
-      return PAYSTACK_CONFIG;
     }
 
     function applyPaymentGateUI() {
       const paid = isPaid();
       const accepted = document.getElementById("acceptLegal")?.checked;
-
-      // ✅ Only enforce gate if config is loaded successfully
-      const requirePayment = !!(PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok && PAYSTACK_CONFIG.require_payment);
+      const requirePayment = !!PAYSTACK_CONFIG?.require_payment;
 
       const token = getAuthToken();
       const trialActive = token && isTrialActiveLocal();
 
       const statusEl = document.getElementById("pricingStatus");
       if (statusEl) {
-        if (paid) statusEl.innerText = "Active Access";
-        else if (trialActive) statusEl.innerText = "Trial Active";
-        else if (requirePayment) statusEl.innerText = "Locked";
-        else statusEl.innerText = "Checking access…";
+        statusEl.innerText = paid ? "Active Access" : (trialActive ? "Trial Active" : (requirePayment ? "Locked" : "Optional"));
       }
 
       const btn = document.getElementById("analyzeBtn");
@@ -1798,9 +1796,6 @@
     }
 
     async function startPaystackCheckout() {
-      // ✅ Ensure config is available when attempting checkout
-      await ensurePaystackConfigLoaded();
-
       const emailSeed = getAuthEmail() || "";
       const email = (prompt("Enter your email for Paystack checkout:", emailSeed) || "").trim();
       if (!email || !email.includes("@")) {
@@ -2001,11 +1996,7 @@
       }
 
       const trialActive = getAuthToken() && isTrialActiveLocal();
-
-      // ✅ Only enforce payment lock if paystack config is known
-      const requirePayment = !!(PAYSTACK_CONFIG && PAYSTACK_CONFIG.ok && PAYSTACK_CONFIG.require_payment);
-
-      if (requirePayment && !isPaid() && !trialActive) {
+      if (PAYSTACK_CONFIG?.require_payment && !isPaid() && !trialActive) {
         openAuth();
         return;
       }
@@ -2159,7 +2150,7 @@
         document.getElementById("result").innerHTML = `
           <div style="border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);border-radius:16px;padding:16px;">
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
-              <div style="font-weight:1000;color:${tierColor};letter-spacing:0.3px;font-size:14px;">
+              <div style="font-weight:1000;color:${tierColor};letter-spacing:0.3px;font-size:14px;line-height:1.2;">
                 ${esc(v.tier)} • EDGE ${esc(v.score)}/100
               </div>
               <div style="opacity:0.9;font-size:12px;line-height:1.5;">
@@ -2169,16 +2160,16 @@
 
             <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
               <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">ENTRY</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(entry)}</div>
+                <div style="font-size:11px;opacity:0.85;line-height:1.2;">ENTRY</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;line-height:1.2;">${esc(entry)}</div>
               </div>
               <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">STOP LOSS</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(sl)}</div>
+                <div style="font-size:11px;opacity:0.85;line-height:1.2;">STOP LOSS</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;line-height:1.2;">${esc(sl)}</div>
               </div>
               <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
-                <div style="font-size:11px;opacity:0.85;">TP1</div>
-                <div style="font-weight:900;color:#fff;margin-top:2px;">${esc(tp1)}</div>
+                <div style="font-size:11px;opacity:0.85;line-height:1.2;">TP1</div>
+                <div style="font-weight:900;color:#fff;margin-top:2px;line-height:1.2;">${esc(tp1)}</div>
               </div>
             </div>
 
@@ -2189,7 +2180,7 @@
 
             ${v.hardBlocks && v.hardBlocks.length ? `
               <div style="margin-top:10px;border:1px solid rgba(255,90,95,0.22);background:rgba(255,90,95,0.08);padding:12px;border-radius:14px;">
-                <div style="font-weight:1000;color:#ff9aa2;margin-bottom:4px;">Hard Blocks</div>
+                <div style="font-weight:1000;color:#ff9aa2;margin-bottom:4px;line-height:1.2;">Hard Blocks</div>
                 <div style="font-size:12px;line-height:1.6;color:#ffd1d6;">${blocksHtml}</div>
               </div>
             ` : ""}
@@ -2266,7 +2257,7 @@
       if (btn) {
         btn.addEventListener("click", () => {
           if (typeof window.analyze === "function") window.analyze();
-        }, { passive: true });
+        });
       }
     }
 
@@ -2297,13 +2288,13 @@
 
       initConsentGate();
       showRiskModalIfNeeded();
+      loadPaystackConfig();
       verifyPaystackIfReturned();
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
       hardenButtonClicks();
 
-      // ✅ Important: do NOT load paystack config on page load
       applyPaymentGateUI();
     }
 
