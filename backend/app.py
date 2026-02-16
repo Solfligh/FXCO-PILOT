@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
@@ -15,6 +16,15 @@ from flask import Flask, jsonify, request
 from openai import OpenAI
 
 app = Flask(__name__)
+
+# ============================================================
+# Logging (Render)
+# ============================================================
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger("fxco-pilot")
 
 # ============================================================
 # ENV
@@ -58,6 +68,95 @@ app = Flask(__name__)
 # Shareable reports:
 #   REPORT_SHARE_TTL_DAYS=30
 # ============================================================
+
+# ==========================
+# Request lifecycle helpers
+# ==========================
+def _make_request_id() -> str:
+    return str(uuid.uuid4())
+
+
+@app.before_request
+def _before_request():
+    request._fxco_start_ms = int(time.time() * 1000)
+    request._fxco_req_id = request.headers.get("X-Request-Id", "").strip() or _make_request_id()
+
+
+def _cors_headers():
+    # If you want to lock this down, set ALLOWED_ORIGINS="https://solflightech.org,https://fxco-pilot.solfightech.org"
+    allowed = (os.getenv("ALLOWED_ORIGINS", "") or "").strip()
+    origin = (request.headers.get("Origin") or "").strip()
+
+    if allowed:
+        allowed_list = [x.strip() for x in allowed.split(",") if x.strip()]
+        allow_origin = origin if origin in allowed_list else (allowed_list[0] if allowed_list else "*")
+    else:
+        allow_origin = origin or "*"
+
+    return {
+        "Access-Control-Allow-Origin": allow_origin,
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization,X-FXCO-Auth,X-FXCO-Client,X-Request-Id",
+        "Access-Control-Expose-Headers": "X-Request-Id,X-RateLimit-Plan,X-RateLimit-Limit-60s,X-RateLimit-Remaining-60s,X-RateLimit-Limit-24h,X-RateLimit-Remaining-24h,X-FXCO-Trial-Ends",
+        "Access-Control-Max-Age": "86400",
+        "Vary": "Origin",
+    }
+
+
+@app.after_request
+def _after_request(resp):
+    try:
+        req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
+        resp.headers["X-Request-Id"] = req_id
+
+        # CORS for API routes
+        if request.path.startswith("/api/") or request.path == "/health":
+            for k, v in _cors_headers().items():
+                resp.headers.setdefault(k, v)
+
+        # Basic timing info
+        start_ms = getattr(request, "_fxco_start_ms", None)
+        if start_ms:
+            dur = int(time.time() * 1000) - int(start_ms)
+            resp.headers.setdefault("Server-Timing", f"app;dur={dur}")
+
+        # Request log line
+        try:
+            dur_ms = int(time.time() * 1000) - int(start_ms or int(time.time() * 1000))
+            logger.info(
+                "%s %s %s %sms rid=%s",
+                request.method,
+                request.path,
+                resp.status_code,
+                dur_ms,
+                req_id,
+            )
+        except Exception:
+            pass
+
+    except Exception:
+        # never break response on logging/header issues
+        pass
+
+    return resp
+
+
+# OPTIONS handler (preflight)
+@app.route("/api/<path:_path>", methods=["OPTIONS"])
+def _api_options(_path):
+    resp = jsonify({"ok": True})
+    return resp, 200
+
+
+# Global error handler (so you see real crashes in Render logs)
+@app.errorhandler(Exception)
+def _handle_exception(e):
+    req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
+    logger.exception("Unhandled exception rid=%s path=%s", req_id, request.path)
+    # Return JSON instead of HTML
+    resp = jsonify({"ok": False, "error": "Internal server error", "request_id": req_id})
+    return resp, 500
+
 
 # ==========================
 # Simple in-memory cache
@@ -289,7 +388,7 @@ def _send_email_resend(to_email: str, subject: str, html: str) -> Tuple[bool, st
         )
         if r.status_code >= 400:
             try:
-                return False, r.json().get("message") or r.text
+                return False, (r.json() or {}).get("message") or r.text
             except Exception:
                 return False, r.text
         return True, "sent"
@@ -342,7 +441,6 @@ def _origin_base_url() -> str:
         try:
             u = ref.split("#", 1)[0]
             u = u.split("?", 1)[0]
-            # keep scheme://host
             parts = u.split("/")
             if len(parts) >= 3:
                 return (parts[0] + "//" + parts[2]).rstrip("/")
@@ -380,7 +478,6 @@ def _store_share_report(report_obj: dict, client_id: str, email: Optional[str]) 
     }
     created = _sb_insert_returning("fxco_reports", row)
     if not created:
-        # If table has its own id defaults, try insert without explicit id
         row2 = dict(row)
         row2.pop("id", None)
         created = _sb_insert_returning("fxco_reports", row2)
@@ -583,7 +680,7 @@ def _get_paid_until(client_id: str) -> int:
     return int(dt.timestamp())
 
 
-def _is_client_unlocked(client_id: str) -> int:
+def _is_client_unlocked(client_id: str) -> bool:
     if not _require_payment():
         return True
     if not client_id:
@@ -706,18 +803,12 @@ def health():
 # ==========================
 @app.post("/api/report/share")
 def report_share():
-    """
-    Optional manual share creation:
-    POST { report: {...} } OR POST {...report...}
-    Returns share_id + share_url
-    """
     if not _sb_ok():
         return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
 
     data = request.get_json(silent=True) or {}
     report_obj = data.get("report") if isinstance(data, dict) else None
     if not isinstance(report_obj, dict):
-        # accept the whole body as report
         if isinstance(data, dict):
             report_obj = data
 
@@ -742,9 +833,6 @@ def report_share():
 
 @app.get("/api/report/<share_id>")
 def report_get(share_id: str):
-    """
-    Public fetch by share id.
-    """
     if not _sb_ok():
         return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
 
@@ -756,12 +844,9 @@ def report_get(share_id: str):
     if not report_obj:
         return jsonify({"ok": False, "error": "Report not found (or expired)."}), 404
 
-    # Ensure the share_id is present in the returned report payload for the frontend button
     if isinstance(report_obj, dict):
         report_obj.setdefault("share_id", sid)
         report_obj.setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
-
-        # also mirror into analysis if present (nice for your result.html)
         try:
             if isinstance(report_obj.get("analysis"), dict):
                 report_obj["analysis"].setdefault("share_id", sid)
@@ -902,35 +987,57 @@ def auth_verify():
 
 
 # ==========================
-# Paystack endpoints
+# Paystack endpoints (hardened)
 # ==========================
 @app.get("/api/paystack/config")
 def paystack_config():
-    enabled = _require_payment()
+    # This endpoint must NEVER throw and must ALWAYS return 200.
+    try:
+        enabled = _require_payment()
 
-    if enabled and not PAYSTACK_SECRET_KEY:
+        if enabled and not PAYSTACK_SECRET_KEY:
+            return jsonify(
+                {
+                    "ok": False,
+                    "require_payment": True,
+                    "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
+                    "currency": PAYSTACK_CURRENCY,
+                    "amount": _paystack_amount_minor(),
+                    "public_key": PAYSTACK_PUBLIC_KEY or None,
+                    "access_days": _access_days(),
+                }
+            ), 200
+
         return jsonify(
             {
-                "ok": False,
-                "require_payment": True,
-                "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
+                "ok": True,
+                "require_payment": enabled,
                 "currency": PAYSTACK_CURRENCY,
                 "amount": _paystack_amount_minor(),
                 "public_key": PAYSTACK_PUBLIC_KEY or None,
                 "access_days": _access_days(),
             }
         ), 200
+    except Exception as e:
+        # still 200
+        return jsonify(
+            {
+                "ok": False,
+                "require_payment": False,
+                "currency": "NGN",
+                "amount": 10000 * 100,
+                "public_key": None,
+                "access_days": 30,
+                "error": str(e),
+            }
+        ), 200
 
-    return jsonify(
-        {
-            "ok": True,
-            "require_payment": enabled,
-            "currency": PAYSTACK_CURRENCY,
-            "amount": _paystack_amount_minor(),
-            "public_key": PAYSTACK_PUBLIC_KEY or None,
-            "access_days": _access_days(),
-        }
-    ), 200
+
+def _safe_json(r: requests.Response) -> dict:
+    try:
+        return r.json()
+    except Exception:
+        return {"status": False, "message": f"Non-JSON response: HTTP {r.status_code}", "raw": (r.text or "")[:500]}
 
 
 @app.post("/api/paystack/init")
@@ -946,10 +1053,7 @@ def paystack_init():
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
 
-    client_id = _get_client_id_header()
-    if not client_id:
-        client_id = "ip:" + _client_ip()
-
+    client_id = _get_client_id_header() or ("ip:" + _client_ip())
     callback_url = _ensure_paystack_success_param(_callback_url())
 
     payload = {
@@ -971,12 +1075,12 @@ def paystack_init():
             data=json.dumps(payload),
             timeout=15,
         )
-        j = r.json()
+        j = _safe_json(r)
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack init failed."}), 502
 
-        data = j.get("data") or {}
-        return jsonify({"ok": True, "authorization_url": data.get("authorization_url"), "reference": data.get("reference")}), 200
+        d = j.get("data") or {}
+        return jsonify({"ok": True, "authorization_url": d.get("authorization_url"), "reference": d.get("reference")}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -995,7 +1099,7 @@ def paystack_verify():
 
     try:
         r = requests.get(f"{PAYSTACK_BASE}/transaction/verify/{reference}", headers=_paystack_headers(), timeout=15)
-        j = r.json()
+        j = _safe_json(r)
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack verify failed."}), 502
 
@@ -1007,9 +1111,7 @@ def paystack_verify():
         paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
 
         meta = data.get("metadata") or {}
-        client_id = (meta.get("fxco_client_id") or "").strip()
-        if not client_id:
-            client_id = _get_client_id_header() or ("ip:" + _client_ip())
+        client_id = (meta.get("fxco_client_id") or "").strip() or (_get_client_id_header() or ("ip:" + _client_ip()))
 
         if paid and client_id:
             paid_until = int(_now() + _access_days() * 24 * 60 * 60)
@@ -1118,13 +1220,8 @@ def calculate_rr(entry, stop, targets):
 # Timeframe + duration (NEW)
 # ==========================
 def _parse_duration_minutes(text: str) -> Optional[int]:
-    """
-    Extract duration like:
-      "2h 15m", "2h 15mins", "duration 2h 15mins", "135min"
-    """
     t = (text or "").lower()
 
-    # direct minutes
     m_only = re.search(r"\b(\d{1,4})\s*(m|min|mins|minute|minutes)\b", t)
     h = re.search(r"\b(\d{1,3})\s*(h|hr|hrs|hour|hours)\b", t)
 
@@ -1135,7 +1232,6 @@ def _parse_duration_minutes(text: str) -> Optional[int]:
     if total > 0:
         return total
 
-    # alternative patterns e.g. "135 minutes" without "duration"
     just_num_min = re.search(r"\b(\d{2,4})\s*(minutes)\b", t)
     if just_num_min:
         try:
@@ -1158,15 +1254,6 @@ def _normalize_mode(tf: str) -> str:
 
 
 def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, str]:
-    """
-    Returns (structure_tf, execution_tf) in TwelveData interval format.
-    Desk logic:
-      <=30m  => 5min structure, 1min execution
-      <=90m  => 15min structure, 5min execution
-      <=240m => 1h structure, 15min execution
-      >240m  => 4h structure, 1h execution
-    If hold_minutes missing, we fallback to mode defaults.
-    """
     mode = _normalize_mode(mode)
 
     if hold_minutes is None:
@@ -1192,21 +1279,15 @@ def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, st
 # Twelve Data calls (cached)
 # ==========================
 def td_price(symbol: str):
-    """
-    Returns a near-live market snapshot (REST).
-    Includes timestamp/session to make the snapshot transparent to users.
-    """
     if not TWELVE_DATA_API_KEY:
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
     symbol = td_symbol(symbol or "EURUSD")
-
     cache_key = f"td_price::{symbol}"
     cached = _cache_get(cache_key)
     if cached is not None:
         return cached
 
-    # snapshot metadata (captured regardless of API success)
     snap_dt = _utc_now_dt()
     snap_ts = snap_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     snap_session = _fx_session_from_utc(snap_dt)
@@ -1255,7 +1336,6 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
         return {"ok": False, "error": "Missing TWELVE_DATA_API_KEY (live data disabled)."}
 
     symbol = td_symbol(symbol or "EURUSD")
-
     interval = (interval or "5min").strip()
     limit = int(limit or 120)
 
@@ -1444,14 +1524,6 @@ def _as_text(v) -> str:
 
 
 def _institutional_score(analysis: dict) -> int:
-    """
-    Deterministic 0-100 score.
-    - Structure 0-25
-    - Liquidity 0-25
-    - Alignment 0-20
-    - Signal quality 0-15
-    - Risk plan 0-15
-    """
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
 
@@ -1465,7 +1537,6 @@ def _institutional_score(analysis: dict) -> int:
 
     score = 0
 
-    # Structure 0–25
     if any(x in structure for x in ["bullish", "bearish", "trend", "clean"]):
         score += 20
     elif any(x in structure for x in ["range", "sideways", "chop", "unclear"]):
@@ -1473,7 +1544,6 @@ def _institutional_score(analysis: dict) -> int:
     elif structure:
         score += 12
 
-    # Liquidity 0–25
     if any(x in liquidity for x in ["sweep", "grab", "raid", "liquidity taken", "stop run"]):
         score += 20
     elif any(x in liquidity for x in ["good", "ok", "healthy"]):
@@ -1481,7 +1551,6 @@ def _institutional_score(analysis: dict) -> int:
     elif liquidity:
         score += 10
 
-    # Alignment 0–20
     if any(x in alignment for x in ["aligned", "strong", "yes"]):
         score += 16
     elif any(x in alignment for x in ["mixed", "conflict", "partial"]):
@@ -1489,7 +1558,6 @@ def _institutional_score(analysis: dict) -> int:
     elif alignment:
         score += 8
 
-    # Signal quality 0–15
     if direction in ("long", "short"):
         score += 8
     if sc.get("targets"):
@@ -1499,7 +1567,6 @@ def _institutional_score(analysis: dict) -> int:
     elif momentum:
         score += 2
 
-    # Risk plan 0–15
     if isinstance(rr, (int, float)):
         if rr >= 2.5:
             score += 15
@@ -1520,17 +1587,6 @@ def _institutional_score(analysis: dict) -> int:
 
 
 def institutional_decision_engine(analysis: dict) -> dict:
-    """
-    Hard blocks => tiered institutional decision.
-
-    IMPORTANT:
-    - Structure "unclear" becomes a HARD BLOCK only if it is unclear on the STRUCTURE TF.
-    - Execution TF uncertainty becomes EXECUTE_IF conditions, not auto NO TRADE.
-
-    Output fields:
-      decision_tier, decision_label, score, confidence,
-      hard_blocks, conditions, rationale, reasoning_text
-    """
     hard_blocks = []
     conditions = []
     rationale = []
@@ -1545,12 +1601,10 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
     rr = sc.get("rr")
 
-    # Horizon metadata
     horizon = analysis.get("assessment_horizon") or {}
     structure_tf = _as_text(horizon.get("structure_tf")).lower() or "unknown"
     execution_tf = _as_text(horizon.get("execution_tf")).lower() or "unknown"
 
-    # --- HARD GUARDS (auto NO TRADE) ---
     if sc.get("entry") is None:
         hard_blocks.append("Missing entry level.")
     if sc.get("stop_loss") is None:
@@ -1560,7 +1614,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
     if isinstance(rr, (int, float)) and rr < 1.5:
         hard_blocks.append(f"Risk:Reward too low (RR≈{rr}). Minimum is 1.5 for execution.")
 
-    # Structure: hard block ONLY if the STRUCTURE TF is unclear
     struct_is_unclear = any(x in structure for x in ["unclear", "chop", "choppy", "no structure"])
     structure_tf_unclear_tag = f"live({structure_tf})"
     exec_tf_tag = f"exec({execution_tf})"
@@ -1568,15 +1621,12 @@ def institutional_decision_engine(analysis: dict) -> dict:
     if struct_is_unclear and structure_tf_unclear_tag in structure:
         hard_blocks.append("Market structure is unclear/choppy on the primary structure timeframe.")
 
-    # If execution TF is unclear, that's a condition (not a block)
     if struct_is_unclear and exec_tf_tag in structure and structure_tf_unclear_tag not in structure:
         conditions.append("Execution timeframe is choppy/unclear: wait for a clean trigger before entry.")
 
-    # Liquidity guard
     if any(x in liquidity for x in ["thin", "poor", "unknown", "low liquidity"]):
         hard_blocks.append("Liquidity conditions are poor/unclear.")
 
-    # Bias vs structure conflict (strong guard)
     if ("long" in bias and "bearish" in structure) or ("short" in bias and "bullish" in structure):
         hard_blocks.append("Bias conflicts with structure (HTF/LTF conflict).")
 
@@ -1586,14 +1636,12 @@ def institutional_decision_engine(analysis: dict) -> dict:
         if critical:
             hard_blocks.append("Critical invalidation risk detected (see invalidation warnings).")
 
-    # --- SCORE + CONFIDENCE ---
     score = _institutional_score(analysis)
     confidence = analysis.get("confidence")
     if not isinstance(confidence, (int, float)):
         confidence = 0
     confidence = int(max(0, min(100, confidence)))
 
-    # --- CONDITIONS (if not blocked) ---
     if not hard_blocks:
         if any(x in alignment for x in ["mixed", "conflict", "partial"]):
             conditions.append("Wait for clearer timeframe alignment before executing.")
@@ -1611,7 +1659,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
                 if t:
                     rationale.append(t)
 
-    # --- TIERS ---
     if hard_blocks:
         decision_tier = "DO_NOT_TRADE"
         decision_label = "AVOID TRADE"
@@ -1656,7 +1703,7 @@ def institutional_decision_engine(analysis: dict) -> dict:
     analysis["conditions"] = conditions[:12]
     analysis["rationale"] = rationale[:10]
     analysis["reasoning_text"] = reasoning_text
-    analysis["decision"] = decision_label  # legacy
+    analysis["decision"] = decision_label
 
     return analysis
 
@@ -1756,7 +1803,6 @@ def analyze():
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
-    # --- NEW: parse hold duration + select institutional timeframes ---
     hold_minutes = _parse_duration_minutes(signal_text)
     mode_norm = _normalize_mode(timeframe)
     structure_tf, execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
@@ -1770,16 +1816,13 @@ def analyze():
         "execution_tf": execution_tf,
     }
 
-    # ✅ live_snapshot now includes timestamp_utc + session
     live_snapshot = td_price(symbol)
 
-    # Use structure timeframe candles for STRUCTURE (verdict driver)
     candles_structure = td_candles(symbol, interval=structure_tf, limit=120)
     struct_info_structure = {"structure": "unclear", "broken": False, "details": ""}
     if candles_structure.get("ok") and candles_structure.get("values"):
         struct_info_structure = structure_from_candles(candles_structure["values"])
 
-    # Use execution timeframe candles for ENTRY quality only
     candles_exec = td_candles(symbol, interval=execution_tf, limit=120)
     struct_info_exec = {"structure": "unclear", "broken": False, "details": ""}
     if candles_exec.get("ok") and candles_exec.get("values"):
@@ -1879,10 +1922,8 @@ Rules:
 
         rr = calculate_rr(sc.get("entry"), sc.get("stop_loss"), sc.get("targets"))
 
-        # Build structure string with explicit tags the decision engine understands
         structure_text = (mc.get("structure") or "").strip()
         structure_text = structure_text if structure_text else "Structure context not provided."
-
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
         structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
 
@@ -1909,20 +1950,16 @@ Rules:
             "assessment_horizon": assessment_horizon,
         }
 
-        # Enrichment
         analysis["confidence"] = compute_confidence(analysis)
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
 
-        # Institutional decision + stable report fields
         analysis = institutional_decision_engine(analysis)
 
-        # Truthful blocked flag (your frontend can use this if needed)
         decision_tier = str(analysis.get("decision_tier") or "").strip().upper()
         hard_blocks = analysis.get("hard_blocks") or []
         is_blocked = bool(hard_blocks) or (decision_tier == "DO_NOT_TRADE")
 
-        # Build a clean report payload your frontend can store directly
         report_payload = {
             "pair_type": pair_type,
             "timeframe": timeframe,
@@ -1931,7 +1968,6 @@ Rules:
             "generated_at": generated_at,
         }
 
-        # Auto-create share id if Supabase is available (non-blocking)
         share_id = None
         share_url = None
         if _sb_ok():
