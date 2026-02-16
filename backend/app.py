@@ -67,6 +67,10 @@ logger = logging.getLogger("fxco-pilot")
 #
 # Shareable reports:
 #   REPORT_SHARE_TTL_DAYS=30
+#
+# NEW (optional):
+#   chart_tf / chartTf / chart_timeframe / chartTimeframe can be sent by client
+#   to force the PRIMARY STRUCTURE timeframe driver.
 # ============================================================
 
 # ==========================
@@ -96,7 +100,8 @@ def _cors_headers():
     return {
         "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization,X-FXCO-Auth,X-FXCO-Client,X-Request-Id",
+        # ✅ include Paystack ref header (frontend sends it)
+        "Access-Control-Allow-Headers": "Content-Type,Authorization,X-FXCO-Auth,X-FXCO-Client,X-FXCO-Paystack-Ref,X-Request-Id",
         "Access-Control-Expose-Headers": "X-Request-Id,X-RateLimit-Plan,X-RateLimit-Limit-60s,X-RateLimit-Remaining-60s,X-RateLimit-Limit-24h,X-RateLimit-Remaining-24h,X-FXCO-Trial-Ends",
         "Access-Control-Max-Age": "86400",
         "Vary": "Origin",
@@ -1217,7 +1222,7 @@ def calculate_rr(entry, stop, targets):
 
 
 # ==========================
-# Timeframe + duration (NEW)
+# Timeframe + duration
 # ==========================
 def _parse_duration_minutes(text: str) -> Optional[int]:
     t = (text or "").lower()
@@ -1254,6 +1259,10 @@ def _normalize_mode(tf: str) -> str:
 
 
 def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, str]:
+    """
+    Legacy mapping (kept for fallback when chart_tf is NOT provided):
+      - determines a default Structure TF + Execution TF from the user's style + parsed hold time
+    """
     mode = _normalize_mode(mode)
 
     if hold_minutes is None:
@@ -1273,6 +1282,69 @@ def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, st
     if hold_minutes <= 240:
         return "1h", "15min"
     return "4h", "1h"
+
+
+# ==========================
+# NEW: chart_tf honoring
+# ==========================
+def _normalize_chart_tf(tf: str) -> Optional[str]:
+    """
+    Accepts user-provided chart timeframe and normalizes to TwelveData intervals.
+    Supported outputs: 1min, 5min, 15min, 30min, 45min, 1h, 2h, 4h, 1day, 1week, 1month
+    """
+    s = (tf or "").strip().lower()
+    if not s:
+        return None
+
+    s = s.replace(" ", "").replace("_", "").replace("-", "")
+
+    # common aliases
+    if s in ("m1", "1m", "1min", "1mins", "1minute"):
+        return "1min"
+    if s in ("m5", "5m", "5min", "5mins", "5minute"):
+        return "5min"
+    if s in ("m15", "15m", "15min", "15mins", "15minute"):
+        return "15min"
+    if s in ("m30", "30m", "30min", "30mins", "30minute"):
+        return "30min"
+    if s in ("m45", "45m", "45min", "45mins", "45minute"):
+        return "45min"
+
+    if s in ("h1", "1h", "1hr", "1hour"):
+        return "1h"
+    if s in ("h2", "2h", "2hr", "2hour"):
+        return "2h"
+    if s in ("h4", "4h", "4hr", "4hour"):
+        return "4h"
+
+    if s in ("d1", "1d", "1day", "daily"):
+        return "1day"
+    if s in ("w1", "1w", "1week", "weekly"):
+        return "1week"
+    if s in ("mn1", "1mo", "1month", "monthly"):
+        return "1month"
+
+    # also accept raw TwelveData values directly if they look valid-ish
+    if re.fullmatch(r"(1min|5min|15min|30min|45min|1h|2h|4h|1day|1week|1month)", s):
+        return s
+
+    return None
+
+
+def _execution_tf_from_structure_tf(structure_tf: str) -> str:
+    """
+    Pick the next-lower TF for entry timing.
+    """
+    tf = (structure_tf or "").strip().lower()
+    ladder = ["1min", "5min", "15min", "30min", "45min", "1h", "2h", "4h", "1day", "1week", "1month"]
+    if tf not in ladder:
+        return "5min"
+    i = ladder.index(tf)
+    # if already at the smallest, keep it
+    if i <= 0:
+        return "1min"
+    # otherwise one step down
+    return ladder[i - 1]
 
 
 # ==========================
@@ -1502,18 +1574,25 @@ def _pick_first(data, keys):
 
 
 def _get_payload_fields():
+    """
+    Returns: (pair_type, timeframe_style, signal_text, chart_tf)
+      - timeframe_style = Scalp/Intraday/Swing (kept as STYLE)
+      - chart_tf (optional) = the actual chart timeframe the user is working on (primary structure driver)
+    """
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
         timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])
         signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
-        return pair_type, timeframe, signal_text
+        chart_tf = _pick_first(data, ["chart_tf", "chartTf", "chart_timeframe", "chartTimeframe", "chart_tf_interval"])
+        return pair_type, timeframe, signal_text, chart_tf
 
     form = request.form or {}
     pair_type = _pick_first(form, ["pair_type", "pairType"])
     timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
     signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
-    return pair_type, timeframe, signal_text
+    chart_tf = _pick_first(form, ["chart_tf", "chartTf", "chart_timeframe", "chartTimeframe", "chart_tf_interval"])
+    return pair_type, timeframe, signal_text, chart_tf
 
 
 # ==========================
@@ -1618,9 +1697,11 @@ def institutional_decision_engine(analysis: dict) -> dict:
     structure_tf_unclear_tag = f"live({structure_tf})"
     exec_tf_tag = f"exec({execution_tf})"
 
+    # ✅ Primary structure TF is the verdict driver.
     if struct_is_unclear and structure_tf_unclear_tag in structure:
         hard_blocks.append("Market structure is unclear/choppy on the primary structure timeframe.")
 
+    # ✅ Execution TF is entry timing only (condition), not a hard veto unless it also pollutes structure TF.
     if struct_is_unclear and exec_tf_tag in structure and structure_tf_unclear_tag not in structure:
         conditions.append("Execution timeframe is choppy/unclear: wait for a clean trigger before entry.")
 
@@ -1755,7 +1836,7 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp, 200
 
-    pair_type, timeframe, signal_text = _get_payload_fields()
+    pair_type, timeframe, signal_text, chart_tf_raw = _get_payload_fields()
 
     missing = []
     if not pair_type:
@@ -1774,6 +1855,7 @@ def analyze():
                     "pair_type": ["pair_type", "pairType"],
                     "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
                     "signal_input": ["signal_input", "signal", "signalText"],
+                    "chart_tf (optional)": ["chart_tf", "chartTf", "chart_timeframe", "chartTimeframe", "chart_tf_interval"],
                 },
                 "received_content_type": request.headers.get("Content-Type", ""),
             }
@@ -1803,17 +1885,32 @@ def analyze():
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
+    # ✅ NEW: If client sends chart_tf, honor it as PRIMARY structure TF.
+    chart_tf = _normalize_chart_tf(chart_tf_raw)
+
     hold_minutes = _parse_duration_minutes(signal_text)
     mode_norm = _normalize_mode(timeframe)
-    structure_tf, execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
-    hold_minutes = hold_minutes if hold_minutes is not None else (20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440)
+
+    if chart_tf:
+        structure_tf = chart_tf
+        execution_tf = _execution_tf_from_structure_tf(structure_tf)
+        # keep hold minutes (for narrative), but don't override TFs
+        if hold_minutes is None:
+            hold_minutes = 20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440
+    else:
+        structure_tf, execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
+        hold_minutes = hold_minutes if hold_minutes is not None else (
+            20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440
+        )
 
     assessment_horizon = {
-        "timeframe_mode": timeframe,
+        "timeframe_mode": timeframe,           # ✅ style label (Scalp/Intraday/Swing)
         "mode_normalized": mode_norm,
         "hold_minutes": int(hold_minutes),
-        "structure_tf": structure_tf,
-        "execution_tf": execution_tf,
+        "chart_tf": chart_tf or None,          # ✅ actual chart timeframe user is on (if provided)
+        "structure_tf": structure_tf,          # ✅ verdict driver
+        "execution_tf": execution_tf,          # ✅ entry timing only
+        "tf_source": "chart_tf" if chart_tf else "style+duration",
     }
 
     live_snapshot = td_price(symbol)
@@ -1842,11 +1939,16 @@ You do NOT predict price. You evaluate execution quality: structure, liquidity, 
 
 RISK-DESK RULE (NON-NEGOTIABLE):
 - The trade's verdict MUST be driven by the PRIMARY STRUCTURE timeframe (Structure TF).
-- The Execution TF may affect entry timing quality, but MUST NOT veto an otherwise valid intraday/swing setup by itself.
+- The Execution TF may affect entry timing quality, but MUST NOT veto an otherwise valid setup by itself.
+
+Timeframe Rules:
+- "Timeframe mode (user)" is a STYLE label (Scalp/Intraday/Swing).
+- If the user provided a Chart TF, you MUST treat that as the PRIMARY Structure TF driver.
 
 User Context:
 - Pair type: {pair_type}
-- Timeframe mode (user): {timeframe}
+- Timeframe mode (style): {timeframe}
+- Chart TF provided: {chart_tf or "none"}
 - Intended hold duration (parsed): {hold_minutes} minutes
 - Structure TF (verdict driver): {structure_tf}
 - Execution TF (entry quality only): {execution_tf}
@@ -1922,6 +2024,7 @@ Rules:
 
         rr = calculate_rr(sc.get("entry"), sc.get("stop_loss"), sc.get("targets"))
 
+        # include explicit TF tags so our engine can detect "unclear on Live(structure_tf) vs Exec(execution_tf)"
         structure_text = (mc.get("structure") or "").strip()
         structure_text = structure_text if structure_text else "Structure context not provided."
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
@@ -1962,7 +2065,8 @@ Rules:
 
         report_payload = {
             "pair_type": pair_type,
-            "timeframe": timeframe,
+            "timeframe": timeframe,          # ✅ keep timeframe as style
+            "chart_tf": chart_tf or None,    # ✅ surface actual chart TF if provided
             "signal_input": signal_text,
             "analysis": analysis,
             "generated_at": generated_at,
@@ -1986,7 +2090,8 @@ Rules:
                 "analysis": analysis,
                 "mode": "twelvedata_live",
                 "pair_type": pair_type,
-                "timeframe": timeframe,
+                "timeframe": timeframe,          # ✅ style label
+                "chart_tf": chart_tf or None,    # ✅ actual chart TF used (if provided)
                 "signal_input": signal_text,
                 "generated_at": generated_at,
                 "share_id": share_id,
