@@ -37,10 +37,7 @@
   <!-- ✅ Sitemap -->
   <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
-  <!-- ✅ Fonts: FIX render-blocking + reduce CLS
-       - preconnect once
-       - preload stylesheet and swap rel onload (non render-blocking)
-       - display=optional reduces late font swap => reduces CLS -->
+  <!-- ✅ Fonts: FIX render-blocking + reduce CLS -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -72,7 +69,6 @@
   </script>
 
   <style>
-    /* ✅ A11y: skip link */
     .skip-link {
       position: absolute;
       left: -999px;
@@ -88,45 +84,32 @@
     }
     .skip-link:focus { left: 12px; outline: 3px solid rgba(0,212,106,0.6); }
 
-    /* ✅ Better focus for keyboard */
     :focus-visible {
       outline: 3px solid rgba(147,197,253,0.65);
       outline-offset: 2px;
     }
 
-    /* ✅ CLS guard: stabilize typography even if webfont arrives later */
     html { text-size-adjust: 100%; }
     body {
       margin: 0;
       padding: 0;
-
-      /* Fallback stack first (fast paint). Poppins is added when available without shifting layout hard. */
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Poppins", sans-serif;
-
-      /* CLS guard: stable baseline */
       line-height: 1.45;
       font-size: 14px;
 
-      /* ✅ Responsive background instead of 4K PNG */
       background-color: #05070b;
       background-position: center;
       background-repeat: no-repeat;
       background-size: cover;
-
-      /* Use WebP set (desktop can pick larger) */
       background-image: image-set(
         url("/images/bg_fx_1280.webp") 1x,
         url("/images/bg_fx_1920.webp") 2x,
         url("/images/bg_fx_2560.webp") 3x
       );
-
-      /* Desktop effect */
       background-attachment: fixed;
-
       padding-bottom: 90px;
     }
 
-    /* ✅ Mobile: fixed backgrounds often slow paint */
     @media (max-width: 900px){
       body {
         background-image: none;
@@ -163,10 +146,9 @@
       filter: drop-shadow(0 0 1px rgba(0,0,0,0.4));
     }
 
-    /* ✅ CLS guard: fixed topbar height so font swaps don’t move layout */
     .topbar {
       width: 100%;
-      min-height: 52px; /* stable */
+      min-height: 52px;
       padding: 12px 25px;
       background: rgba(0,0,0,0.55);
       backdrop-filter: blur(8px);
@@ -202,7 +184,7 @@
       cursor: pointer;
       transition: 0.15s;
       white-space: nowrap;
-      line-height: 1; /* CLS guard */
+      line-height: 1;
     }
     .topbtn:hover { background: rgba(255,255,255,0.10); transform: translateY(-1px); }
     .topbtn.primary {
@@ -245,7 +227,6 @@
     .open { background: #00d46a22; color: #00d46a; }
     .closed { background: #ff444422; color: #ff7777; }
 
-    /* ✅ Offline banner */
     .offline-banner {
       display:none;
       position: sticky;
@@ -283,7 +264,7 @@
       color: #ffffff;
       font-weight: 700;
       margin-bottom: 5px;
-      line-height: 1.1; /* CLS guard */
+      line-height: 1.1;
     }
 
     .badge {
@@ -293,7 +274,7 @@
       color: black;
       font-size: 12px;
       border-radius: 8px;
-      line-height: 1; /* CLS guard */
+      line-height: 1;
     }
 
     .section { flex: 1; }
@@ -318,10 +299,9 @@
       font-size: 14px;
       box-sizing: border-box;
       font-family: inherit;
-      line-height: 1.35; /* CLS guard */
+      line-height: 1.35;
     }
 
-    /* ✅ CLS guard: fixed textarea height + stable line box */
     textarea {
       height: 110px;
       min-height: 110px;
@@ -341,7 +321,7 @@
       color: #fff;
       background: linear-gradient(90deg, #00d46a, #0ebb53);
       transition: 0.2s;
-      line-height: 1.15; /* CLS guard */
+      line-height: 1.15;
     }
 
     .btn:hover {
@@ -802,7 +782,6 @@
 
     .preview-actions .topbtn{ padding: 10px 12px; border-radius: 12px; }
 
-    /* ✅ iOS install tip */
     .ios-tip {
       display:none;
       position: fixed;
@@ -880,11 +859,29 @@
         <option>Indices</option>
       </select>
 
-      <label for="timeframe">Timeframe Mode</label>
+      <!-- ✅ Style stays (for behavior/risk rules), but it is NOT the chart timeframe -->
+      <label for="timeframe">Trading Style</label>
       <select id="timeframe">
         <option>Scalp</option>
         <option>Intraday</option>
         <option>Swing</option>
+      </select>
+
+      <!-- ✅ NEW: actual chart timeframe the user is trading on -->
+      <label for="chartTf">Chart Timeframe (what you’re on)</label>
+      <select id="chartTf">
+        <option value="">Select timeframe…</option>
+        <option>1m</option>
+        <option>3m</option>
+        <option>5m</option>
+        <option>15m</option>
+        <option>30m</option>
+        <option>45m</option>
+        <option>1h</option>
+        <option>2h</option>
+        <option>4h</option>
+        <option>1D</option>
+        <option>1W</option>
       </select>
 
       <label for="chart">Chart (optional)</label>
@@ -1148,9 +1145,7 @@
     // -------------------------
     let __deferredPrompt = null;
 
-    function isIos() {
-      return /iphone|ipad|ipod/i.test(navigator.userAgent || "");
-    }
+    function isIos() { return /iphone|ipad|ipod/i.test(navigator.userAgent || ""); }
     function isSafari() {
       const ua = (navigator.userAgent || "").toLowerCase();
       return ua.includes("safari") && !ua.includes("chrome") && !ua.includes("crios") && !ua.includes("fxios");
@@ -1299,7 +1294,8 @@
         const item = {
           ts: Date.now(),
           pairType: report?.pair_type || "",
-          timeframe: report?.timeframe || "",
+          timeframe: report?.timeframe || "",     // trading style
+          chart_tf: report?.chart_tf || "",       // actual chart timeframe
           signal: report?.signal_input || "",
           decision: report?.analysis?.decision || report?.analysis?.verdict || ""
         };
@@ -1328,7 +1324,9 @@
       box.innerHTML = list.map((r) => {
         const dt = new Date(r.ts || Date.now()).toLocaleString();
         const decision = esc(r.decision || "—");
-        const meta = `${esc(r.pairType || "—")} • ${esc(r.timeframe || "—")}`;
+        const style = esc(r.timeframe || "—");
+        const tf = esc(r.chart_tf || "—");
+        const meta = `${esc(r.pairType || "—")} • ${style} • TF ${tf}`;
         const sig = esc((r.signal || "").slice(0, 120));
         return `
           <div style="border-bottom:1px solid rgba(255,255,255,0.08);padding:12px 0;">
@@ -2004,18 +2002,26 @@
       setRateHint("", false);
 
       const pairType = (document.getElementById("pairType")?.value || "").trim();
-      const timeframe = (document.getElementById("timeframe")?.value || "").trim();
+      const timeframe = (document.getElementById("timeframe")?.value || "").trim(); // trading style (kept for backend compatibility)
+      const chartTf = (document.getElementById("chartTf")?.value || "").trim();     // actual chart timeframe
       const signal = (document.getElementById("signal")?.value || "").trim();
 
       if (!pairType || !timeframe || !signal) {
         document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> Missing Pair Type, Timeframe Mode, or Signal.";
+          "<b style='color:#ff6b6b'>Request failed:</b> Missing Pair Type, Trading Style, or Signal.";
+        return;
+      }
+
+      if (!chartTf) {
+        document.getElementById("result").innerHTML =
+          "<b style='color:#ff6b6b'>Request failed:</b> Please select your <b>Chart Timeframe</b> (what you’re on).";
         return;
       }
 
       const formData = new FormData();
       formData.append("pair_type", pairType);
-      formData.append("timeframe", timeframe);
+      formData.append("timeframe", timeframe);    // style
+      formData.append("chart_tf", chartTf);       // ✅ NEW: actual timeframe (use this in backend)
       formData.append("signal_input", signal);
 
       const file = document.getElementById("chart")?.files?.[0];
@@ -2104,7 +2110,8 @@
 
         const reportPayload = {
           pair_type: pairType,
-          timeframe,
+          timeframe,         // trading style
+          chart_tf: chartTf, // ✅ actual timeframe
           signal_input: signal,
           analysis: data?.analysis || null,
           raw: data || null,
@@ -2158,6 +2165,10 @@
               </div>
             </div>
 
+            <div style="margin-top:10px;opacity:0.92;font-size:12px;line-height:1.5;">
+              <b>Style:</b> ${esc(timeframe)} • <b>Chart TF:</b> ${esc(chartTf)}
+            </div>
+
             <div style="margin-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
               <div style="border:1px solid rgba(255,255,255,0.10);border-radius:14px;padding:10px;background:rgba(0,0,0,0.18);">
                 <div style="font-size:11px;opacity:0.85;line-height:1.2;">ENTRY</div>
@@ -2198,7 +2209,7 @@
           </div>
         `;
 
-        document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • ${v.tier}`;
+        document.getElementById("previewMeta").textContent = `${pairType} • ${timeframe} • TF ${chartTf} • ${v.tier}`;
 
         const banner = document.getElementById("previewBanner");
         banner.classList.remove("dec-ok","dec-cond","dec-wait","dec-bad");
