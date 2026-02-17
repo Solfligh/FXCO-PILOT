@@ -9,7 +9,7 @@ import uuid
 import logging
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any, Dict, List
 
 import requests
 from flask import Flask, jsonify, request
@@ -52,7 +52,6 @@ logger = logging.getLogger("fxco-pilot")
 # Resend:
 #   RESEND_API_KEY
 #   RESEND_FROM_EMAIL
-#   SUPPORT_INBOX_EMAIL=support@solflightech.org  (optional; where contact forms go)
 #
 # Trial:
 #   TRIAL_DAYS=14
@@ -70,7 +69,6 @@ logger = logging.getLogger("fxco-pilot")
 #   REPORT_SHARE_TTL_DAYS=30
 # ============================================================
 
-
 # ==========================
 # Request lifecycle helpers
 # ==========================
@@ -85,7 +83,6 @@ def _before_request():
 
 
 def _cors_headers():
-    # If you want to lock this down, set ALLOWED_ORIGINS="https://solflightech.org,https://fxco-pilot.solfightech.org"
     allowed = (os.getenv("ALLOWED_ORIGINS", "") or "").strip()
     origin = (request.headers.get("Origin") or "").strip()
 
@@ -111,51 +108,37 @@ def _after_request(resp):
         req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
         resp.headers["X-Request-Id"] = req_id
 
-        # CORS for API routes
         if request.path.startswith("/api/") or request.path == "/health":
             for k, v in _cors_headers().items():
                 resp.headers.setdefault(k, v)
 
-        # Basic timing info
         start_ms = getattr(request, "_fxco_start_ms", None)
         if start_ms:
             dur = int(time.time() * 1000) - int(start_ms)
             resp.headers.setdefault("Server-Timing", f"app;dur={dur}")
 
-        # Request log line
         try:
             dur_ms = int(time.time() * 1000) - int(start_ms or int(time.time() * 1000))
-            logger.info(
-                "%s %s %s %sms rid=%s",
-                request.method,
-                request.path,
-                resp.status_code,
-                dur_ms,
-                req_id,
-            )
+            logger.info("%s %s %s %sms rid=%s", request.method, request.path, resp.status_code, dur_ms, req_id)
         except Exception:
             pass
 
     except Exception:
-        # never break response on logging/header issues
         pass
 
     return resp
 
 
-# OPTIONS handler (preflight)
 @app.route("/api/<path:_path>", methods=["OPTIONS"])
 def _api_options(_path):
     resp = jsonify({"ok": True})
     return resp, 200
 
 
-# Global error handler (so you see real crashes in Render logs)
 @app.errorhandler(Exception)
 def _handle_exception(e):
     req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
     logger.exception("Unhandled exception rid=%s path=%s", req_id, request.path)
-    # Return JSON instead of HTML
     resp = jsonify({"ok": False, "error": "Internal server error", "request_id": req_id})
     return resp, 500
 
@@ -194,20 +177,10 @@ def _dt_to_iso(dt: datetime) -> str:
 
 
 def _utc_now_iso_z() -> str:
-    """
-    ISO timestamp like: 2026-02-12T14:03:12Z
-    """
     return _utc_now_dt().replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _fx_session_from_utc(dt_utc: datetime) -> str:
-    """
-    Simple FX session labeling by UTC hour.
-      Asia:     00:00–08:00 UTC
-      London:   08:00–13:00 UTC
-      New York: 13:00–22:00 UTC
-      Off-hours:22:00–24:00 UTC
-    """
     h = dt_utc.hour
     if 0 <= h < 8:
         return "Asia"
@@ -261,7 +234,6 @@ def _get_openai_client():
 # ==========================
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 TD_BASE = "https://api.twelvedata.com"
-
 
 # ==========================
 # Supabase helpers (PostgREST)
@@ -338,9 +310,6 @@ def _sb_update(table: str, filters: dict, patch: dict) -> bool:
 
 
 def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
-    """
-    Insert and return the created row (Prefer return=representation).
-    """
     if not _sb_ok():
         return None
     try:
@@ -365,7 +334,6 @@ def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
 # ==========================
 RESEND_API_KEY = (os.getenv("RESEND_API_KEY", "") or "").strip()
 RESEND_FROM_EMAIL = (os.getenv("RESEND_FROM_EMAIL", "") or "").strip()
-SUPPORT_INBOX_EMAIL = (os.getenv("SUPPORT_INBOX_EMAIL", "") or "").strip()  # where contact form goes
 
 
 def _resend_ok() -> bool:
@@ -379,14 +347,7 @@ def _send_email_resend(to_email: str, subject: str, html: str) -> Tuple[bool, st
         r = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            data=json.dumps(
-                {
-                    "from": RESEND_FROM_EMAIL,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html,
-                }
-            ),
+            data=json.dumps({"from": RESEND_FROM_EMAIL, "to": [to_email], "subject": subject, "html": html}),
             timeout=12,
         )
         if r.status_code >= 400:
@@ -420,15 +381,6 @@ def _report_share_ttl_days() -> int:
 
 
 def _origin_base_url() -> str:
-    """
-    Best-effort base URL for building share links.
-
-    Priority:
-    1) X-Forwarded-Proto + X-Forwarded-Host (common on Render/NGINX)
-    2) Origin header (browser fetch)
-    3) Referer header (browser navigation)
-    4) request.host_url (fallback)
-    """
     xf_host = (request.headers.get("X-Forwarded-Host") or "").strip()
     xf_proto = (request.headers.get("X-Forwarded-Proto") or "").strip()
     if xf_host:
@@ -462,9 +414,6 @@ def _is_uuid_like(s: str) -> bool:
 
 
 def _store_share_report(report_obj: dict, client_id: str, email: Optional[str]) -> Optional[dict]:
-    """
-    Stores report in Supabase table fxco_reports. Returns {id, expires_at}.
-    """
     if not _sb_ok():
         return None
 
@@ -494,9 +443,6 @@ def _store_share_report(report_obj: dict, client_id: str, email: Optional[str]) 
 
 
 def _load_share_report(share_id: str) -> Optional[dict]:
-    """
-    Loads share report by id, enforces expires_at if present.
-    """
     if not _sb_ok():
         return None
     row = _sb_select_one("fxco_reports", {"id": share_id})
@@ -534,12 +480,7 @@ def _sign(payload_bytes: bytes) -> str:
 
 
 def _make_token(email: str, trial_ends_epoch: int) -> str:
-    payload = {
-        "email": email,
-        "trial_ends": int(trial_ends_epoch),
-        "iat": int(_now()),
-        "v": 1,
-    }
+    payload = {"email": email, "trial_ends": int(trial_ends_epoch), "iat": int(_now()), "v": 1}
     pb = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return f"{_b64url_encode(pb)}.{_sign(pb)}"
 
@@ -697,12 +638,7 @@ def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
     dt = datetime.fromtimestamp(int(paid_until_epoch), tz=timezone.utc)
     _sb_upsert(
         "fxco_access",
-        {
-            "client_id": client_id,
-            "paid_until": _dt_to_iso(dt),
-            "last_ref": ref or None,
-            "updated_at": _dt_to_iso(_utc_now_dt()),
-        },
+        {"client_id": client_id, "paid_until": _dt_to_iso(dt), "last_ref": ref or None, "updated_at": _dt_to_iso(_utc_now_dt())},
         conflict="client_id",
     )
 
@@ -791,87 +727,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "ok": True,
-            "supabase_ok": _sb_ok(),
-            "resend_ok": _resend_ok(),
-            "require_payment": _require_payment(),
-        }
-    ), 200
-
-
-# ==========================
-# Contact endpoint (Resend)
-# ==========================
-@app.post("/api/contact")
-def contact():
-    """
-    Contact form handler for contact.html
-    Uses Resend to send a support email.
-
-    Expected JSON:
-      { name, email, topic, client_id, message, page }
-    """
-    if not _resend_ok():
-        return jsonify({"ok": False, "error": "Resend not configured on server."}), 500
-
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        return jsonify({"ok": False, "error": "Invalid payload."}), 400
-
-    name = str(data.get("name") or "").strip()
-    email = str(data.get("email") or "").strip().lower()
-    topic = str(data.get("topic") or "General").strip()
-    client_id = str(data.get("client_id") or "").strip()
-    message = str(data.get("message") or "").strip()
-    page = str(data.get("page") or "").strip()
-
-    if not _email_ok(email):
-        return jsonify({"ok": False, "error": "Invalid email."}), 400
-    if not message or len(message) < 5:
-        return jsonify({"ok": False, "error": "Message is too short."}), 400
-
-    # Light anti-spam / abuse protection (separate bucket)
-    identity_key = f"contact:{_get_client_id_header() or ('ip:' + _client_ip())}"
-    ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=False)
-    if not ok:
-        resp = jsonify({"ok": False, "error": "Too many messages. Please wait and try again.", "retry_after_seconds": retry_after})
-        resp.status_code = 429
-        for k, v in rl_headers.items():
-            resp.headers[k] = v
-        return resp
-
-    dest = SUPPORT_INBOX_EMAIL or RESEND_FROM_EMAIL  # fallback
-    safe_name = name if name else "Anonymous"
-
-    subject = f"[FXCO-Pilot] {topic} — {email}"
-    html = f"""
-      <div style="font-family:Arial,sans-serif;line-height:1.55">
-        <h2 style="margin:0 0 10px 0">FXCO-Pilot • Contact Message</h2>
-        <p style="margin:0 0 6px 0"><b>From:</b> {safe_name} &lt;{email}&gt;</p>
-        <p style="margin:0 0 6px 0"><b>Topic:</b> {topic}</p>
-        <p style="margin:0 0 6px 0"><b>Client ID:</b> {client_id or _get_client_id_header() or ('ip:' + _client_ip())}</p>
-        <p style="margin:0 0 6px 0"><b>Page:</b> {page or "-"}</p>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0" />
-        <div style="white-space:pre-wrap;font-size:14px;color:#111827">{message}</div>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0" />
-        <p style="margin:0;color:#6b7280;font-size:12px">Sent from FXCO-Pilot contact form.</p>
-      </div>
-    """
-
-    sent, msg = _send_email_resend(dest, subject, html)
-    if not sent:
-        resp = jsonify({"ok": False, "error": f"Failed to send: {msg}"})
-        resp.status_code = 502
-        for k, v in rl_headers.items():
-            resp.headers[k] = v
-        return resp
-
-    resp = jsonify({"ok": True, "sent": True})
-    for k, v in rl_headers.items():
-        resp.headers[k] = v
-    return resp, 200
+    return jsonify({"ok": True, "supabase_ok": _sb_ok(), "resend_ok": _resend_ok(), "require_payment": _require_payment()}), 200
 
 
 # ==========================
@@ -957,9 +813,8 @@ def auth_start():
     otp_row = _sb_select_one("fxco_otps", {"email": email})
     if otp_row:
         sent_at = _parse_iso(str(otp_row.get("sent_at") or ""))
-        if sent_at:
-            if (_utc_now_dt() - sent_at) < timedelta(seconds=60):
-                return jsonify({"ok": True, "cooldown": 60}), 200
+        if sent_at and (_utc_now_dt() - sent_at) < timedelta(seconds=60):
+            return jsonify({"ok": True, "cooldown": 60}), 200
 
     code = _otp_code()
     code_hash = _otp_hash(email, code)
@@ -967,13 +822,7 @@ def auth_start():
 
     _sb_upsert(
         "fxco_otps",
-        {
-            "email": email,
-            "code_hash": code_hash,
-            "expires_at": _dt_to_iso(expires),
-            "sent_at": _dt_to_iso(_utc_now_dt()),
-            "attempts": 0,
-        },
+        {"email": email, "code_hash": code_hash, "expires_at": _dt_to_iso(expires), "sent_at": _dt_to_iso(_utc_now_dt()), "attempts": 0},
         conflict="email",
     )
 
@@ -1034,10 +883,7 @@ def auth_verify():
     trial_row = _trial_row(email)
     if trial_row:
         te = _parse_iso(str(trial_row.get("trial_ends") or ""))
-        if te:
-            trial_ends_epoch = int(te.timestamp())
-        else:
-            trial_ends_epoch = 0
+        trial_ends_epoch = int(te.timestamp()) if te else 0
     else:
         te = _utc_now_dt() + timedelta(days=_trial_days())
         trial_ends_epoch = int(te.timestamp())
@@ -1046,13 +892,7 @@ def auth_verify():
 
         _sb_upsert(
             "fxco_trials",
-            {
-                "email": email,
-                "trial_ends": _dt_to_iso(te),
-                "created_at": _dt_to_iso(_utc_now_dt()),
-                "last_client_id": cid,
-                "last_ip": ip,
-            },
+            {"email": email, "trial_ends": _dt_to_iso(te), "created_at": _dt_to_iso(_utc_now_dt()), "last_client_id": cid, "last_ip": ip},
             conflict="email",
         )
 
@@ -1067,7 +907,6 @@ def auth_verify():
 # ==========================
 @app.get("/api/paystack/config")
 def paystack_config():
-    # This endpoint must NEVER throw and must ALWAYS return 200.
     try:
         enabled = _require_payment()
 
@@ -1095,18 +934,7 @@ def paystack_config():
             }
         ), 200
     except Exception as e:
-        # still 200
-        return jsonify(
-            {
-                "ok": False,
-                "require_payment": False,
-                "currency": "NGN",
-                "amount": 10000 * 100,
-                "public_key": None,
-                "access_days": 30,
-                "error": str(e),
-            }
-        ), 200
+        return jsonify({"ok": False, "require_payment": False, "currency": "NGN", "amount": 10000 * 100, "public_key": None, "access_days": 30, "error": str(e)}), 200
 
 
 def _safe_json(r: requests.Response) -> dict:
@@ -1137,20 +965,11 @@ def paystack_init():
         "amount": int(_paystack_amount_minor()),
         "currency": PAYSTACK_CURRENCY,
         "callback_url": callback_url,
-        "metadata": {
-            "fxco_client_id": client_id,
-            "product": "FXCO-PILOT",
-            "access_days": _access_days(),
-        },
+        "metadata": {"fxco_client_id": client_id, "product": "FXCO-PILOT", "access_days": _access_days()},
     }
 
     try:
-        r = requests.post(
-            f"{PAYSTACK_BASE}/transaction/initialize",
-            headers=_paystack_headers(),
-            data=json.dumps(payload),
-            timeout=15,
-        )
+        r = requests.post(f"{PAYSTACK_BASE}/transaction/initialize", headers=_paystack_headers(), data=json.dumps(payload), timeout=15)
         j = _safe_json(r)
         if not j.get("status"):
             return jsonify({"ok": False, "error": j.get("message") or "Paystack init failed."}), 502
@@ -1211,7 +1030,6 @@ def td_symbol(s: str) -> str:
     raw = (s or "").upper().strip()
     if "/" in raw:
         return raw
-
     sym = _norm_symbol(raw)
     if re.fullmatch(r"[A-Z]{6}", sym):
         return f"{sym[:3]}/{sym[3:]}"
@@ -1352,84 +1170,56 @@ def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, st
 
 
 # ==========================
-# NEW: chart_tf parsing (honor user chart timeframe)
+# chart_tf (NEW): honor chart timeframe as structure driver
 # ==========================
-_TD_INTERVALS = ["1min", "5min", "15min", "30min", "45min", "1h", "2h", "4h", "1day"]
+_TD_INTERVALS = ["1min", "5min", "15min", "30min", "1h", "4h", "1day"]
 
 
-def _normalize_chart_tf(raw: str) -> Optional[str]:
+def _normalize_chart_tf(chart_tf: str) -> str:
     """
-    Accepts common chart TF inputs and returns a TwelveData interval string.
-    Examples:
-      "15m" -> "15min"
-      "1h"  -> "1h"
-      "4H"  -> "4h"
-      "60m" -> "1h"
-      "D" or "1D" -> "1day"
+    Accepts: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1day, 15min, etc.
+    Returns one of TwelveData supported intervals in _TD_INTERVALS, else "".
     """
-    if not raw:
-        return None
-    s = str(raw).strip().lower()
+    s = (chart_tf or "").strip().lower()
     if not s:
-        return None
+        return ""
 
-    # normalize aliases
     s = s.replace(" ", "")
     s = s.replace("minutes", "min").replace("minute", "min")
     s = s.replace("hours", "h").replace("hour", "h")
-    s = s.replace("day", "d").replace("days", "d")
+    s = s.replace("days", "day").replace("d", "day") if re.fullmatch(r"\d+d", s) else s
 
-    # common tokens
-    if s in ("d", "1d", "1day", "daily"):
+    # common forms
+    if s in ("1m", "1min"):
+        return "1min"
+    if s in ("5m", "5min"):
+        return "5min"
+    if s in ("15m", "15min"):
+        return "15min"
+    if s in ("30m", "30min"):
+        return "30min"
+    if s in ("1h", "60min"):
+        return "1h"
+    if s in ("4h", "240min"):
+        return "4h"
+    if s in ("1d", "1day", "day"):
         return "1day"
 
-    # 15m / 5m / 30m etc
-    m = re.fullmatch(r"(\d+)(m|min)", s)
-    if m:
-        n = int(m.group(1))
-        if n == 60:
-            return "1h"
-        if n in (1, 5, 15, 30, 45):
-            return f"{n}min"
-        return None
-
-    # 1h / 2h / 4h
-    h = re.fullmatch(r"(\d+)(h|hr|hrs)", s)
-    if h:
-        n = int(h.group(1))
-        if n in (1, 2, 4):
-            return f"{n}h"
-        return None
-
-    # already a TD interval?
-    if s in _TD_INTERVALS:
-        return s
-
-    return None
+    # numeric parser: e.g. "2h" not supported => fallback ""
+    return ""
 
 
-def _derive_execution_tf_from_structure(structure_tf: str) -> str:
+def _pick_execution_tf(structure_tf: str) -> str:
     """
-    One step lower TF for execution (entry quality).
+    Pick one lower TF for execution.
     """
-    tf = (structure_tf or "").strip().lower()
-    if tf == "1day":
-        return "4h"
-    if tf == "4h":
-        return "1h"
-    if tf == "2h":
-        return "1h"
-    if tf == "1h":
+    try:
+        i = _TD_INTERVALS.index(structure_tf)
+    except Exception:
         return "15min"
-    if tf == "45min":
-        return "15min"
-    if tf == "30min":
-        return "15min"
-    if tf == "15min":
-        return "5min"
-    if tf == "5min":
+    if i <= 0:
         return "1min"
-    return "1min"
+    return _TD_INTERVALS[max(0, i - 1)]
 
 
 # ==========================
@@ -1453,37 +1243,16 @@ def td_price(symbol: str):
         r = requests.get(f"{TD_BASE}/price", params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}, timeout=10)
         data = r.json()
         if data.get("status") == "error":
-            out = {
-                "ok": False,
-                "symbol": symbol,
-                "error": data.get("message", "Twelve Data error"),
-                "source": "twelvedata",
-                "timestamp_utc": snap_ts,
-                "session": snap_session,
-            }
+            out = {"ok": False, "symbol": symbol, "error": data.get("message", "Twelve Data error"), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
             _cache_set(cache_key, out, ttl=15)
             return out
 
         p = float(data["price"])
-        out = {
-            "ok": True,
-            "symbol": symbol,
-            "price": p,
-            "source": "twelvedata",
-            "timestamp_utc": snap_ts,
-            "session": snap_session,
-        }
+        out = {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
         _cache_set(cache_key, out, ttl=15)
         return out
     except Exception as e:
-        out = {
-            "ok": False,
-            "symbol": symbol,
-            "error": str(e),
-            "source": "twelvedata",
-            "timestamp_utc": snap_ts,
-            "session": snap_session,
-        }
+        out = {"ok": False, "symbol": symbol, "error": str(e), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
         _cache_set(cache_key, out, ttl=15)
         return out
 
@@ -1523,11 +1292,31 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
         return out
 
 
+# ==========================
+# Structure (UPGRADED): pivot swings + BOS detection
+# ==========================
+def _pivot_points(highs: List[float], lows: List[float], left: int = 2, right: int = 2):
+    """
+    Returns pivot highs/lows indexes.
+    """
+    ph = []
+    pl = []
+    n = len(highs)
+    for i in range(left, n - right):
+        h = highs[i]
+        l = lows[i]
+        if all(h > highs[i - k] for k in range(1, left + 1)) and all(h > highs[i + k] for k in range(1, right + 1)):
+            ph.append(i)
+        if all(l < lows[i - k] for k in range(1, left + 1)) and all(l < lows[i + k] for k in range(1, right + 1)):
+            pl.append(i)
+    return ph, pl
+
+
 def structure_from_candles(values):
-    if not values or len(values) < 40:
+    if not values or len(values) < 60:
         return {"structure": "unclear", "broken": False, "details": "Not enough candle data."}
 
-    vals = list(reversed(values))
+    vals = list(reversed(values))  # oldest -> newest
     try:
         closes = [float(v["close"]) for v in vals]
         highs = [float(v["high"]) for v in vals]
@@ -1535,28 +1324,71 @@ def structure_from_candles(values):
     except Exception:
         return {"structure": "unclear", "broken": False, "details": "Candle parse error."}
 
-    last = closes[-1]
-    prev = closes[-25]
-    trend = "bullish" if last > prev else "bearish" if last < prev else "unclear"
+    last_close = closes[-1]
 
-    recent_low = min(lows[-15:])
-    prior_low = min(lows[-40:-15])
-    recent_high = max(highs[-15:])
-    prior_high = max(highs[-40:-15])
+    ph, pl = _pivot_points(highs, lows, left=2, right=2)
+    if len(ph) < 2 or len(pl) < 2:
+        # fallback to your old/simple logic
+        prev = closes[-25]
+        trend = "bullish" if last_close > prev else "bearish" if last_close < prev else "unclear"
+        recent_low = min(lows[-15:])
+        prior_low = min(lows[-40:-15])
+        recent_high = max(highs[-15:])
+        prior_high = max(highs[-40:-15])
+        if trend == "bullish" and recent_low > prior_low:
+            return {"structure": "bullish (HL)", "broken": False, "details": "Higher low detected (fallback)."}
+        if trend == "bearish" and recent_high < prior_high:
+            return {"structure": "bearish (LH)", "broken": False, "details": "Lower high detected (fallback)."}
+        return {"structure": "unclear", "broken": False, "details": "Insufficient pivots; fallback trend unclear."}
 
-    if trend == "bullish":
-        if recent_low > prior_low:
-            return {"structure": "bullish", "broken": False, "details": "Higher low detected."}
-        return {"structure": "unclear", "broken": False, "details": "Bullish trend but HL not confirmed."}
+    # Most recent pivots
+    last_ph_i, prev_ph_i = ph[-1], ph[-2]
+    last_pl_i, prev_pl_i = pl[-1], pl[-2]
 
-    if trend == "bearish":
-        if recent_high < prior_high:
-            return {"structure": "bearish", "broken": False, "details": "Lower high detected."}
-        return {"structure": "unclear", "broken": False, "details": "Bearish trend but LH not confirmed."}
+    last_ph = highs[last_ph_i]
+    prev_ph = highs[prev_ph_i]
+    last_pl = lows[last_pl_i]
+    prev_pl = lows[prev_pl_i]
 
-    return {"structure": "unclear", "broken": False, "details": "Trend unclear."}
+    hh = last_ph > prev_ph
+    lh = last_ph < prev_ph
+    hl = last_pl > prev_pl
+    ll = last_pl < prev_pl
+
+    # Basic classification
+    if hh and hl:
+        struct = "bullish (HH/HL)"
+    elif lh and ll:
+        struct = "bearish (LH/LL)"
+    elif hh and ll:
+        struct = "expanding / volatile"
+    elif lh and hl:
+        struct = "range / compression"
+    else:
+        struct = "unclear"
+
+    # BOS check (break last swing)
+    broken = False
+    bos = ""
+    # If price closes above last pivot high => bullish BOS
+    if last_close > last_ph:
+        broken = True
+        bos = "BOS up (close > last swing high)"
+    # If closes below last pivot low => bearish BOS
+    if last_close < last_pl:
+        broken = True
+        bos = "BOS down (close < last swing low)"
+
+    details = f"last_close={last_close:.5f}, last_PH={last_ph:.5f}, last_PL={last_pl:.5f}"
+    if bos:
+        details += f", {bos}"
+
+    return {"structure": struct, "broken": broken, "details": details}
 
 
+# ==========================
+# Confidence / reasons / warnings
+# ==========================
 def compute_confidence(analysis):
     score = 0
     mc = analysis.get("market_context", {}) or {}
@@ -1580,7 +1412,7 @@ def compute_confidence(analysis):
             score += 6
 
     liquidity = (mc.get("liquidity") or "").lower()
-    if any(x in liquidity for x in ["sweep", "grab", "equal", "liquidity"]):
+    if any(x in liquidity for x in ["sweep", "grab", "equal", "liquidity", "stop run", "raid"]):
         score += 20
     elif liquidity:
         score += 10
@@ -1646,6 +1478,160 @@ def build_invalidation_warnings(analysis, live_snapshot=None):
     return warnings[:10]
 
 
+# ==========================
+# Execution Plan (NEW): actionable outputs
+# ==========================
+def build_execution_plan(analysis: dict) -> dict:
+    sc = analysis.get("signal_check", {}) or {}
+    bias = (analysis.get("bias") or "Unclear").strip().lower()
+
+    entry = _to_float(sc.get("entry"))
+    sl = _to_float(sc.get("stop_loss"))
+    targets = _parse_targets(sc.get("targets"))
+
+    plan = {
+        "invalidation_level": None,
+        "aggressive_entry": None,
+        "conservative_entry": None,
+        "position_size_hint": "",
+        "if_then_checklist": [],
+    }
+
+    if entry is None or sl is None:
+        plan["if_then_checklist"].append("If entry or stop loss is missing, do not execute. Add levels first.")
+        return plan
+
+    # Invalidation is basically SL (simple and trustworthy)
+    plan["invalidation_level"] = sl
+
+    risk = abs(entry - sl)
+    if risk <= 0:
+        plan["if_then_checklist"].append("If entry equals stop loss, the trade is invalid. Fix your risk.")
+        return plan
+
+    # Aggressive vs conservative: simple but useful
+    # aggressive = entry as given
+    plan["aggressive_entry"] = entry
+
+    # conservative = slightly better price toward SL (for long: lower, for short: higher)
+    # (0.25R improvement)
+    if "long" in bias:
+        plan["conservative_entry"] = round(entry - 0.25 * risk, 5)
+    elif "short" in bias:
+        plan["conservative_entry"] = round(entry + 0.25 * risk, 5)
+    else:
+        plan["conservative_entry"] = entry
+
+    rr = sc.get("rr")
+    if isinstance(rr, (int, float)):
+        if rr >= 2.0:
+            plan["position_size_hint"] = "RR is healthy. Consider normal risk size (still respect daily loss limits)."
+        elif rr >= 1.5:
+            plan["position_size_hint"] = "RR is acceptable. Consider smaller size unless the trigger is very clean."
+        else:
+            plan["position_size_hint"] = "RR is weak. Prefer smaller size or skip unless you can improve entry/TP."
+
+    # Checklist
+    plan["if_then_checklist"].extend(
+        [
+            "If price tags entry but you don’t get a clean trigger (reclaim/confirm), wait.",
+            "If structure conflicts with your bias, reduce size or skip.",
+            "If price hits invalidation (SL), exit — no exceptions.",
+        ]
+    )
+    if targets:
+        plan["if_then_checklist"].append("If TP1 hits, consider moving SL to breakeven (only if structure supports).")
+
+    return plan
+
+
+# ==========================
+# JSON reliability (UPGRADE #1): extract + retry + repair
+# ==========================
+def _extract_first_json_object(text: str) -> Optional[dict]:
+    """
+    Try to find and parse the first JSON object inside text.
+    """
+    if not text:
+        return None
+
+    s = text.strip()
+
+    # direct attempt
+    try:
+        obj = json.loads(s)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    # scan for balanced braces
+    start = s.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+        else:
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = s[start : i + 1]
+                    try:
+                        obj = json.loads(candidate)
+                        if isinstance(obj, dict):
+                            return obj
+                    except Exception:
+                        return None
+    return None
+
+
+def _repair_json_with_model(oa: OpenAI, raw_text: str, schema_hint: str) -> Optional[dict]:
+    """
+    Ask model to output valid JSON ONLY that matches schema_hint.
+    """
+    try:
+        repair_prompt = f"""
+Fix the following content into VALID JSON ONLY (no markdown, no extra text).
+It MUST match this schema exactly:
+
+{schema_hint}
+
+Content to fix:
+{raw_text}
+"""
+        completion = oa.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "You are a strict JSON repair tool. Output ONLY valid JSON. No markdown."},
+                {"role": "user", "content": repair_prompt},
+            ],
+            temperature=0.0,
+        )
+        out = completion.choices[0].message.content or ""
+        obj = _extract_first_json_object(out)
+        return obj
+    except Exception:
+        return None
+
+
+# ==========================
+# Payload parsing (UPDATED): includes chart_tf
+# ==========================
 def _pick_first(data, keys):
     for k in keys:
         v = None
@@ -1659,28 +1645,24 @@ def _pick_first(data, keys):
 
 
 def _get_payload_fields():
-    """
-    Returns:
-      pair_type, timeframe_style, signal_text, chart_tf_raw
-    """
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
         timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])  # style
+        chart_tf = _pick_first(data, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
         signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
-        chart_tf = _pick_first(data, ["chart_tf", "chartTf", "chart_tf_interval", "chartInterval"])
-        return pair_type, timeframe, signal_text, chart_tf
+        return pair_type, timeframe, chart_tf, signal_text
 
     form = request.form or {}
     pair_type = _pick_first(form, ["pair_type", "pairType"])
-    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
+    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])  # style
+    chart_tf = _pick_first(form, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
     signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
-    chart_tf = _pick_first(form, ["chart_tf", "chartTf", "chart_tf_interval", "chartInterval"])
-    return pair_type, timeframe, signal_text, chart_tf
+    return pair_type, timeframe, chart_tf, signal_text
 
 
 # ==========================
-# Institutional decision system
+# Institutional decision system (existing)
 # ==========================
 def _as_text(v) -> str:
     return (str(v or "")).strip()
@@ -1700,9 +1682,9 @@ def _institutional_score(analysis: dict) -> int:
 
     score = 0
 
-    if any(x in structure for x in ["bullish", "bearish", "trend", "clean"]):
+    if any(x in structure for x in ["bullish", "bearish", "trend", "clean", "hh/hl", "lh/ll"]):
         score += 20
-    elif any(x in structure for x in ["range", "sideways", "chop", "unclear"]):
+    elif any(x in structure for x in ["range", "sideways", "chop", "unclear", "compression"]):
         score += 10
     elif structure:
         score += 12
@@ -1777,15 +1759,9 @@ def institutional_decision_engine(analysis: dict) -> dict:
     if isinstance(rr, (int, float)) and rr < 1.5:
         hard_blocks.append(f"Risk:Reward too low (RR≈{rr}). Minimum is 1.5 for execution.")
 
-    struct_is_unclear = any(x in structure for x in ["unclear", "chop", "choppy", "no structure"])
-    structure_tf_unclear_tag = f"live({structure_tf})"
-    exec_tf_tag = f"exec({execution_tf})"
-
-    if struct_is_unclear and structure_tf_unclear_tag in structure:
-        hard_blocks.append("Market structure is unclear/choppy on the primary structure timeframe.")
-
-    if struct_is_unclear and exec_tf_tag in structure and structure_tf_unclear_tag not in structure:
-        conditions.append("Execution timeframe is choppy/unclear: wait for a clean trigger before entry.")
+    # If your structure function flags broken (BOS), treat as caution not auto-block
+    if mc.get("structure_broken") is True:
+        conditions.append("Break of structure detected recently: require a clean reclaim/confirmation before entry.")
 
     if any(x in liquidity for x in ["thin", "poor", "unknown", "low liquidity"]):
         hard_blocks.append("Liquidity conditions are poor/unclear.")
@@ -1810,8 +1786,8 @@ def institutional_decision_engine(analysis: dict) -> dict:
             conditions.append("Wait for clearer timeframe alignment before executing.")
         if isinstance(rr, (int, float)) and rr < 2.0:
             conditions.append("Improve RR (aim ≥ 2.0) by refining entry or targets.")
-        if any(x in structure for x in ["range", "sideways"]):
-            conditions.append("Range conditions: wait for sweep + reclaim or breakout + retest.")
+        if any(x in structure for x in ["range", "compression"]):
+            conditions.append("Range/compression: wait for sweep + reclaim or breakout + retest.")
         if not conditions and confidence < 65:
             conditions.append("Confidence is moderate: execute only with a clean trigger (confirm candle / reclaim).")
 
@@ -1853,10 +1829,7 @@ def institutional_decision_engine(analysis: dict) -> dict:
         if guidance_lines:
             reasoning_text += "\n\nExecution Notes:\n" + "\n".join(guidance_lines)
     else:
-        if guidance_lines:
-            reasoning_text = "Execution Notes:\n" + "\n".join(guidance_lines)
-        else:
-            reasoning_text = "No narrative was returned by the model. (Backend fallback summary applied.)"
+        reasoning_text = "Execution Notes:\n" + "\n".join(guidance_lines) if guidance_lines else "No narrative was returned. (Backend fallback summary applied.)"
 
     analysis["decision_tier"] = decision_tier
     analysis["decision_label"] = decision_label
@@ -1918,7 +1891,7 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp, 200
 
-    pair_type, timeframe, signal_text, chart_tf_raw = _get_payload_fields()
+    pair_type, timeframe, chart_tf_raw, signal_text = _get_payload_fields()
 
     missing = []
     if not pair_type:
@@ -1935,9 +1908,9 @@ def analyze():
                 "missing": missing,
                 "expected_any_of": {
                     "pair_type": ["pair_type", "pairType"],
-                    "timeframe": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    "timeframe (style)": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    "chart_tf (optional)": ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"],
                     "signal_input": ["signal_input", "signal", "signalText"],
-                    "chart_tf": ["chart_tf", "chartTf", "chart_tf_interval", "chartInterval"],
                 },
                 "received_content_type": request.headers.get("Content-Type", ""),
             }
@@ -1967,46 +1940,36 @@ def analyze():
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
-    # Keep timeframe as style, but HONOR chart_tf as Structure TF if provided
     hold_minutes = _parse_duration_minutes(signal_text)
     mode_norm = _normalize_mode(timeframe)
 
-    # Defaults from style+hold
-    default_structure_tf, default_execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
-
-    # Override structure tf from chart_tf if valid
-    chart_tf_norm = _normalize_chart_tf(chart_tf_raw)
-    if chart_tf_norm:
-        structure_tf = chart_tf_norm
-        execution_tf = _derive_execution_tf_from_structure(structure_tf)
-        chart_tf_used = True
+    # NEW: honor chart_tf if provided, while keeping timeframe as style
+    chart_tf = _normalize_chart_tf(chart_tf_raw)
+    if chart_tf:
+        structure_tf = chart_tf
+        execution_tf = _pick_execution_tf(structure_tf)
     else:
-        structure_tf = default_structure_tf
-        execution_tf = default_execution_tf
-        chart_tf_used = False
+        structure_tf, execution_tf = _map_horizon_to_tfs(mode_norm, hold_minutes)
 
-    hold_minutes = hold_minutes if hold_minutes is not None else (
-        20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440
-    )
+    hold_minutes = hold_minutes if hold_minutes is not None else (20 if mode_norm == "scalp" else 135 if mode_norm == "intraday" else 1440)
 
     assessment_horizon = {
-        "timeframe_mode": timeframe,      # style (unchanged)
-        "mode_normalized": mode_norm,     # style (normalized)
+        "timeframe_style": timeframe,
+        "chart_tf": chart_tf or None,
+        "mode_normalized": mode_norm,
         "hold_minutes": int(hold_minutes),
-        "chart_tf_raw": chart_tf_raw or "",
-        "chart_tf_used": bool(chart_tf_used),
-        "structure_tf": structure_tf,     # verdict driver
-        "execution_tf": execution_tf,     # entry quality
+        "structure_tf": structure_tf,
+        "execution_tf": execution_tf,
     }
 
     live_snapshot = td_price(symbol)
 
-    candles_structure = td_candles(symbol, interval=structure_tf, limit=120)
+    candles_structure = td_candles(symbol, interval=structure_tf, limit=160)
     struct_info_structure = {"structure": "unclear", "broken": False, "details": ""}
     if candles_structure.get("ok") and candles_structure.get("values"):
         struct_info_structure = structure_from_candles(candles_structure["values"])
 
-    candles_exec = td_candles(symbol, interval=execution_tf, limit=120)
+    candles_exec = td_candles(symbol, interval=execution_tf, limit=160)
     struct_info_exec = {"structure": "unclear", "broken": False, "details": ""}
     if candles_exec.get("ok") and candles_exec.get("values"):
         struct_info_exec = structure_from_candles(candles_exec["values"])
@@ -2018,19 +1981,41 @@ def analyze():
     else:
         live_context = f"Live data error: {live_snapshot.get('error', 'unknown')}"
 
+    schema_hint = """
+{
+  "bias": "Long|Short|Neutral|Unclear",
+  "strength": 0,
+  "clarity": 0,
+  "signal_check": {
+    "direction": "Long|Short|Neutral|Unclear",
+    "entry": "number",
+    "stop_loss": "number",
+    "targets": [number]
+  },
+  "market_context": {
+    "structure": "string",
+    "liquidity": "string",
+    "momentum": "string",
+    "timeframe_alignment": "string"
+  },
+  "verdict": "string",
+  "guidance": ["string","string","string"]
+}
+""".strip()
+
     base_prompt = f"""
-You are FX CO-PILOT — an institutional-grade trade validation engine.
+You are FX CO-PILOT — a trade validation engine.
 
 You do NOT predict price. You evaluate execution quality: structure, liquidity, alignment, and risk plan.
 
 RISK-DESK RULE (NON-NEGOTIABLE):
 - The trade's verdict MUST be driven by the PRIMARY STRUCTURE timeframe (Structure TF).
-- The Execution TF may affect entry timing quality, but MUST NOT veto an otherwise valid intraday/swing setup by itself.
+- The Execution TF may affect entry timing quality, but MUST NOT veto an otherwise valid setup by itself.
 
 User Context:
 - Pair type: {pair_type}
 - Timeframe style (user): {timeframe}
-- Chart timeframe (user): {chart_tf_raw or "not provided"}
+- Chart timeframe (optional): {chart_tf_raw or ""}
 - Intended hold duration (parsed): {hold_minutes} minutes
 - Structure TF (verdict driver): {structure_tf}
 - Execution TF (entry quality only): {execution_tf}
@@ -2045,25 +2030,7 @@ Live Market:
 
 Return ONLY valid JSON (no markdown) that matches EXACTLY this schema:
 
-{{
-  "bias": "Long|Short|Neutral|Unclear",
-  "strength": 0,
-  "clarity": 0,
-  "signal_check": {{
-    "direction": "Long|Short|Neutral|Unclear",
-    "entry": "number",
-    "stop_loss": "number",
-    "targets": [number]
-  }},
-  "market_context": {{
-    "structure": "string",
-    "liquidity": "string",
-    "momentum": "string",
-    "timeframe_alignment": "string"
-  }},
-  "verdict": "A short narrative paragraph explaining the trade quality and why it is (or isn't) executable for the stated hold duration.",
-  "guidance": ["string","string","string"]
-}}
+{schema_hint}
 
 Rules:
 - Output MUST be raw JSON only.
@@ -2071,7 +2038,7 @@ Rules:
 - targets must be an array of numeric-like values.
 - If uncertain, keep bias Neutral/Unclear and write a cautious verdict.
 - verdict must NEVER be empty.
-"""
+""".strip()
 
     messages = [
         {"role": "system", "content": "You are FX Co-Pilot. Output ONLY JSON. No markdown."},
@@ -2091,23 +2058,43 @@ Rules:
 
     generated_at = _ms_now()
 
-    try:
+    def _run_model(strict: bool = False) -> str:
+        extra = ""
+        if strict:
+            extra = "\nIMPORTANT: Output must be JSON ONLY. No commentary. No markdown. No backticks.\n"
         completion = oa.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=messages,
-            temperature=0.2,
+            messages=messages + ([{"role": "user", "content": extra}] if strict else []),
+            temperature=0.2 if not strict else 0.0,
         )
+        return completion.choices[0].message.content or ""
 
-        raw = completion.choices[0].message.content or ""
-        analysis_obj = json.loads(raw)
+    try:
+        raw = _run_model(strict=False)
+
+        # Upgrade #1: robust JSON parse
+        analysis_obj = _extract_first_json_object(raw)
+        if analysis_obj is None:
+            raw2 = _run_model(strict=True)
+            analysis_obj = _extract_first_json_object(raw2)
+        if analysis_obj is None:
+            analysis_obj = _repair_json_with_model(oa, raw, schema_hint)
+
+        if analysis_obj is None:
+            resp = jsonify({"error": "Model did not return valid JSON (after repair)."})
+            resp.status_code = 502
+            for k, v in rl_headers.items():
+                resp.headers[k] = v
+            if trial_ends_epoch:
+                resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
+            return resp
 
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
 
         rr = calculate_rr(sc.get("entry"), sc.get("stop_loss"), sc.get("targets"))
 
-        structure_text = (mc.get("structure") or "").strip()
-        structure_text = structure_text if structure_text else "Structure context not provided."
+        structure_text = (mc.get("structure") or "").strip() or "Structure context not provided."
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
         structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
 
@@ -2124,6 +2111,7 @@ Rules:
             },
             "market_context": {
                 "structure": structure_text,
+                "structure_broken": bool(struct_info_structure.get("broken")),
                 "liquidity": mc.get("liquidity") or "",
                 "momentum": mc.get("momentum") or "",
                 "timeframe_alignment": mc.get("timeframe_alignment") or "",
@@ -2138,6 +2126,9 @@ Rules:
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
 
+        # Upgrade #2: action plan
+        analysis["execution_plan"] = build_execution_plan(analysis)
+
         analysis = institutional_decision_engine(analysis)
 
         decision_tier = str(analysis.get("decision_tier") or "").strip().upper()
@@ -2146,8 +2137,8 @@ Rules:
 
         report_payload = {
             "pair_type": pair_type,
-            "timeframe": timeframe,             # style preserved
-            "chart_tf": chart_tf_raw or "",     # echoed back
+            "timeframe": timeframe,
+            "chart_tf": chart_tf or None,
             "signal_input": signal_text,
             "analysis": analysis,
             "generated_at": generated_at,
@@ -2172,7 +2163,7 @@ Rules:
                 "mode": "twelvedata_live",
                 "pair_type": pair_type,
                 "timeframe": timeframe,
-                "chart_tf": chart_tf_raw or "",
+                "chart_tf": chart_tf or None,
                 "signal_input": signal_text,
                 "generated_at": generated_at,
                 "share_id": share_id,
@@ -2186,14 +2177,6 @@ Rules:
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    except json.JSONDecodeError:
-        resp = jsonify({"error": "Model did not return valid JSON."})
-        resp.status_code = 502
-        for k, v in rl_headers.items():
-            resp.headers[k] = v
-        if trial_ends_epoch:
-            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
-        return resp
     except Exception as e:
         msg = str(e)
         status = 500
