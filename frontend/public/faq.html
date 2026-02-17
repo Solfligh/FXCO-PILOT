@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ — FXCO-Pilot</title>
+
+  <!-- SEO -->
+  <meta name="description" content="FXCO-Pilot FAQ: trials, payments, report sharing, chart timeframes, and how the validator works." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="/faq.html" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#f7f9ff;
+      --bg2:#ffffff;
+      --ink:#0b1220;
+      --muted:#5c667a;
+      --card:#ffffff;
+      --line:rgba(15, 23, 42, .10);
+      --shadow: 0 18px 60px rgba(15, 23, 42, .08);
+      --primary:#2563eb;
+      --primary2:#1d4ed8;
+      --radius:18px;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Poppins, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, rgba(37,99,235,.10), transparent 55%),
+        radial-gradient(900px 500px at 90% 20%, rgba(29,78,216,.10), transparent 50%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height:100vh;
+    }
+    a{color:inherit; text-decoration:none}
+
+    .wrap{max-width:980px; margin:0 auto; padding:24px 16px 52px}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; padding:10px 0 18px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:700; letter-spacing:.2px;
+    }
+    .logo{
+      width:36px; height:36px; border-radius:12px;
+      background:linear-gradient(135deg, rgba(37,99,235,.95), rgba(29,78,216,.85));
+      box-shadow:0 12px 30px rgba(37,99,235,.22);
+      display:grid; place-items:center; color:#fff; font-weight:800;
+    }
+    .nav{
+      display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;
+    }
+    .chip{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.75);
+      backdrop-filter: blur(8px);
+      padding:9px 12px;
+      border-radius:999px;
+      font-size:13px;
+      color:var(--muted);
+      transition:.15s ease;
+    }
+    .chip:hover{transform:translateY(-1px); color:var(--ink); border-color:rgba(37,99,235,.25)}
+
+    .head{
+      background:rgba(255,255,255,.82);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:18px;
+    }
+    h1{margin:0; font-size:28px; letter-spacing:-.2px}
+    .sub{margin:8px 0 0; color:var(--muted); line-height:1.65; font-size:14px}
+
+    .search{
+      margin-top:12px;
+      display:flex; gap:10px; flex-wrap:wrap;
+      align-items:center;
+    }
+    .search input{
+      flex:1;
+      min-width:220px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      outline:none;
+      font:inherit;
+      color:var(--ink);
+    }
+    .search input:focus{
+      border-color: rgba(37,99,235,.55);
+      box-shadow: 0 0 0 4px rgba(37,99,235,.12);
+    }
+
+    .btn{
+      border:0;
+      background:linear-gradient(135deg, var(--primary), var(--primary2));
+      color:#fff;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:600;
+      cursor:pointer;
+      transition:.15s ease;
+      box-shadow: 0 16px 40px rgba(37,99,235,.22);
+      white-space:nowrap;
+    }
+    .btn:hover{transform:translateY(-1px)}
+
+    .list{
+      margin-top:14px;
+      display:grid;
+      gap:12px;
+    }
+    details{
+      background:rgba(255,255,255,.84);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    summary{
+      cursor:pointer;
+      list-style:none;
+      padding:16px 16px;
+      font-weight:600;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+    summary::-webkit-details-marker{display:none}
+    .chev{
+      width:24px; height:24px;
+      border-radius:999px;
+      display:grid; place-items:center;
+      border:1px solid rgba(15,23,42,.10);
+      color:var(--muted);
+      background:rgba(255,255,255,.9);
+      flex:0 0 auto;
+      transition:.15s ease;
+    }
+    details[open] .chev{transform:rotate(180deg)}
+    .body{
+      padding:0 16px 16px;
+      color:var(--muted);
+      font-size:14px;
+      line-height:1.7;
+    }
+    .body b{color:var(--ink)}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(15,23,42,.10);
+      background:rgba(255,255,255,.9);
+      font-size:12px;
+      color:var(--muted);
+      margin-top:10px;
+    }
+
+    footer{
+      margin-top:18px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    .tiny-links{display:flex; gap:10px; flex-wrap:wrap}
+    .tiny-links a{color:var(--muted)}
+    .tiny-links a:hover{color:var(--ink)}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a class="brand" href="/">
+        <div class="logo">FX</div>
+        <div>FXCO-Pilot</div>
+      </a>
+      <div class="nav">
+        <a class="chip" href="/contact.html">Contact</a>
+        <a class="chip" href="/pricing.html">Pricing</a>
+        <a class="chip" href="/index.html">Home</a>
+      </div>
+    </div>
+
+    <div class="head">
+      <h1>FAQ</h1>
+      <p class="sub">
+        Quick answers to the most common questions about trials, pricing, report sharing, and how FXCO-Pilot validates trades.
+      </p>
+
+      <div class="search">
+        <input id="q" placeholder="Search FAQ… (e.g. trial, paystack, share, chart)" />
+        <button class="btn" id="openAll" type="button">Open all</button>
+        <button class="btn" id="closeAll" type="button" style="background:#0f172a">Close all</button>
+      </div>
+    </div>
+
+    <div class="list" id="faqList">
+      <details data-tags="what is fxco pilot validator">
+        <summary>
+          What is FXCO-Pilot?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          FXCO-Pilot is a <b>trade validation tool</b>. It doesn’t predict price — it checks your setup quality:
+          <b>structure</b>, <b>liquidity context</b>, <b>alignment</b>, and <b>risk plan</b>, then gives a disciplined verdict (TAKE / TAKE IF / WAIT / AVOID).
+          <div class="pill">Key idea: decision support, not signals</div>
+        </div>
+      </details>
+
+      <details data-tags="signals copy trading confirm signal">
+        <summary>
+          I buy signals. Why should I use FXCO-Pilot?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          Signals can be right but still be <b>bad executions</b> for your timing, risk, or context.
+          FXCO-Pilot helps you confirm whether the signal has a sensible entry/SL/TP, whether structure supports the bias, and whether the trade is worth taking.
+        </div>
+      </details>
+
+      <details data-tags="trial otp code email not arriving resend">
+        <summary>
+          My OTP / trial code is not arriving. What do I do?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          First check <b>Spam/Promotions</b>. If you still don’t see it:
+          <br/>• Ensure the sending domain is verified on your email provider (Resend).
+          <br/>• Confirm your backend has <b>RESEND_API_KEY</b> and <b>RESEND_FROM_EMAIL</b>.
+          <br/>• Try again after 60 seconds (there’s a cooldown).
+        </div>
+      </details>
+
+      <details data-tags="payment paystack locked after payment reference">
+        <summary>
+          I paid via Paystack but I’m still locked. Why?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          Most times it’s because the app didn’t verify the transaction reference.
+          Make sure your frontend calls:
+          <br/><b>GET /api/paystack/verify?reference=XXXX</b>
+          <br/>after payment, and that the backend currency/amount match your Paystack settings.
+          <div class="pill">Tip: confirm PAYSTACK_CURRENCY + amount</div>
+        </div>
+      </details>
+
+      <details data-tags="share report link expired report not found">
+        <summary>
+          My share link says “Report not found (or expired)”
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          Share links expire based on <b>REPORT_SHARE_TTL_DAYS</b>.
+          If it’s expired, generate a new report and share again.
+          Also confirm your Supabase table <b>fxco_reports</b> is set up correctly and Supabase env vars are present on the backend.
+        </div>
+      </details>
+
+      <details data-tags="chart timeframe chart_tf structure timeframe">
+        <summary>
+          What’s the difference between “timeframe (style)” and “chart timeframe”?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          <b>Timeframe (style)</b> is how you trade: Scalp / Intraday / Swing.
+          <br/><b>Chart timeframe</b> is the actual TF you’re looking at (e.g. 15m, 1h, 4h).
+          <br/>Your backend can be set to honor <b>chart_tf</b> as the primary structure driver while keeping timeframe as style.
+        </div>
+      </details>
+
+      <details data-tags="does it predict price guarantee win">
+        <summary>
+          Does FXCO-Pilot guarantee a win?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          No. It’s not a “win machine.” It’s a <b>discipline machine</b>.
+          It helps you avoid low-quality entries and emotional mistakes, but risk is always real in markets.
+        </div>
+      </details>
+
+      <details data-tags="best way to use how to">
+        <summary>
+          What’s the best way to use FXCO-Pilot for real trading?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          1) Paste the signal or your idea with entry/SL/TP.<br/>
+          2) Add how long you plan to hold (e.g. “hold 2 hours”).<br/>
+          3) If you have a chart timeframe, send it as <b>chart_tf</b> (e.g. 15m / 1h).<br/>
+          4) Follow the verdict and conditions: if it says WAIT, you wait.
+        </div>
+      </details>
+
+      <details data-tags="support contact bug">
+        <summary>
+          I found a bug. How do I report it?
+          <span class="chev">⌄</span>
+        </summary>
+        <div class="body">
+          Go to <a href="/contact.html"><b>Contact</b></a> and include:
+          <br/>• what you clicked<br/>• what you expected<br/>• what happened (error text)<br/>• screenshot if possible
+        </div>
+      </details>
+    </div>
+
+    <footer>
+      <div>© <span id="year"></span> SolFligh Tech • FXCO-Pilot</div>
+      <div class="tiny-links">
+        <a href="/contact.html">Contact</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function(){
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      const q = document.getElementById("q");
+      const list = document.getElementById("faqList");
+      const items = Array.from(list.querySelectorAll("details"));
+
+      function norm(s){ return (s || "").toLowerCase().trim(); }
+
+      q.addEventListener("input", () => {
+        const needle = norm(q.value);
+        items.forEach(d => {
+          const hay = norm(d.innerText + " " + (d.getAttribute("data-tags") || ""));
+          const show = !needle || hay.includes(needle);
+          d.style.display = show ? "" : "none";
+        });
+      });
+
+      document.getElementById("openAll").addEventListener("click", () => {
+        items.forEach(d => d.open = true);
+      });
+
+      document.getElementById("closeAll").addEventListener("click", () => {
+        items.forEach(d => d.open = false);
+      });
+    })();
+  </script>
+</body>
+</html>
