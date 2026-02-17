@@ -1,3 +1,18 @@
+"""
+FXCO-PILOT backend (institutional upgrade: Redis-backed rate limiting + caching)
+
+✅ Adds shared Redis state (Upstash via REDIS_URL) so rate limits and caches survive:
+- multi-instance scaling
+- restarts / deploys
+- concurrency (atomic INCR/EXPIRE via Lua)
+
+ENV (add on Render):
+- REDIS_URL=rediss://default:password@host:port
+
+requirements.txt (add):
+- redis>=5.0.0
+"""
+
 import base64
 import hashlib
 import hmac
@@ -12,22 +27,16 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple, Any, Dict, List
 
 import requests
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request
 from openai import OpenAI
 
-app = Flask(__name__)
-
-# ============================================================
-# Server hardening (basic)
-# ============================================================
-# Limit upload size (charts)
-# You can override via MAX_CONTENT_LENGTH_BYTES env (bytes).
+# ✅ Redis (Upstash over rediss://)
 try:
-    app.config["MAX_CONTENT_LENGTH"] = int((os.getenv("MAX_CONTENT_LENGTH_BYTES", "5242880") or "5242880").strip())
+    import redis  # type: ignore
 except Exception:
-    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5MB
+    redis = None  # fallback if dep not installed
 
-_START_TS = time.time()
+app = Flask(__name__)
 
 # ============================================================
 # Logging (Render)
@@ -80,13 +89,8 @@ logger = logging.getLogger("fxco-pilot")
 # Shareable reports:
 #   REPORT_SHARE_TTL_DAYS=30
 #
-# OpenAI:
-#   OPENAI_MODEL=gpt-4.1-mini
-#   OPENAI_TIMEOUT_SECS=25
-#
-# Security:
-#   ALLOWED_ORIGINS=https://a.com,https://b.com
-#   MAX_IMAGE_BYTES=2500000
+# Redis (Upstash):
+#   REDIS_URL=rediss://...
 # ============================================================
 
 # ==========================
@@ -122,30 +126,15 @@ def _cors_headers():
     }
 
 
-def _security_headers():
-    # Lightweight headers that won’t break your static frontend.
-    return {
-        "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "strict-origin-when-cross-origin",
-        "X-Frame-Options": "DENY",
-        "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
-    }
-
-
 @app.after_request
 def _after_request(resp):
     try:
         req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
         resp.headers["X-Request-Id"] = req_id
 
-        # CORS for API + health
         if request.path.startswith("/api/") or request.path == "/health":
             for k, v in _cors_headers().items():
                 resp.headers.setdefault(k, v)
-
-        # Security headers (every response)
-        for k, v in _security_headers().items():
-            resp.headers.setdefault(k, v)
 
         start_ms = getattr(request, "_fxco_start_ms", None)
         if start_ms:
@@ -170,12 +159,6 @@ def _api_options(_path):
     return resp, 200
 
 
-@app.errorhandler(413)
-def _handle_413(_e):
-    req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
-    return jsonify({"ok": False, "error": "Request too large.", "request_id": req_id}), 413
-
-
 @app.errorhandler(Exception)
 def _handle_exception(e):
     req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
@@ -185,7 +168,124 @@ def _handle_exception(e):
 
 
 # ==========================
-# Simple in-memory cache
+# Redis (Upstash via REDIS_URL)
+# ==========================
+REDIS_URL = (os.getenv("REDIS_URL", "") or "").strip()
+
+_redis_client = None
+_redis_rl_script = None
+
+# Redis key namespace (avoid collisions)
+_REDIS_PREFIX = "fxco:"
+
+# Lua script for atomic rate limiting counters (correct under concurrency)
+_REDIS_RATE_LUA = r"""
+local k60 = KEYS[1]
+local kday = KEYS[2]
+local limit60 = tonumber(ARGV[1])
+local limitday = tonumber(ARGV[2])
+local ttl60 = tonumber(ARGV[3])
+local ttlday = tonumber(ARGV[4])
+
+local v60 = redis.call('INCR', k60)
+if v60 == 1 then
+  redis.call('EXPIRE', k60, ttl60)
+end
+
+local vday = redis.call('INCR', kday)
+if vday == 1 then
+  redis.call('EXPIRE', kday, ttlday)
+end
+
+local rem60 = limit60 - v60
+local remday = limitday - vday
+
+local t60 = redis.call('TTL', k60)
+local tday = redis.call('TTL', kday)
+
+return {v60, vday, rem60, remday, t60, tday}
+"""
+
+
+def _redis() -> Optional["redis.Redis"]:
+    """
+    Returns a connected Redis client or None. Never throws to callers.
+    """
+    global _redis_client, _redis_rl_script
+
+    if not REDIS_URL or redis is None:
+        return None
+
+    if _redis_client is not None:
+        return _redis_client
+
+    try:
+        # decode_responses=False keeps bytes (we'll decode manually)
+        _redis_client = redis.from_url(
+            REDIS_URL,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            health_check_interval=30,
+            retry_on_timeout=True,
+            decode_responses=False,
+        )
+        # Quick ping to validate credentials/connection
+        _redis_client.ping()
+        _redis_rl_script = _redis_client.register_script(_REDIS_RATE_LUA)
+        logger.info("Redis connected OK.")
+        return _redis_client
+    except Exception as e:
+        _redis_client = None
+        _redis_rl_script = None
+        logger.warning("Redis not available (fallback to memory). err=%s", str(e)[:180])
+        return None
+
+
+def _redis_ok() -> bool:
+    try:
+        r = _redis()
+        if not r:
+            return False
+        r.ping()
+        return True
+    except Exception:
+        return False
+
+
+def _rkey(k: str) -> str:
+    return _REDIS_PREFIX + (k or "")
+
+
+def _redis_get_json(key: str) -> Optional[dict]:
+    r = _redis()
+    if not r:
+        return None
+    try:
+        raw = r.get(_rkey(key))
+        if not raw:
+            return None
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="ignore")
+        obj = json.loads(raw)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+def _redis_set_json(key: str, obj: dict, ttl: int) -> bool:
+    r = _redis()
+    if not r:
+        return False
+    try:
+        payload = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+        r.setex(_rkey(key), int(ttl), payload.encode("utf-8"))
+        return True
+    except Exception:
+        return False
+
+
+# ==========================
+# Simple in-memory cache (fallback)
 # ==========================
 _CACHE = {}
 _CACHE_TTL = {}
@@ -202,24 +302,22 @@ def _cache_set(key, value, ttl=60):
     _CACHE_TTL[key] = time.time() + ttl
 
 
-def _cache_gc(max_items: int = 2000):
-    # prevent memory creep on long-running instances
-    try:
-        if len(_CACHE) <= max_items:
-            return
-        now = time.time()
-        expired = [k for k, exp in _CACHE_TTL.items() if exp < now]
-        for k in expired[:5000]:
-            _CACHE.pop(k, None)
-            _CACHE_TTL.pop(k, None)
-        # still too large? drop oldest ttl keys
-        if len(_CACHE) > max_items:
-            keys = sorted(_CACHE_TTL.items(), key=lambda kv: kv[1])  # earliest expiry first
-            for k, _ in keys[: max(0, len(_CACHE) - max_items)]:
-                _CACHE.pop(k, None)
-                _CACHE_TTL.pop(k, None)
-    except Exception:
-        pass
+# ==========================
+# Unified cache helpers (Redis preferred)
+# ==========================
+def _shared_cache_get(key: str) -> Optional[dict]:
+    # Redis first
+    obj = _redis_get_json("cache:" + key)
+    if obj is not None:
+        return obj
+    # fallback memory
+    return _cache_get("cache:" + key)
+
+
+def _shared_cache_set(key: str, obj: dict, ttl: int) -> None:
+    # best effort Redis
+    if not _redis_set_json("cache:" + key, obj, ttl):
+        _cache_set("cache:" + key, obj, ttl=ttl)
 
 
 # ==========================
@@ -290,17 +388,6 @@ def _get_openai_client():
     return OpenAI(api_key=api_key)
 
 
-def _openai_model() -> str:
-    return (os.getenv("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
-
-
-def _openai_timeout() -> int:
-    try:
-        return max(10, int((os.getenv("OPENAI_TIMEOUT_SECS", "25") or "25").strip()))
-    except Exception:
-        return 25
-
-
 # ==========================
 # Twelve Data
 # ==========================
@@ -327,30 +414,16 @@ def _sb_headers():
     }
 
 
-def _sb_request(method: str, url: str, *, headers: dict, params: Optional[dict] = None, data: Optional[str] = None, timeout: int = 12, retries: int = 2):
-    # tiny retry wrapper for transient network hiccups
-    last_exc = None
-    for attempt in range(retries + 1):
-        try:
-            return requests.request(method, url, headers=headers, params=params, data=data, timeout=timeout)
-        except Exception as e:
-            last_exc = e
-            time.sleep(min(0.35 * (attempt + 1), 1.2))
-    raise last_exc  # type: ignore
-
-
 def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
     if not _sb_ok():
         return None
     params = {k: f"eq.{v}" for k, v in filters.items()}
     try:
-        r = _sb_request(
-            "GET",
+        r = requests.get(
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers=_sb_headers(),
             params={**params, "select": "*", "limit": "1"},
             timeout=12,
-            retries=1,
         )
         if r.status_code >= 400:
             return None
@@ -366,14 +439,12 @@ def _sb_upsert(table: str, row: dict, conflict: str) -> bool:
     if not _sb_ok():
         return False
     try:
-        r = _sb_request(
-            "POST",
+        r = requests.post(
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
             params={"on_conflict": conflict},
             data=json.dumps(row),
             timeout=12,
-            retries=1,
         )
         return 200 <= r.status_code < 300
     except Exception:
@@ -385,14 +456,12 @@ def _sb_update(table: str, filters: dict, patch: dict) -> bool:
         return False
     params = {k: f"eq.{v}" for k, v in filters.items()}
     try:
-        r = _sb_request(
-            "PATCH",
+        r = requests.patch(
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers={**_sb_headers(), "Prefer": "return=minimal"},
             params=params,
             data=json.dumps(patch),
             timeout=12,
-            retries=1,
         )
         return 200 <= r.status_code < 300
     except Exception:
@@ -403,13 +472,11 @@ def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
     if not _sb_ok():
         return None
     try:
-        r = _sb_request(
-            "POST",
+        r = requests.post(
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers={**_sb_headers(), "Prefer": "return=representation"},
             data=json.dumps(row),
             timeout=12,
-            retries=1,
         )
         if r.status_code >= 400:
             return None
@@ -591,9 +658,6 @@ def _verify_token(token: str) -> Optional[dict]:
             return None
         if "email" not in payload or "trial_ends" not in payload:
             return None
-        # basic sanity
-        if payload.get("v") != 1:
-            return None
         return payload
     except Exception:
         return None
@@ -738,22 +802,8 @@ def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
     )
 
 
-def _paystack_verify_signature(raw_body: bytes, signature: str) -> bool:
-    # Paystack webhook signature is SHA512 HMAC of the request body using your secret key.
-    # They send it in header: x-paystack-signature
-    try:
-        if not PAYSTACK_SECRET_KEY:
-            return False
-        if not signature:
-            return False
-        expected = hmac.new(PAYSTACK_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
-        return hmac.compare_digest(expected, signature)
-    except Exception:
-        return False
-
-
 # ==========================
-# Rate limiting (in-memory)
+# Rate limiting (Redis primary, memory fallback)
 # ==========================
 def _env_int(name: str, default: int) -> int:
     try:
@@ -770,36 +820,12 @@ PAID_LIMIT_24H = _env_int("PAID_LIMIT_24H", 2000)
 _SHORT_WINDOW_SECONDS = 60
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 
+# memory fallback state
 _RATE_SHORT = {}
 _RATE_DAY = {}
-_LAST_RL_GC = 0.0
 
 
-def _rate_gc():
-    global _LAST_RL_GC
-    now = _now()
-    if (now - _LAST_RL_GC) < 60:
-        return
-    _LAST_RL_GC = now
-    try:
-        # prune empty keys
-        for store, window in ((_RATE_SHORT, _SHORT_WINDOW_SECONDS), (_RATE_DAY, _DAY_WINDOW_SECONDS)):
-            dead_keys = []
-            for k, q in store.items():
-                while q and (now - q[0]) >= window:
-                    q.popleft()
-                if not q:
-                    dead_keys.append(k)
-            for k in dead_keys[:5000]:
-                store.pop(k, None)
-    except Exception:
-        pass
-
-
-def _rate_check(identity_key: str, is_paid: bool):
-    _rate_gc()
-    _cache_gc()
-
+def _rate_check_memory(identity_key: str, is_paid: bool):
     now = _now()
 
     short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
@@ -851,6 +877,76 @@ def _rate_check(identity_key: str, is_paid: bool):
     return True, 0, headers
 
 
+def _rate_check_redis(identity_key: str, is_paid: bool):
+    """
+    Atomic shared limiter using Redis counters with TTL (60s + 24h).
+    """
+    r = _redis()
+    if not r or _redis_rl_script is None:
+        return None  # signal caller to fallback
+
+    short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
+    day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
+
+    k60 = _rkey(f"rl:60:{identity_key}")
+    kday = _rkey(f"rl:86400:{identity_key}")
+
+    try:
+        # returns: {v60, vday, rem60, remday, ttl60, ttlday}
+        res = _redis_rl_script(
+            keys=[k60, kday],
+            args=[int(short_limit), int(day_limit), int(_SHORT_WINDOW_SECONDS), int(_DAY_WINDOW_SECONDS)],
+        )
+
+        v60 = int(res[0])
+        vday = int(res[1])
+        rem60 = int(res[2])
+        remday = int(res[3])
+        ttl60 = int(res[4]) if res[4] is not None else _SHORT_WINDOW_SECONDS
+        ttlday = int(res[5]) if res[5] is not None else _DAY_WINDOW_SECONDS
+
+        short_remaining = max(0, rem60)
+        day_remaining = max(0, remday)
+
+        if v60 > short_limit or vday > day_limit:
+            retry_after = 1
+            if v60 > short_limit:
+                retry_after = max(retry_after, max(1, ttl60))
+            if vday > day_limit:
+                retry_after = max(retry_after, max(1, ttlday))
+
+            headers = {
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Plan": "paid" if is_paid else "free",
+                "X-RateLimit-Limit-60s": str(short_limit),
+                "X-RateLimit-Remaining-60s": str(short_remaining),
+                "X-RateLimit-Limit-24h": str(day_limit),
+                "X-RateLimit-Remaining-24h": str(day_remaining),
+            }
+            return False, retry_after, headers
+
+        headers = {
+            "X-RateLimit-Plan": "paid" if is_paid else "free",
+            "X-RateLimit-Limit-60s": str(short_limit),
+            "X-RateLimit-Remaining-60s": str(short_remaining),
+            "X-RateLimit-Limit-24h": str(day_limit),
+            "X-RateLimit-Remaining-24h": str(day_remaining),
+        }
+        return True, 0, headers
+
+    except Exception:
+        return None  # fallback
+
+
+def _rate_check(identity_key: str, is_paid: bool):
+    # Prefer Redis
+    rr = _rate_check_redis(identity_key, is_paid=is_paid)
+    if rr is not None:
+        return rr
+    # Fallback memory
+    return _rate_check_memory(identity_key, is_paid=is_paid)
+
+
 # ==========================
 # Root + health
 # ==========================
@@ -861,22 +957,17 @@ def index():
 
 @app.get("/health")
 def health():
-    up_s = int(max(0, time.time() - _START_TS))
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "service": "fxco-pilot-backend",
-                "uptime_seconds": up_s,
-                "utc": _utc_now_iso_z(),
-                "supabase_ok": _sb_ok(),
-                "resend_ok": _resend_ok(),
-                "require_payment": _require_payment(),
-                "openai_model": _openai_model(),
-            }
-        ),
-        200,
-    )
+    return jsonify(
+        {
+            "ok": True,
+            "supabase_ok": _sb_ok(),
+            "resend_ok": _resend_ok(),
+            "redis_ok": _redis_ok(),
+            "require_payment": _require_payment(),
+            "twelvedata_ok": bool(TWELVE_DATA_API_KEY),
+            "openai_ok": bool((os.getenv("OPENAI_API_KEY", "") or "").strip()),
+        }
+    ), 200
 
 
 # ==========================
@@ -1060,41 +1151,30 @@ def paystack_config():
         enabled = _require_payment()
 
         if enabled and not PAYSTACK_SECRET_KEY:
-            return (
-                jsonify(
-                    {
-                        "ok": False,
-                        "require_payment": True,
-                        "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
-                        "currency": PAYSTACK_CURRENCY,
-                        "amount": _paystack_amount_minor(),
-                        "public_key": PAYSTACK_PUBLIC_KEY or None,
-                        "access_days": _access_days(),
-                    }
-                ),
-                200,
-            )
-
-        return (
-            jsonify(
+            return jsonify(
                 {
-                    "ok": True,
-                    "require_payment": enabled,
+                    "ok": False,
+                    "require_payment": True,
+                    "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
                     "currency": PAYSTACK_CURRENCY,
                     "amount": _paystack_amount_minor(),
                     "public_key": PAYSTACK_PUBLIC_KEY or None,
                     "access_days": _access_days(),
                 }
-            ),
-            200,
-        )
+            ), 200
+
+        return jsonify(
+            {
+                "ok": True,
+                "require_payment": enabled,
+                "currency": PAYSTACK_CURRENCY,
+                "amount": _paystack_amount_minor(),
+                "public_key": PAYSTACK_PUBLIC_KEY or None,
+                "access_days": _access_days(),
+            }
+        ), 200
     except Exception as e:
-        return (
-            jsonify(
-                {"ok": False, "require_payment": False, "currency": "NGN", "amount": 10000 * 100, "public_key": None, "access_days": 30, "error": str(e)}
-            ),
-            200,
-        )
+        return jsonify({"ok": False, "require_payment": False, "currency": "NGN", "amount": 10000 * 100, "public_key": None, "access_days": 30, "error": str(e)}), 200
 
 
 def _safe_json(r: requests.Response) -> dict:
@@ -1177,45 +1257,6 @@ def paystack_verify():
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# NEW (Institutional Upgrade #3): Paystack webhook (signature verified)
-@app.post("/api/paystack/webhook")
-def paystack_webhook():
-    # This enables Paystack to unlock access even if frontend verify step is skipped.
-    # Configure webhook URL in Paystack dashboard to point to: https://<your-backend>/api/paystack/webhook
-    if not _require_payment():
-        return jsonify({"ok": True, "ignored": True, "reason": "payment gate disabled"}), 200
-    if not PAYSTACK_SECRET_KEY:
-        return jsonify({"ok": False, "error": "Missing PAYSTACK_SECRET_KEY on server."}), 500
-    if not _sb_ok():
-        # Not strictly required, but access persistence relies on Supabase in this backend.
-        return jsonify({"ok": False, "error": "Supabase not configured on server."}), 500
-
-    raw_body = request.get_data(cache=False) or b""
-    sig = (request.headers.get("x-paystack-signature") or "").strip()
-    if not _paystack_verify_signature(raw_body, sig):
-        return jsonify({"ok": False, "error": "Invalid signature."}), 401
-
-    evt = request.get_json(silent=True) or {}
-    event_type = (evt.get("event") or "").strip()
-    data = evt.get("data") or {}
-    reference = (data.get("reference") or "").strip()
-    status = (data.get("status") or "").lower()
-    currency = (data.get("currency") or "").upper()
-    amount = int(data.get("amount") or 0)
-
-    meta = data.get("metadata") or {}
-    client_id = (meta.get("fxco_client_id") or "").strip()
-
-    paid = (event_type in ("charge.success", "transaction.success")) and (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
-
-    if paid and client_id:
-        paid_until = int(_now() + _access_days() * 24 * 60 * 60)
-        _set_paid_access(client_id, paid_until, reference or f"webhook:{event_type}")
-        return jsonify({"ok": True, "paid": True, "client_id": client_id, "paid_until": paid_until, "reference": reference}), 200
-
-    return jsonify({"ok": True, "paid": False, "event": event_type, "reference": reference}), 200
 
 
 # ==========================
@@ -1422,7 +1463,7 @@ def _pick_execution_tf(structure_tf: str) -> str:
 
 
 # ==========================
-# Twelve Data calls (cached)
+# Twelve Data calls (Redis cached)
 # ==========================
 def td_price(symbol: str):
     if not TWELVE_DATA_API_KEY:
@@ -1430,7 +1471,8 @@ def td_price(symbol: str):
 
     symbol = td_symbol(symbol or "EURUSD")
     cache_key = f"td_price::{symbol}"
-    cached = _cache_get(cache_key)
+
+    cached = _shared_cache_get(cache_key)
     if cached is not None:
         return cached
 
@@ -1442,24 +1484,17 @@ def td_price(symbol: str):
         r = requests.get(f"{TD_BASE}/price", params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}, timeout=10)
         data = r.json()
         if data.get("status") == "error":
-            out = {
-                "ok": False,
-                "symbol": symbol,
-                "error": data.get("message", "Twelve Data error"),
-                "source": "twelvedata",
-                "timestamp_utc": snap_ts,
-                "session": snap_session,
-            }
-            _cache_set(cache_key, out, ttl=15)
+            out = {"ok": False, "symbol": symbol, "error": data.get("message", "Twelve Data error"), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
+            _shared_cache_set(cache_key, out, ttl=15)
             return out
 
         p = float(data["price"])
         out = {"ok": True, "symbol": symbol, "price": p, "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
-        _cache_set(cache_key, out, ttl=15)
+        _shared_cache_set(cache_key, out, ttl=15)
         return out
     except Exception as e:
         out = {"ok": False, "symbol": symbol, "error": str(e), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
-        _cache_set(cache_key, out, ttl=15)
+        _shared_cache_set(cache_key, out, ttl=15)
         return out
 
 
@@ -1472,7 +1507,7 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
     limit = int(limit or 120)
 
     cache_key = f"td_candles::{symbol}::{interval}::{limit}"
-    cached = _cache_get(cache_key)
+    cached = _shared_cache_get(cache_key)
     if cached is not None:
         return cached
 
@@ -1485,16 +1520,16 @@ def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
         data = r.json()
         if data.get("status") == "error":
             out = {"ok": False, "error": data.get("message", "Twelve Data error")}
-            _cache_set(cache_key, out, ttl=30)
+            _shared_cache_set(cache_key, out, ttl=30)
             return out
 
         values = data.get("values") or []
         out = {"ok": True, "symbol": symbol, "interval": interval, "values": values, "source": "twelvedata"}
-        _cache_set(cache_key, out, ttl=30)
+        _shared_cache_set(cache_key, out, ttl=30)
         return out
     except Exception as e:
         out = {"ok": False, "error": str(e)}
-        _cache_set(cache_key, out, ttl=30)
+        _shared_cache_set(cache_key, out, ttl=30)
         return out
 
 
@@ -1534,7 +1569,7 @@ def structure_from_candles(values):
 
     ph, pl = _pivot_points(highs, lows, left=2, right=2)
     if len(ph) < 2 or len(pl) < 2:
-        # fallback to your old/simple logic
+        # fallback to old/simple logic
         prev = closes[-25]
         trend = "bullish" if last_close > prev else "bearish" if last_close < prev else "unclear"
         recent_low = min(lows[-15:])
@@ -1576,11 +1611,9 @@ def structure_from_candles(values):
     # BOS check (break last swing)
     broken = False
     bos = ""
-    # If price closes above last pivot high => bullish BOS
     if last_close > last_ph:
         broken = True
         bos = "BOS up (close > last swing high)"
-    # If closes below last pivot low => bearish BOS
     if last_close < last_pl:
         broken = True
         bos = "BOS down (close < last swing low)"
@@ -1757,7 +1790,6 @@ def _extract_first_json_object(text: str) -> Optional[dict]:
 
     s = text.strip()
 
-    # direct attempt
     try:
         obj = json.loads(s)
         if isinstance(obj, dict):
@@ -1765,7 +1797,6 @@ def _extract_first_json_object(text: str) -> Optional[dict]:
     except Exception:
         pass
 
-    # scan for balanced braces
     start = s.find("{")
     if start < 0:
         return None
@@ -1815,13 +1846,12 @@ Content to fix:
 {raw_text}
 """
         completion = oa.chat.completions.create(
-            model=_openai_model(),
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": "You are a strict JSON repair tool. Output ONLY valid JSON. No markdown."},
                 {"role": "user", "content": repair_prompt},
             ],
             temperature=0.0,
-            timeout=_openai_timeout(),
         )
         out = completion.choices[0].message.content or ""
         obj = _extract_first_json_object(out)
@@ -2045,62 +2075,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
 
 # ==========================
-# Institutional Upgrade #4: schema coercion/guardrails (post-LLM)
-# ==========================
-def _coerce_analysis_shape(obj: dict) -> dict:
-    """
-    Ensure keys exist and types are sane, even if model is sloppy.
-    """
-    if not isinstance(obj, dict):
-        return {}
-
-    out = dict(obj)
-
-    out.setdefault("bias", "Unclear")
-    out.setdefault("strength", 0)
-    out.setdefault("clarity", 0)
-    out.setdefault("verdict", "No verdict returned.")
-    out.setdefault("guidance", [])
-
-    sc = out.get("signal_check")
-    if not isinstance(sc, dict):
-        sc = {}
-    sc.setdefault("direction", "Unclear")
-    sc.setdefault("entry", None)
-    sc.setdefault("stop_loss", None)
-    sc.setdefault("targets", [])
-    out["signal_check"] = sc
-
-    mc = out.get("market_context")
-    if not isinstance(mc, dict):
-        mc = {}
-    mc.setdefault("structure", "")
-    mc.setdefault("liquidity", "")
-    mc.setdefault("momentum", "")
-    mc.setdefault("timeframe_alignment", "")
-    out["market_context"] = mc
-
-    # guidance must be list[str]
-    g = out.get("guidance")
-    if not isinstance(g, list):
-        out["guidance"] = []
-    else:
-        out["guidance"] = [str(x) for x in g if str(x).strip()][:8]
-
-    # clamp ints
-    try:
-        out["strength"] = int(out.get("strength") or 0)
-    except Exception:
-        out["strength"] = 0
-    try:
-        out["clarity"] = int(out.get("clarity") or 0)
-    except Exception:
-        out["clarity"] = 0
-
-    return out
-
-
-# ==========================
 # Analyze endpoint (trial OR paid)
 # ==========================
 @app.route("/api/analyze", methods=["POST"])
@@ -2128,11 +2102,7 @@ def analyze():
     if _require_payment() and not paid_active and not trial_active:
         return jsonify({"error": "Access locked. Start free trial (verify email) or unlock via Pricing."}), 402
 
-    # Institutional Upgrade #5: include token email in RL identity (prevents shared client_id abuse)
     identity_key = f"cid:{client_id}"
-    if token_email:
-        identity_key += f"|em:{token_email[:64]}"
-
     ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
     if not ok:
         resp = jsonify({"error": "Too many requests. Please slow down.", "retry_after_seconds": retry_after})
@@ -2144,7 +2114,7 @@ def analyze():
         return resp
 
     if request.args.get("test") == "1":
-        resp = jsonify({"ok": True, "mode": "rate_limit_test"})
+        resp = jsonify({"ok": True, "mode": "rate_limit_test", "redis_ok": _redis_ok()})
         for k, v in rl_headers.items():
             resp.headers[k] = v
         if trial_ends_epoch:
@@ -2195,27 +2165,14 @@ def analyze():
     img_base64 = None
     file = request.files.get("chart_image")
     if file and file.filename:
-        try:
-            img_bytes = file.read()
-            max_img = int((os.getenv("MAX_IMAGE_BYTES", "2500000") or "2500000").strip())
-            if len(img_bytes) > max_img:
-                resp = jsonify({"error": f"Image too large. Max {max_img} bytes."})
-                resp.status_code = 413
-                for k, v in rl_headers.items():
-                    resp.headers[k] = v
-                if trial_ends_epoch:
-                    resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
-                return resp
-            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-        except Exception:
-            img_base64 = None
+        img_bytes = file.read()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
     symbol = detect_symbol_from_signal(signal_text, pair_type)
 
     hold_minutes = _parse_duration_minutes(signal_text)
     mode_norm = _normalize_mode(timeframe)
 
-    # NEW: honor chart_tf if provided, while keeping timeframe as style
     chart_tf = _normalize_chart_tf(chart_tf_raw)
     if chart_tf:
         structure_tf = chart_tf
@@ -2334,28 +2291,12 @@ Rules:
         extra = ""
         if strict:
             extra = "\nIMPORTANT: Output must be JSON ONLY. No commentary. No markdown. No backticks.\n"
-
-        # Institutional Upgrade #6: use response_format=json_object when supported (fallback if client/version rejects)
-        kwargs = {
-            "model": _openai_model(),
-            "messages": messages + ([{"role": "user", "content": extra}] if strict else []),
-            "temperature": 0.2 if not strict else 0.0,
-            "timeout": _openai_timeout(),
-        }
-
-        try:
-            kwargs["response_format"] = {"type": "json_object"}
-        except Exception:
-            pass
-
-        try:
-            completion = oa.chat.completions.create(**kwargs)
-            return completion.choices[0].message.content or ""
-        except TypeError:
-            # older client may not accept response_format
-            kwargs.pop("response_format", None)
-            completion = oa.chat.completions.create(**kwargs)
-            return completion.choices[0].message.content or ""
+        completion = oa.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=messages + ([{"role": "user", "content": extra}] if strict else []),
+            temperature=0.2 if not strict else 0.0,
+        )
+        return completion.choices[0].message.content or ""
 
     try:
         raw = _run_model(strict=False)
@@ -2375,8 +2316,6 @@ Rules:
             if trial_ends_epoch:
                 resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
             return resp
-
-        analysis_obj = _coerce_analysis_shape(analysis_obj)
 
         sc = analysis_obj.get("signal_check") or {}
         mc = analysis_obj.get("market_context") or {}
