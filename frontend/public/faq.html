@@ -244,9 +244,9 @@
         </summary>
         <div class="body">
           First check <b>Spam/Promotions</b>. If you still don’t see it:
-          <br/>• Ensure the sending domain is verified on your email provider (Resend).
-          <br/>• Confirm your backend has <b>RESEND_API_KEY</b> and <b>RESEND_FROM_EMAIL</b>.
-          <br/>• Try again after 60 seconds (there’s a cooldown).
+          <br/>• Make sure you entered your email correctly (Resend).
+          <br/>•Try again after 60 seconds (there’s a cooldown).</b>.
+          <br/>• If the issue continues, use the Contact page and we’ll help you quickly.
         </div>
       </details>
 
@@ -256,11 +256,10 @@
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          Most times it’s because the app didn’t verify the transaction reference.
-          Make sure your frontend calls:
-          <br/><b>GET /api/paystack/verify?reference=XXXX</b>
-          <br/>after payment, and that the backend currency/amount match your Paystack settings.
-          <div class="pill">Tip: confirm PAYSTACK_CURRENCY + amount</div>
+         If you completed payment but still see the locked screen:
+          <br/><b>Wait 10–20 seconds and refresh the page.</b>
+          <br/>Make sure you returned to the app after payment.
+          <div class="pill">Tip:If it still doesn’t unlock, contact us with your payment reference.</div>
         </div>
       </details>
 
@@ -270,9 +269,8 @@
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          Share links expire based on <b>REPORT_SHARE_TTL_DAYS</b>.
-          If it’s expired, generate a new report and share again.
-          Also confirm your Supabase table <b>fxco_reports</b> is set up correctly and Supabase env vars are present on the backend.
+          <br/>Shared reports expire after a set period for security reasons.
+          <br/>If a link has expired, simply generate a new report and create a new share link.
         </div>
       </details>
 
@@ -283,8 +281,8 @@
         </summary>
         <div class="body">
           <b>Timeframe (style)</b> is how you trade: Scalp / Intraday / Swing.
-          <br/><b>Chart timeframe</b> is the actual TF you’re looking at (e.g. 15m, 1h, 4h).
-          <br/>Your backend can be set to honor <b>chart_tf</b> as the primary structure driver while keeping timeframe as style.
+          <br/><b>Chart timeframe</b>is the actual timeframe you're analyzing (e.g., 5min, 15min, 1h, 4h).
+          <br/>FXCO-Pilot evaluates trades based on the chart you’re using while respecting your trading style.
         </div>
       </details>
 
