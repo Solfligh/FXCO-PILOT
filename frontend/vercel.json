@@ -8,7 +8,7 @@
     },
 
     {
-      "src": "^/(favicon\\.ico|apple-touch-icon\\.png|manifest\\.webmanifest|sw\\.js|robots\\.txt|sitemap\\.xml|terms\\.html|privacy\\.html|result\\.html|maintenance\\.html)$",
+      "src": "^/(favicon\\.ico|apple-touch-icon\\.png|manifest\\.webmanifest|sw\\.js|robots\\.txt|sitemap\\.xml|terms\\.html|privacy\\.html|result\\.html|maintenance\\.html|contact\\.html|faq\\.html)$",
       "dest": "/public/$1"
     },
 
