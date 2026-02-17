@@ -189,7 +189,7 @@
 <body>
   <div class="wrap">
     <div class="topbar">
-      <a class="brand" href="/">
+      <a class="brand" href="/index.html">
         <div class="logo">FX</div>
         <div>FXCO-Pilot</div>
       </a>
@@ -203,11 +203,11 @@
     <div class="head">
       <h1>FAQ</h1>
       <p class="sub">
-        Quick answers to the most common questions about trials, pricing, report sharing, and how FXCO-Pilot validates trades.
+        Quick answers to common questions about trials, pricing, report sharing, and how FXCO-Pilot validates trades.
       </p>
 
       <div class="search">
-        <input id="q" placeholder="Search FAQ… (e.g. trial, paystack, share, chart)" />
+        <input id="q" placeholder="Search FAQ… (e.g. trial, payment, share, chart)" />
         <button class="btn" id="openAll" type="button">Open all</button>
         <button class="btn" id="closeAll" type="button" style="background:#0f172a">Close all</button>
       </div>
@@ -220,7 +220,7 @@
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          FXCO-Pilot is a <b>trade validation tool</b>. It doesn’t predict price it checks your setup quality:
+          FXCO-Pilot is a <b>trade validation tool</b>. It doesn’t predict price — it checks your setup quality:
           <b>structure</b>, <b>liquidity context</b>, <b>alignment</b>, and <b>risk plan</b>, then gives a disciplined verdict (TAKE / TAKE IF / WAIT / AVOID).
           <div class="pill">Key idea: decision support, not signals</div>
         </div>
@@ -237,29 +237,30 @@
         </div>
       </details>
 
-      <details data-tags="trial otp code email not arriving resend">
+      <details data-tags="trial otp code email not arriving">
         <summary>
           My OTP / trial code is not arriving. What do I do?
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          First check <b>Spam/Promotions</b>. If you still don’t see it:
-          <br/>• Make sure you entered your email correctly (Resend).
-          <br/>•Try again after 60 seconds (there’s a cooldown).</b>.
-          <br/>• If the issue continues, use the Contact page and we’ll help you quickly.
+          If your verification code hasn’t arrived:
+          <br/>• Check <b>Spam</b> or <b>Promotions</b>.
+          <br/>• Confirm you entered the right email address.
+          <br/>• Wait a minute before requesting a new code (there’s a short cooldown).
+          <br/>• If it still doesn’t arrive, use the <a href="/contact.html"><b>Contact</b></a> page and we’ll help you quickly.
         </div>
       </details>
 
       <details data-tags="payment paystack locked after payment reference">
         <summary>
-          I paid via Paystack but I’m still locked. Why?
+          I paid but I’m still locked. Why?
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-         If you completed payment but still see the locked screen:
-          <br/><b>Wait 10–20 seconds and refresh the page.</b>
-          <br/>Make sure you returned to the app after payment.
-          <div class="pill">Tip:If it still doesn’t unlock, contact us with your payment reference.</div>
+          If you completed payment but still see the locked screen:
+          <br/>• <b>Wait 10–20 seconds</b> then refresh the page.
+          <br/>• Make sure you returned to the app after payment.
+          <div class="pill">Tip: If it still doesn’t unlock, contact us with your payment reference.</div>
         </div>
       </details>
 
@@ -269,19 +270,19 @@
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          <br/>Shared reports expire after a set period for security reasons.
-          <br/>If a link has expired, simply generate a new report and create a new share link.
+          Shared reports expire after a set period for security reasons.
+          <br/>If a link has expired, generate a new report and create a new share link.
         </div>
       </details>
 
-      <details data-tags="chart timeframe chart_tf structure timeframe">
+      <details data-tags="chart timeframe style scalp intraday swing">
         <summary>
           What’s the difference between “timeframe (style)” and “chart timeframe”?
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
           <b>Timeframe (style)</b> is how you trade: Scalp / Intraday / Swing.
-          <br/><b>Chart timeframe</b>is the actual timeframe you're analyzing (e.g., 5min, 15min, 1h, 4h).
+          <br/><b>Chart timeframe</b> is the actual timeframe you’re analyzing (e.g., 5min, 15min, 1h, 4h).
           <br/>FXCO-Pilot evaluates trades based on the chart you’re using while respecting your trading style.
         </div>
       </details>
@@ -297,27 +298,30 @@
         </div>
       </details>
 
-      <details data-tags="best way to use how to">
+      <details data-tags="best way to use how to hold duration timeframe">
         <summary>
           What’s the best way to use FXCO-Pilot for real trading?
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
-          1) Paste the signal or your idea with entry/SL/TP.<br/>
+          1) Paste the signal or your trade idea with entry/SL/TP.<br/>
           2) Add how long you plan to hold (e.g. “hold 2 hours”).<br/>
-          3) If you have a chart timeframe, send it as <b>chart_tf</b> (e.g. 15m / 1h).<br/>
-          4) Follow the verdict and conditions: if it says WAIT, you wait.
+          3) If you know the chart timeframe, include it (e.g. “chart: 15m” or “chart: 1h”).<br/>
+          4) Follow the verdict and conditions — if it says WAIT, you wait.
         </div>
       </details>
 
-      <details data-tags="support contact bug">
+      <details data-tags="support contact bug report issue">
         <summary>
           I found a bug. How do I report it?
           <span class="chev">⌄</span>
         </summary>
         <div class="body">
           Go to <a href="/contact.html"><b>Contact</b></a> and include:
-          <br/>• what you clicked<br/>• what you expected<br/>• what happened (error text)<br/>• screenshot if possible
+          <br/>• what you clicked
+          <br/>• what you expected
+          <br/>• what happened (error text)
+          <br/>• a screenshot if possible
         </div>
       </details>
     </div>
