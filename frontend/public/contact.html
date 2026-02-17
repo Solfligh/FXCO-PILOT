@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact Us — FXCO-Pilot</title>
+
+  <!-- SEO -->
+  <meta name="description" content="Contact FXCO-Pilot support. Get help with trials, payments, report sharing, or anything else." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="/contact.html" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg1:#f7f9ff;
+      --bg2:#ffffff;
+      --ink:#0b1220;
+      --muted:#5c667a;
+      --card:#ffffff;
+      --line:rgba(15, 23, 42, .10);
+      --shadow: 0 18px 60px rgba(15, 23, 42, .08);
+      --primary:#2563eb;
+      --primary2:#1d4ed8;
+      --ok:#16a34a;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --radius:18px;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Poppins, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% 10%, rgba(37,99,235,.10), transparent 55%),
+        radial-gradient(900px 500px at 90% 20%, rgba(29,78,216,.10), transparent 50%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height:100vh;
+    }
+
+    a{color:inherit; text-decoration:none}
+    .wrap{max-width:1100px; margin:0 auto; padding:24px 16px 48px}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:12px; padding:10px 0 18px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight:700; letter-spacing:.2px;
+    }
+    .logo{
+      width:36px; height:36px; border-radius:12px;
+      background:linear-gradient(135deg, rgba(37,99,235,.95), rgba(29,78,216,.85));
+      box-shadow:0 12px 30px rgba(37,99,235,.22);
+      display:grid; place-items:center; color:#fff; font-weight:800;
+    }
+    .nav{
+      display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;
+    }
+    .chip{
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.75);
+      backdrop-filter: blur(8px);
+      padding:9px 12px;
+      border-radius:999px;
+      font-size:13px;
+      color:var(--muted);
+      transition:.15s ease;
+    }
+    .chip:hover{transform:translateY(-1px); color:var(--ink); border-color:rgba(37,99,235,.25)}
+
+    .hero{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:16px;
+      align-items:stretch;
+      margin-top:8px;
+    }
+    @media (max-width: 900px){
+      .hero{grid-template-columns:1fr}
+    }
+
+    .card{
+      background:rgba(255,255,255,.82);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .card-hd{
+      padding:18px 18px 0;
+    }
+    h1{
+      margin:0;
+      font-size:28px;
+      letter-spacing:-.2px;
+    }
+    .sub{
+      margin:8px 0 0;
+      color:var(--muted);
+      line-height:1.6;
+      font-size:14px;
+    }
+    .card-bd{padding:18px}
+
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+    @media (max-width: 720px){
+      .grid{grid-template-columns:1fr}
+    }
+    label{
+      display:block;
+      font-size:13px;
+      color:var(--muted);
+      margin:0 0 6px;
+    }
+    input, select, textarea{
+      width:100%;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      outline:none;
+      font:inherit;
+      color:var(--ink);
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    textarea{min-height:140px; resize:vertical}
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(37,99,235,.55);
+      box-shadow: 0 0 0 4px rgba(37,99,235,.12);
+    }
+
+    .actions{
+      display:flex; gap:10px; flex-wrap:wrap;
+      margin-top:12px; align-items:center;
+    }
+    .btn{
+      border:0;
+      background:linear-gradient(135deg, var(--primary), var(--primary2));
+      color:#fff;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:600;
+      cursor:pointer;
+      transition:.15s ease;
+      box-shadow: 0 16px 40px rgba(37,99,235,.22);
+    }
+    .btn:hover{transform:translateY(-1px)}
+    .btn:disabled{opacity:.65; cursor:not-allowed; transform:none}
+
+    .btn-secondary{
+      border:1px solid rgba(15,23,42,.12);
+      background:#fff;
+      color:var(--ink);
+      box-shadow:none;
+    }
+
+    .note{
+      font-size:13px;
+      color:var(--muted);
+      line-height:1.55;
+      margin-top:10px;
+    }
+
+    .side{
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+    }
+    .info{
+      padding:14px;
+      border-radius:16px;
+      border:1px solid rgba(15,23,42,.10);
+      background:rgba(255,255,255,.85);
+    }
+    .info h3{margin:0 0 6px; font-size:14px}
+    .info p{margin:0; color:var(--muted); font-size:13px; line-height:1.6}
+    .k{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:7px 10px; border-radius:999px;
+      border:1px solid rgba(15,23,42,.10);
+      font-size:12px; color:var(--muted);
+      background:rgba(255,255,255,.9);
+      margin-top:10px;
+    }
+
+    .status{
+      margin-top:12px;
+      padding:12px 12px;
+      border-radius:14px;
+      border:1px solid rgba(15,23,42,.10);
+      background:rgba(255,255,255,.9);
+      font-size:13px;
+      color:var(--muted);
+      display:none;
+    }
+    .status.ok{display:block; border-color: rgba(22,163,74,.22); color: var(--ok)}
+    .status.bad{display:block; border-color: rgba(239,68,68,.22); color: var(--bad)}
+    .status.warn{display:block; border-color: rgba(245,158,11,.22); color: var(--warn)}
+
+    footer{
+      margin-top:22px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      gap:10px;
+    }
+    .tiny-links{display:flex; gap:10px; flex-wrap:wrap}
+    .tiny-links a{color:var(--muted)}
+    .tiny-links a:hover{color:var(--ink)}
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <a class="brand" href="/">
+        <div class="logo">FX</div>
+        <div>FXCO-Pilot</div>
+      </a>
+      <div class="nav">
+        <a class="chip" href="/faq.html">FAQ</a>
+        <a class="chip" href="/pricing.html">Pricing</a>
+        <a class="chip" href="/index.html">Home</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div class="card">
+        <div class="card-hd">
+          <h1>Contact Support</h1>
+          <p class="sub">
+            Tell us what happened and we’ll help you fast. Trials, Paystack issues, report links, or anything else — send it here.
+          </p>
+        </div>
+
+        <div class="card-bd">
+          <form id="contactForm">
+            <div class="grid">
+              <div>
+                <label for="name">Your name</label>
+                <input id="name" name="name" autocomplete="name" placeholder="e.g. Morenikeji" />
+              </div>
+              <div>
+                <label for="email">Email (required)</label>
+                <input id="email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" />
+              </div>
+              <div>
+                <label for="topic">Topic</label>
+                <select id="topic" name="topic">
+                  <option value="General">General</option>
+                  <option value="Trial / OTP">Trial / OTP</option>
+                  <option value="Payment / Paystack">Payment / Paystack</option>
+                  <option value="Reports / Share link">Reports / Share link</option>
+                  <option value="Bug / Error">Bug / Error</option>
+                  <option value="Partnership">Partnership</option>
+                </select>
+              </div>
+              <div>
+                <label for="clientId">Client ID (optional)</label>
+                <input id="clientId" name="client_id" placeholder="X-FXCO-Client (if you have it)" />
+              </div>
+            </div>
+
+            <div style="margin-top:12px">
+              <label for="message">Message (required)</label>
+              <textarea id="message" name="message" required placeholder="Describe the issue + steps you took. If it’s a bug, paste the error message."></textarea>
+            </div>
+
+            <div class="actions">
+              <button class="btn" id="sendBtn" type="submit">Send message</button>
+              <a class="btn btn-secondary" href="/faq.html">Check FAQ first</a>
+              <a class="btn btn-secondary" id="mailtoFallback" href="#" style="display:none">Email us directly</a>
+            </div>
+
+            <div class="note">
+              Tip: If you’re reporting a bug, include a screenshot + what page you were on (e.g. <b>result.html</b>).
+            </div>
+
+            <div id="status" class="status"></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="side">
+          <div class="info">
+            <h3>Support email</h3>
+            <p id="supportEmailText">support@solflightech.org</p>
+            <div class="k">Response time: usually within 24 hours</div>
+          </div>
+
+          <div class="info">
+            <h3>Common fast fixes</h3>
+            <p>
+              • OTP not arriving? Check spam + verify sending domain.<br/>
+              • Paystack “success” but still locked? Verify reference in pricing page.<br/>
+              • Share link expired? Create a new report and share again.
+            </p>
+          </div>
+
+          <div class="info">
+            <h3>Privacy</h3>
+            <p>
+              Don’t send your API keys. If you paste a screenshot, blur any sensitive data first.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div>© <span id="year"></span> SolFligh Tech • FXCO-Pilot</div>
+      <div class="tiny-links">
+        <a href="/faq.html">FAQ</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    (function(){
+      const SUPPORT_EMAIL = "support@solflightech.org"; // change if needed
+      document.getElementById("year").textContent = new Date().getFullYear();
+
+      const statusEl = document.getElementById("status");
+      const sendBtn = document.getElementById("sendBtn");
+      const mailtoBtn = document.getElementById("mailtoFallback");
+      const supportEmailText = document.getElementById("supportEmailText");
+      supportEmailText.textContent = SUPPORT_EMAIL;
+
+      function setStatus(type, msg){
+        statusEl.className = "status " + type;
+        statusEl.textContent = msg;
+      }
+
+      function setMailtoFallback(subject, body){
+        const href = `mailto:${encodeURIComponent(SUPPORT_EMAIL)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        mailtoBtn.href = href;
+        mailtoBtn.style.display = "inline-block";
+      }
+
+      document.getElementById("contactForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const name = (document.getElementById("name").value || "").trim();
+        const email = (document.getElementById("email").value || "").trim();
+        const topic = (document.getElementById("topic").value || "General").trim();
+        const clientId = (document.getElementById("clientId").value || "").trim();
+        const message = (document.getElementById("message").value || "").trim();
+
+        if(!email || !message){
+          setStatus("bad", "Please provide your email and a message.");
+          return;
+        }
+
+        sendBtn.disabled = true;
+        setStatus("warn", "Sending…");
+
+        const payload = {
+          name,
+          email,
+          topic,
+          client_id: clientId,
+          message,
+          page: window.location.href
+        };
+
+        // Build fallback mailto
+        const subject = `[FXCO-Pilot] ${topic} — ${email}`;
+        const body =
+`Name: ${name || "-"}
+Email: ${email}
+Topic: ${topic}
+Client ID: ${clientId || "-"}
+Page: ${window.location.href}
+
+Message:
+${message}
+`;
+        setMailtoFallback(subject, body);
+
+        try{
+          // Recommended: implement POST /api/contact on backend (Resend)
+          const res = await fetch("/api/contact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if(res.ok && (data.ok === true || data.sent === true)){
+            setStatus("ok", "Message sent. We’ll reply by email.");
+            e.target.reset();
+            mailtoBtn.style.display = "none";
+          } else {
+            const err = (data && (data.error || data.message)) ? (data.error || data.message) : "Could not send via form.";
+            setStatus("warn", `We couldn’t send via the form (${err}). Please use “Email us directly”.`);
+          }
+        } catch(err){
+          setStatus("warn", "We couldn’t send via the form. Please use “Email us directly”.");
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
