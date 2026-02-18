@@ -14,6 +14,7 @@ from typing import Optional, Tuple, Any, Dict, List
 import requests
 from flask import Flask, jsonify, request
 from openai import OpenAI
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -137,6 +138,31 @@ def _after_request(resp):
 def _api_options(_path):
     resp = jsonify({"ok": True})
     return resp, 200
+
+
+# ==========================
+# Error handling (INSTITUTIONAL FIX)
+# - Do NOT mask HTTP errors (405/404/etc) as 500.
+# ==========================
+@app.errorhandler(HTTPException)
+def _handle_http_exception(e: HTTPException):
+    req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
+    try:
+        logger.warning("HTTPException rid=%s path=%s code=%s", req_id, request.path, getattr(e, "code", ""))
+    except Exception:
+        pass
+
+    code = int(getattr(e, "code", 500) or 500)
+    desc = getattr(e, "description", None) or "HTTP error"
+    resp = jsonify(
+        {
+            "ok": False,
+            "error": desc,
+            "code": code,
+            "request_id": req_id,
+        }
+    )
+    return resp, code
 
 
 @app.errorhandler(Exception)
@@ -2028,8 +2054,10 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
 # ==========================
 # Analyze endpoint (trial OR paid)
+# - INSTITUTIONAL FIX:
+#   Allow GET ONLY for ?test=1 so your browser test does not hit 405.
 # ==========================
-@app.route("/api/analyze", methods=["POST"])
+@app.route("/api/analyze", methods=["GET", "POST"])
 def analyze():
     ip = _client_ip()
     client_id = _get_client_id_header() or ("ip:" + ip)
@@ -2065,6 +2093,7 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
+    # ✅ Allow your browser test via GET /api/analyze?test=1
     if request.args.get("test") == "1":
         resp = jsonify({"ok": True, "mode": "rate_limit_test", "redis_ok": _redis_ping() if _redis_ok() else False})
         for k, v in rl_headers.items():
@@ -2072,6 +2101,16 @@ def analyze():
         if trial_ends_epoch:
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp, 200
+
+    # If GET without test=1, return a clear 405 JSON (not a 500)
+    if request.method == "GET":
+        resp = jsonify({"ok": False, "error": "Method not allowed. Use POST for analysis, or GET with ?test=1 for Redis/rate-limit test."})
+        resp.status_code = 405
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
+        return resp
 
     pair_type, timeframe, chart_tf_raw, signal_text = _get_payload_fields()
 
