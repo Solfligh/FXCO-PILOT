@@ -234,12 +234,19 @@ def _redis_ok() -> bool:
 
 
 def _redis_headers():
-    return {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}", "Content-Type": "application/json"}
+    return {
+        "Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
 
 
 def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
     """
-    Upstash REST supports POST {url} with JSON: {"command": ["PING"]} etc.
+    Upstash Redis REST expects the request body as a JSON ARRAY:
+      ["PING"]
+      ["GET","key"]
+      ["SETEX","key","60","value"]
     Returns 'result' on success, else None.
     """
     if not _redis_ok():
@@ -248,14 +255,24 @@ def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
         r = requests.post(
             UPSTASH_REDIS_REST_URL,
             headers=_redis_headers(),
-            data=json.dumps({"command": command}),
+            data=json.dumps(command),  # ✅ IMPORTANT: send the array, not {"command": ...}
             timeout=timeout,
         )
         if r.status_code >= 400:
+            # helpful for Render logs
+            try:
+                logger.warning("Upstash Redis HTTP %s: %s", r.status_code, (r.text or "")[:300])
+            except Exception:
+                pass
             return None
+
         j = r.json()
         return j.get("result")
-    except Exception:
+    except Exception as e:
+        try:
+            logger.warning("Upstash Redis exception: %s", str(e))
+        except Exception:
+            pass
         return None
 
 
@@ -268,8 +285,7 @@ def _redis_get(key: str) -> Optional[str]:
     res = _redis_cmd(["GET", key])
     if res is None:
         return None
-    # Upstash returns string or null
-    return res
+    return res  # Upstash returns string or null
 
 
 def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
@@ -293,6 +309,7 @@ def _redis_incr_with_ttl(key: str, ttl_seconds: int) -> Optional[int]:
     if iv == 1:
         _redis_cmd(["EXPIRE", key, int(ttl_seconds)])
     return iv
+
 
 
 # ==========================
