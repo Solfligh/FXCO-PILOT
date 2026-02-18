@@ -1854,17 +1854,24 @@ def _pick_first(data, keys):
 
 
 def _get_payload_fields():
+    """
+    Permanent unification:
+    - Accept BOTH `timeframe` and legacy `style` (UI/shell compatibility)
+    - Works for JSON and multipart/form-data
+    """
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
-        timeframe = _pick_first(data, ["timeframe", "timeframe_mode", "timeframeMode"])
+        # ✅ Permanent: allow `style` as alias for timeframe
+        timeframe = _pick_first(data, ["timeframe", "style", "timeframe_mode", "timeframeMode"])
         chart_tf = _pick_first(data, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
         signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
         return pair_type, timeframe, chart_tf, signal_text
 
     form = request.form or {}
     pair_type = _pick_first(form, ["pair_type", "pairType"])
-    timeframe = _pick_first(form, ["timeframe", "timeframe_mode", "timeframeMode"])
+    # ✅ Permanent: allow `style` as alias for timeframe
+    timeframe = _pick_first(form, ["timeframe", "style", "timeframe_mode", "timeframeMode"])
     chart_tf = _pick_first(form, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
     signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
     return pair_type, timeframe, chart_tf, signal_text
@@ -2129,7 +2136,8 @@ def analyze():
                 "missing": missing,
                 "expected_any_of": {
                     "pair_type": ["pair_type", "pairType"],
-                    "timeframe (style)": ["timeframe", "timeframe_mode", "timeframeMode"],
+                    # ✅ Permanent: style included here too
+                    "timeframe (style)": ["timeframe", "style", "timeframe_mode", "timeframeMode"],
                     "chart_tf (optional)": ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"],
                     "signal_input": ["signal_input", "signal", "signalText"],
                 },
