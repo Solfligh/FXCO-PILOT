@@ -1,4 +1,4 @@
-<!-- index.html (FULL FILE • perf: non-blocking fonts + CLS fixes + SEO/a11y; no features removed) -->
+<!-- index.html (FULL FILE • FIX: JSON POST when no file + remove double-submit; no features removed) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1144,6 +1144,17 @@
 
   <script>
     // -------------------------
+    // ✅ API base helper
+    // -------------------------
+    // Keep this as "" for Vercel/rewrites (recommended).
+    // Only set to full backend URL if you intentionally handle CORS.
+    const API_BASE = "";
+    function apiUrl(path) {
+      if (!API_BASE) return path;
+      return API_BASE.replace(/\/$/, "") + path;
+    }
+
+    // -------------------------
     // PWA Install + Service Worker
     // -------------------------
     let __deferredPrompt = null;
@@ -1447,7 +1458,7 @@
       }
       setAuthStatus("Sending code…", "");
       try {
-        const res = await fetch("/api/auth/start", {
+        const res = await fetch(apiUrl("/api/auth/start"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email })
@@ -1478,7 +1489,7 @@
 
       setAuthStatus("Verifying…", "");
       try {
-        const res = await fetch("/api/auth/verify", {
+        const res = await fetch(apiUrl("/api/auth/verify"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, code })
@@ -1750,7 +1761,7 @@
 
     async function loadPaystackConfig() {
       try {
-        const res = await fetch("/api/paystack/config", { cache: "no-store" });
+        const res = await fetch(apiUrl("/api/paystack/config"), { cache: "no-store" });
         const j = await res.json();
         PAYSTACK_CONFIG = j || { ok:false };
 
@@ -1805,7 +1816,7 @@
       }
 
       try {
-        const res = await fetch("/api/paystack/init", {
+        const res = await fetch(apiUrl("/api/paystack/init"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email })
@@ -1838,7 +1849,7 @@
         const statusEl = document.getElementById("pricingStatus");
         if (statusEl) statusEl.innerText = "Verifying payment…";
 
-        const res = await fetch("/api/paystack/verify?reference=" + encodeURIComponent(reference));
+        const res = await fetch(apiUrl("/api/paystack/verify?reference=" + encodeURIComponent(reference)));
         const j = await res.json().catch(() => null);
 
         if (res.ok && j?.ok && j?.paid) {
@@ -2005,7 +2016,7 @@
       setRateHint("", false);
 
       const pairType = (document.getElementById("pairType")?.value || "").trim();
-      const timeframe = (document.getElementById("timeframe")?.value || "").trim(); // trading style (kept for backend compatibility)
+      const timeframe = (document.getElementById("timeframe")?.value || "").trim(); // trading style
       const chartTf = (document.getElementById("chartTf")?.value || "").trim();     // actual chart timeframe
       const signal = (document.getElementById("signal")?.value || "").trim();
 
@@ -2021,14 +2032,7 @@
         return;
       }
 
-      const formData = new FormData();
-      formData.append("pair_type", pairType);
-      formData.append("timeframe", timeframe);    // style
-      formData.append("chart_tf", chartTf);       // ✅ NEW: actual timeframe (use this in backend)
-      formData.append("signal_input", signal);
-
-      const file = document.getElementById("chart")?.files?.[0];
-      if (file) formData.append("chart_image", file);
+      const file = document.getElementById("chart")?.files?.[0] || null;
 
       const btn = document.getElementById("analyzeBtn");
       btn.disabled = true;
@@ -2043,9 +2047,32 @@
         const ref = getPaidRef();
         if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
 
-        const res = await fetch("/api/analyze", { method: "POST", body: formData, headers });
-        const ct = res.headers.get("content-type") || "";
+        // ✅ FIX: JSON when no file, FormData only when file exists
+        let res;
+        if (file) {
+          const formData = new FormData();
+          formData.append("pair_type", pairType);
+          formData.append("timeframe", timeframe);
+          formData.append("chart_tf", chartTf);
+          formData.append("signal_input", signal);
+          formData.append("chart_image", file);
 
+          res = await fetch(apiUrl("/api/analyze"), { method: "POST", body: formData, headers });
+        } else {
+          headers["Content-Type"] = "application/json";
+          res = await fetch(apiUrl("/api/analyze"), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              pair_type: pairType,
+              timeframe,
+              chart_tf: chartTf,
+              signal_input: signal
+            })
+          });
+        }
+
+        const ct = res.headers.get("content-type") || "";
         showRateRemainingFromHeaders(res);
 
         const trialEndsHdr = res.headers.get("X-FXCO-Trial-Ends");
@@ -2113,8 +2140,8 @@
 
         const reportPayload = {
           pair_type: pairType,
-          timeframe,         // trading style
-          chart_tf: chartTf, // ✅ actual timeframe
+          timeframe,
+          chart_tf: chartTf,
           signal_input: signal,
           analysis: data?.analysis || null,
           raw: data || null,
@@ -2266,15 +2293,6 @@
       }
     }
 
-    function hardenButtonClicks() {
-      const btn = document.getElementById("analyzeBtn");
-      if (btn) {
-        btn.addEventListener("click", () => {
-          if (typeof window.analyze === "function") window.analyze();
-        });
-      }
-    }
-
     // -------------------------
     // DOM init
     // -------------------------
@@ -2307,7 +2325,6 @@
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
-      hardenButtonClicks();
 
       applyPaymentGateUI();
     }
