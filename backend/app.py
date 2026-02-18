@@ -68,7 +68,7 @@ logger = logging.getLogger("fxco-pilot")
 # Shareable reports:
 #   REPORT_SHARE_TTL_DAYS=30
 #
-# Upstash Redis REST:
+# Upstash Redis (REST):
 #   UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
 #   UPSTASH_REDIS_REST_TOKEN=xxxx
 # ============================================================
@@ -148,6 +148,24 @@ def _handle_exception(e):
 
 
 # ==========================
+# Simple in-memory cache (fallback)
+# ==========================
+_CACHE = {}
+_CACHE_TTL = {}
+
+
+def _cache_get(key):
+    if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
+        return _CACHE[key]
+    return None
+
+
+def _cache_set(key, value, ttl=60):
+    _CACHE[key] = value
+    _CACHE_TTL[key] = time.time() + ttl
+
+
+# ==========================
 # Time helpers
 # ==========================
 def _now() -> float:
@@ -220,135 +238,6 @@ def _get_openai_client():
 # ==========================
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "").strip()
 TD_BASE = "https://api.twelvedata.com"
-
-
-# ==========================
-# Upstash Redis (REST) — institutional cache + rate limit backing
-# ==========================
-UPSTASH_REDIS_REST_URL = (os.getenv("UPSTASH_REDIS_REST_URL", "") or "").strip().rstrip("/")
-UPSTASH_REDIS_REST_TOKEN = (os.getenv("UPSTASH_REDIS_REST_TOKEN", "") or "").strip()
-
-
-def _redis_ok() -> bool:
-    return bool(UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)
-
-
-def _redis_headers():
-    return {
-        "Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
-
-def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
-    """
-    Upstash Redis REST expects the request body as a JSON ARRAY:
-      ["PING"]
-      ["GET","key"]
-      ["SETEX","key","60","value"]
-    Returns 'result' on success, else None.
-    """
-    if not _redis_ok():
-        return None
-    try:
-        r = requests.post(
-            UPSTASH_REDIS_REST_URL,
-            headers=_redis_headers(),
-            data=json.dumps(command),  # ✅ IMPORTANT: send the array, not {"command": ...}
-            timeout=timeout,
-        )
-        if r.status_code >= 400:
-            # helpful for Render logs
-            try:
-                logger.warning("Upstash Redis HTTP %s: %s", r.status_code, (r.text or "")[:300])
-            except Exception:
-                pass
-            return None
-
-        j = r.json()
-        return j.get("result")
-    except Exception as e:
-        try:
-            logger.warning("Upstash Redis exception: %s", str(e))
-        except Exception:
-            pass
-        return None
-
-
-def _redis_ping() -> bool:
-    res = _redis_cmd(["PING"])
-    return (str(res or "")).upper() == "PONG"
-
-
-def _redis_get(key: str) -> Optional[str]:
-    res = _redis_cmd(["GET", key])
-    if res is None:
-        return None
-    return res  # Upstash returns string or null
-
-
-def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
-    res = _redis_cmd(["SETEX", key, int(ttl_seconds), value])
-    return (str(res or "")).upper() == "OK"
-
-
-def _redis_incr_with_ttl(key: str, ttl_seconds: int) -> Optional[int]:
-    """
-    Fixed-window counter:
-    - INCR key
-    - On first increment, set EXPIRE
-    """
-    v = _redis_cmd(["INCR", key])
-    if v is None:
-        return None
-    try:
-        iv = int(v)
-    except Exception:
-        return None
-    if iv == 1:
-        _redis_cmd(["EXPIRE", key, int(ttl_seconds)])
-    return iv
-
-
-
-# ==========================
-# Simple cache (Redis-first, fallback memory)
-# ==========================
-_CACHE: Dict[str, Any] = {}
-_CACHE_TTL: Dict[str, float] = {}
-
-
-def _cache_get(key: str):
-    # Redis first
-    if _redis_ok():
-        raw = _redis_get(f"fxco:cache:{key}")
-        if raw is None:
-            return None
-        try:
-            return json.loads(raw)
-        except Exception:
-            return raw
-
-    # Memory fallback
-    if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
-        return _CACHE[key]
-    return None
-
-
-def _cache_set(key: str, value, ttl: int = 60):
-    # Redis first
-    if _redis_ok():
-        try:
-            payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-        except Exception:
-            payload = json.dumps({"value": str(value)}, separators=(",", ":"), ensure_ascii=False)
-        _redis_setex(f"fxco:cache:{key}", int(ttl), payload)
-        return
-
-    # Memory fallback
-    _CACHE[key] = value
-    _CACHE_TTL[key] = time.time() + ttl
 
 
 # ==========================
@@ -760,7 +649,105 @@ def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
 
 
 # ==========================
-# Rate limiting (Redis-first, fixed window; fallback memory)
+# Upstash Redis (REST) — institutional cache + rate limit backing
+# ==========================
+UPSTASH_REDIS_REST_URL = (os.getenv("UPSTASH_REDIS_REST_URL", "") or "").strip().rstrip("/")
+UPSTASH_REDIS_REST_TOKEN = (os.getenv("UPSTASH_REDIS_REST_TOKEN", "") or "").strip()
+
+
+def _redis_ok() -> bool:
+    return bool(UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)
+
+
+def _redis_headers():
+    return {
+        "Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
+    """
+    Upstash Redis REST expects the request body as a JSON ARRAY:
+      ["PING"]
+      ["GET","key"]
+      ["SETEX","key","60","value"]
+    Returns 'result' on success, else None.
+    """
+    if not _redis_ok():
+        return None
+    try:
+        r = requests.post(
+            UPSTASH_REDIS_REST_URL,
+            headers=_redis_headers(),
+            data=json.dumps(command),
+            timeout=timeout,
+        )
+        if r.status_code >= 400:
+            try:
+                logger.warning("Upstash Redis HTTP %s: %s", r.status_code, (r.text or "")[:300])
+            except Exception:
+                pass
+            return None
+        j = r.json()
+        return j.get("result")
+    except Exception as e:
+        try:
+            logger.warning("Upstash Redis exception: %s", str(e))
+        except Exception:
+            pass
+        return None
+
+
+def _redis_ping() -> bool:
+    res = _redis_cmd(["PING"])
+    return (str(res or "")).upper() == "PONG"
+
+
+def _redis_get(key: str) -> Optional[str]:
+    res = _redis_cmd(["GET", key])
+    if res is None:
+        return None
+    return res
+
+
+def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
+    res = _redis_cmd(["SETEX", key, int(ttl_seconds), value])
+    return (str(res or "")).upper() == "OK"
+
+
+def _redis_incr_with_ttl(key: str, ttl_seconds: int) -> Optional[int]:
+    v = _redis_cmd(["INCR", key])
+    if v is None:
+        return None
+    try:
+        iv = int(v)
+    except Exception:
+        return None
+    if iv == 1:
+        _redis_cmd(["EXPIRE", key, int(ttl_seconds)])
+    return iv
+
+
+def _redis_ttl(key: str) -> Optional[int]:
+    v = _redis_cmd(["TTL", key])
+    if v is None:
+        return None
+    try:
+        iv = int(v)
+    except Exception:
+        return None
+    # Redis TTL:
+    #  -2 = key does not exist
+    #  -1 = key exists but has no associated expire
+    if iv < 0:
+        return None
+    return iv
+
+
+# ==========================
+# Rate limiting (Redis-backed, in-memory fallback)
 # ==========================
 def _env_int(name: str, default: int) -> int:
     try:
@@ -777,63 +764,17 @@ PAID_LIMIT_24H = _env_int("PAID_LIMIT_24H", 2000)
 _SHORT_WINDOW_SECONDS = 60
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 
-_RATE_SHORT: Dict[str, deque] = {}
-_RATE_DAY: Dict[str, deque] = {}
+# in-memory fallback (works even if Redis is down)
+_RATE_SHORT = {}
+_RATE_DAY = {}
 
 
-def _rate_check(identity_key: str, is_paid: bool):
+def _rate_check_inmemory(identity_key: str, is_paid: bool):
     now = _now()
 
     short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
     day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
 
-    plan = "paid" if is_paid else "free"
-
-    # Redis implementation (recommended)
-    if _redis_ok():
-        # Fixed windows: bucket by current minute/day
-        minute_bucket = int(now // _SHORT_WINDOW_SECONDS)
-        day_bucket = int(now // _DAY_WINDOW_SECONDS)
-
-        k60 = f"fxco:rl:{plan}:60s:{identity_key}:{minute_bucket}"
-        k24 = f"fxco:rl:{plan}:24h:{identity_key}:{day_bucket}"
-
-        c60 = _redis_incr_with_ttl(k60, _SHORT_WINDOW_SECONDS + 2)
-        c24 = _redis_incr_with_ttl(k24, _DAY_WINDOW_SECONDS + 60)
-
-        # If Redis hiccups, fall back to memory
-        if c60 is None or c24 is None:
-            logger.warning("redis_rl_failed identity=%s", identity_key)
-        else:
-            remaining_60 = max(0, short_limit - c60)
-            remaining_24 = max(0, day_limit - c24)
-
-            if c60 > short_limit or c24 > day_limit:
-                retry_after = 1
-                # In fixed-window, retry is until window rollover
-                retry_after = max(retry_after, int((_SHORT_WINDOW_SECONDS - (now % _SHORT_WINDOW_SECONDS))) + 1) if c60 > short_limit else retry_after
-                retry_after = max(retry_after, int((_DAY_WINDOW_SECONDS - (now % _DAY_WINDOW_SECONDS))) + 1) if c24 > day_limit else retry_after
-
-                headers = {
-                    "Retry-After": str(retry_after),
-                    "X-RateLimit-Plan": plan,
-                    "X-RateLimit-Limit-60s": str(short_limit),
-                    "X-RateLimit-Remaining-60s": str(max(0, short_limit - min(c60, short_limit))),
-                    "X-RateLimit-Limit-24h": str(day_limit),
-                    "X-RateLimit-Remaining-24h": str(max(0, day_limit - min(c24, day_limit))),
-                }
-                return False, retry_after, headers
-
-            headers = {
-                "X-RateLimit-Plan": plan,
-                "X-RateLimit-Limit-60s": str(short_limit),
-                "X-RateLimit-Remaining-60s": str(remaining_60),
-                "X-RateLimit-Limit-24h": str(day_limit),
-                "X-RateLimit-Remaining-24h": str(remaining_24),
-            }
-            return True, 0, headers
-
-    # Memory fallback (single instance)
     if identity_key not in _RATE_SHORT:
         _RATE_SHORT[identity_key] = deque()
     if identity_key not in _RATE_DAY:
@@ -859,7 +800,7 @@ def _rate_check(identity_key: str, is_paid: bool):
 
         headers = {
             "Retry-After": str(retry_after),
-            "X-RateLimit-Plan": plan,
+            "X-RateLimit-Plan": "paid" if is_paid else "free",
             "X-RateLimit-Limit-60s": str(short_limit),
             "X-RateLimit-Remaining-60s": str(short_remaining),
             "X-RateLimit-Limit-24h": str(day_limit),
@@ -871,13 +812,79 @@ def _rate_check(identity_key: str, is_paid: bool):
     day_q.append(now)
 
     headers = {
-        "X-RateLimit-Plan": plan,
+        "X-RateLimit-Plan": "paid" if is_paid else "free",
         "X-RateLimit-Limit-60s": str(short_limit),
         "X-RateLimit-Remaining-60s": str(short_remaining - 1),
         "X-RateLimit-Limit-24h": str(day_limit),
         "X-RateLimit-Remaining-24h": str(day_remaining - 1),
     }
     return True, 0, headers
+
+
+def _rate_check(identity_key: str, is_paid: bool):
+    """
+    Institutional upgrade A:
+    - Use Redis (Upstash) counters so limits work across multiple instances/restarts.
+    - Fall back to in-memory queues if Redis is unavailable or errors.
+    """
+    short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
+    day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
+
+    # Redis path
+    if _redis_ok():
+        try:
+            key60 = f"fxco:rl:60s:{identity_key}"
+            key24 = f"fxco:rl:24h:{identity_key}"
+
+            c60 = _redis_incr_with_ttl(key60, _SHORT_WINDOW_SECONDS)
+            c24 = _redis_incr_with_ttl(key24, _DAY_WINDOW_SECONDS)
+
+            # If Redis failed mid-way, fall back safely
+            if c60 is None or c24 is None:
+                return _rate_check_inmemory(identity_key, is_paid)
+
+            short_remaining = max(0, short_limit - int(c60))
+            day_remaining = max(0, day_limit - int(c24))
+
+            # Block if exceeded
+            if int(c60) > short_limit or int(c24) > day_limit:
+                retry_after = 1
+
+                if int(c60) > short_limit:
+                    ttl60 = _redis_ttl(key60)
+                    if isinstance(ttl60, int) and ttl60 >= 0:
+                        retry_after = max(retry_after, ttl60 + 1)
+
+                if int(c24) > day_limit:
+                    ttl24 = _redis_ttl(key24)
+                    if isinstance(ttl24, int) and ttl24 >= 0:
+                        retry_after = max(retry_after, ttl24 + 1)
+
+                headers = {
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Plan": "paid" if is_paid else "free",
+                    "X-RateLimit-Limit-60s": str(short_limit),
+                    "X-RateLimit-Remaining-60s": str(short_remaining),
+                    "X-RateLimit-Limit-24h": str(day_limit),
+                    "X-RateLimit-Remaining-24h": str(day_remaining),
+                }
+                return False, retry_after, headers
+
+            headers = {
+                "X-RateLimit-Plan": "paid" if is_paid else "free",
+                "X-RateLimit-Limit-60s": str(short_limit),
+                "X-RateLimit-Remaining-60s": str(short_remaining),
+                "X-RateLimit-Limit-24h": str(day_limit),
+                "X-RateLimit-Remaining-24h": str(day_remaining),
+            }
+            return True, 0, headers
+
+        except Exception:
+            # Always keep production alive
+            return _rate_check_inmemory(identity_key, is_paid)
+
+    # Fallback path
+    return _rate_check_inmemory(identity_key, is_paid)
 
 
 # ==========================
@@ -890,27 +897,27 @@ def index():
 
 @app.get("/health")
 def health():
-    # Real ping test (so redis_ok reflects reality)
+    # lightweight ping check (safe)
     redis_ok = False
     try:
         redis_ok = _redis_ping() if _redis_ok() else False
     except Exception:
         redis_ok = False
 
-    openai_ok = bool(os.getenv("OPENAI_API_KEY", "").strip())
-    twelvedata_ok = bool(TWELVE_DATA_API_KEY)
-
-    return jsonify(
-        {
-            "ok": True,
-            "openai_ok": openai_ok,
-            "twelvedata_ok": twelvedata_ok,
-            "redis_ok": redis_ok,
-            "supabase_ok": _sb_ok(),
-            "resend_ok": _resend_ok(),
-            "require_payment": _require_payment(),
-        }
-    ), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "openai_ok": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+                "twelvedata_ok": bool(TWELVE_DATA_API_KEY),
+                "supabase_ok": _sb_ok(),
+                "resend_ok": _resend_ok(),
+                "redis_ok": redis_ok,
+                "require_payment": _require_payment(),
+            }
+        ),
+        200,
+    )
 
 
 # ==========================
@@ -1094,30 +1101,41 @@ def paystack_config():
         enabled = _require_payment()
 
         if enabled and not PAYSTACK_SECRET_KEY:
-            return jsonify(
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "require_payment": True,
+                        "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
+                        "currency": PAYSTACK_CURRENCY,
+                        "amount": _paystack_amount_minor(),
+                        "public_key": PAYSTACK_PUBLIC_KEY or None,
+                        "access_days": _access_days(),
+                    }
+                ),
+                200,
+            )
+
+        return (
+            jsonify(
                 {
-                    "ok": False,
-                    "require_payment": True,
-                    "error": "Paystack not configured on server (missing PAYSTACK_SECRET_KEY).",
+                    "ok": True,
+                    "require_payment": enabled,
                     "currency": PAYSTACK_CURRENCY,
                     "amount": _paystack_amount_minor(),
                     "public_key": PAYSTACK_PUBLIC_KEY or None,
                     "access_days": _access_days(),
                 }
-            ), 200
-
-        return jsonify(
-            {
-                "ok": True,
-                "require_payment": enabled,
-                "currency": PAYSTACK_CURRENCY,
-                "amount": _paystack_amount_minor(),
-                "public_key": PAYSTACK_PUBLIC_KEY or None,
-                "access_days": _access_days(),
-            }
-        ), 200
+            ),
+            200,
+        )
     except Exception as e:
-        return jsonify({"ok": False, "require_payment": False, "currency": "NGN", "amount": 10000 * 100, "public_key": None, "access_days": 30, "error": str(e)}), 200
+        return (
+            jsonify(
+                {"ok": False, "require_payment": False, "currency": "NGN", "amount": 10000 * 100, "public_key": None, "access_days": 30, "error": str(e)}
+            ),
+            200,
+        )
 
 
 def _safe_json(r: requests.Response) -> dict:
@@ -1359,6 +1377,10 @@ _TD_INTERVALS = ["1min", "5min", "15min", "30min", "1h", "4h", "1day"]
 
 
 def _normalize_chart_tf(chart_tf: str) -> str:
+    """
+    Accepts: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1day, 15min, etc.
+    Returns one of TwelveData supported intervals in _TD_INTERVALS, else "".
+    """
     s = (chart_tf or "").strip().lower()
     if not s:
         return ""
@@ -1387,6 +1409,9 @@ def _normalize_chart_tf(chart_tf: str) -> str:
 
 
 def _pick_execution_tf(structure_tf: str) -> str:
+    """
+    Pick one lower TF for execution.
+    """
     try:
         i = _TD_INTERVALS.index(structure_tf)
     except Exception:
@@ -1417,7 +1442,14 @@ def td_price(symbol: str):
         r = requests.get(f"{TD_BASE}/price", params={"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}, timeout=10)
         data = r.json()
         if data.get("status") == "error":
-            out = {"ok": False, "symbol": symbol, "error": data.get("message", "Twelve Data error"), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
+            out = {
+                "ok": False,
+                "symbol": symbol,
+                "error": data.get("message", "Twelve Data error"),
+                "source": "twelvedata",
+                "timestamp_utc": snap_ts,
+                "session": snap_session,
+            }
             _cache_set(cache_key, out, ttl=15)
             return out
 
@@ -1997,23 +2029,8 @@ def institutional_decision_engine(analysis: dict) -> dict:
 # ==========================
 # Analyze endpoint (trial OR paid)
 # ==========================
-@app.route("/api/analyze", methods=["POST", "GET"])
+@app.route("/api/analyze", methods=["POST"])
 def analyze():
-    # Allow GET ?test=1 for a clean rate-limit + headers test
-    if request.method == "GET":
-        if request.args.get("test") == "1":
-            ip = _client_ip()
-            client_id = _get_client_id_header() or ("ip:" + ip)
-            paid_active = _is_client_unlocked(client_id)
-            identity_key = f"cid:{client_id}"
-            ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
-            resp = jsonify({"ok": ok, "mode": "rate_limit_test", "redis_ok": _redis_ping() if _redis_ok() else False})
-            resp.status_code = 200 if ok else 429
-            for k, v in rl_headers.items():
-                resp.headers[k] = v
-            return resp
-        return jsonify({"ok": False, "error": "Use POST /api/analyze for analysis or GET /api/analyze?test=1"}), 400
-
     ip = _client_ip()
     client_id = _get_client_id_header() or ("ip:" + ip)
 
@@ -2047,6 +2064,14 @@ def analyze():
         if trial_ends_epoch:
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
+
+    if request.args.get("test") == "1":
+        resp = jsonify({"ok": True, "mode": "rate_limit_test", "redis_ok": _redis_ping() if _redis_ok() else False})
+        for k, v in rl_headers.items():
+            resp.headers[k] = v
+        if trial_ends_epoch:
+            resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
+        return resp, 200
 
     pair_type, timeframe, chart_tf_raw, signal_text = _get_payload_fields()
 
@@ -2280,7 +2305,9 @@ Rules:
         analysis["confidence"] = compute_confidence(analysis)
         analysis["why_this_trade"] = build_why_this_trade(analysis)
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
+
         analysis["execution_plan"] = build_execution_plan(analysis)
+
         analysis = institutional_decision_engine(analysis)
 
         decision_tier = str(analysis.get("decision_tier") or "").strip().upper()
