@@ -14,7 +14,6 @@ from typing import Optional, Tuple, Any, Dict, List
 import requests
 from flask import Flask, jsonify, request
 from openai import OpenAI
-from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -69,11 +68,10 @@ logger = logging.getLogger("fxco-pilot")
 # Shareable reports:
 #   REPORT_SHARE_TTL_DAYS=30
 #
-# Redis (Upstash REST) — recommended:
+# Upstash Redis REST:
 #   UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
 #   UPSTASH_REDIS_REST_TOKEN=xxxx
 # ============================================================
-
 
 # ==========================
 # Request lifecycle helpers
@@ -141,21 +139,6 @@ def _api_options(_path):
     return resp, 200
 
 
-# IMPORTANT: don’t convert HTTP 405/404 into 500
-@app.errorhandler(HTTPException)
-def _handle_http_exception(e: HTTPException):
-    req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
-    resp = jsonify(
-        {
-            "ok": False,
-            "error": e.description or e.name,
-            "status": e.code,
-            "request_id": req_id,
-        }
-    )
-    return resp, e.code
-
-
 @app.errorhandler(Exception)
 def _handle_exception(e):
     req_id = getattr(request, "_fxco_req_id", None) or _make_request_id()
@@ -165,98 +148,23 @@ def _handle_exception(e):
 
 
 # ==========================
-# Redis (Upstash REST) — Institutional cache + rate-limits
-# ==========================
-UPSTASH_REDIS_REST_URL = (os.getenv("UPSTASH_REDIS_REST_URL", "") or "").strip().rstrip("/")
-UPSTASH_REDIS_REST_TOKEN = (os.getenv("UPSTASH_REDIS_REST_TOKEN", "") or "").strip()
-
-def _redis_ok() -> bool:
-    return bool(UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)
-
-def _redis_headers():
-    return {
-        "Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-
-def _redis_cmd(command: List[Any], timeout: int = 10) -> Tuple[bool, Any]:
-    """
-    Upstash REST expects POST with: {"command": ["PING"]} or ["GET","key"], etc.
-    Returns (ok, result_or_error)
-    """
-    if not _redis_ok():
-        return False, "Redis not configured"
-    try:
-        r = requests.post(
-            UPSTASH_REDIS_REST_URL,
-            headers=_redis_headers(),
-            data=json.dumps({"command": command}),
-            timeout=timeout,
-        )
-        j = r.json() if r.content else {}
-        if r.status_code >= 400:
-            return False, (j.get("error") or j or r.text)
-        if "error" in j and j["error"]:
-            return False, j["error"]
-        return True, j.get("result")
-    except Exception as e:
-        return False, str(e)
-
-def _redis_ping() -> bool:
-    ok, res = _redis_cmd(["PING"], timeout=8)
-    return bool(ok and (str(res).upper() == "PONG"))
-
-# ==========================
-# Simple cache (Redis-backed, falls back to memory)
-# ==========================
-_CACHE: Dict[str, Any] = {}
-_CACHE_TTL: Dict[str, float] = {}
-
-def _cache_get(key: str):
-    # Prefer Redis
-    if _redis_ok():
-        ok, res = _redis_cmd(["GET", key], timeout=8)
-        if ok and res is not None:
-            try:
-                return json.loads(res)
-            except Exception:
-                return res
-        return None
-
-    # Fallback memory
-    if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
-        return _CACHE[key]
-    return None
-
-def _cache_set(key: str, value: Any, ttl: int = 60):
-    ttl = int(max(1, ttl))
-    if _redis_ok():
-        try:
-            payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-        except Exception:
-            payload = str(value)
-        _redis_cmd(["SETEX", key, ttl, payload], timeout=8)
-        return
-
-    _CACHE[key] = value
-    _CACHE_TTL[key] = time.time() + ttl
-
-
-# ==========================
 # Time helpers
 # ==========================
 def _now() -> float:
     return time.time()
 
+
 def _utc_now_dt() -> datetime:
     return datetime.now(timezone.utc)
+
 
 def _dt_to_iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 
+
 def _utc_now_iso_z() -> str:
     return _utc_now_dt().replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
 
 def _fx_session_from_utc(dt_utc: datetime) -> str:
     h = dt_utc.hour
@@ -268,11 +176,13 @@ def _fx_session_from_utc(dt_utc: datetime) -> str:
         return "New York"
     return "Off-hours"
 
+
 def _parse_iso(dt_str: str) -> Optional[datetime]:
     try:
         return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except Exception:
         return None
+
 
 def _ms_now() -> int:
     return int(_now() * 1000)
@@ -286,6 +196,7 @@ def _client_ip():
     if xff:
         return xff.split(",")[0].strip()
     return request.remote_addr or "unknown"
+
 
 def _get_client_id_header():
     cid = (request.headers.get("X-FXCO-Client") or "").strip()
@@ -312,13 +223,127 @@ TD_BASE = "https://api.twelvedata.com"
 
 
 # ==========================
+# Upstash Redis (REST) — institutional cache + rate limit backing
+# ==========================
+UPSTASH_REDIS_REST_URL = (os.getenv("UPSTASH_REDIS_REST_URL", "") or "").strip().rstrip("/")
+UPSTASH_REDIS_REST_TOKEN = (os.getenv("UPSTASH_REDIS_REST_TOKEN", "") or "").strip()
+
+
+def _redis_ok() -> bool:
+    return bool(UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN)
+
+
+def _redis_headers():
+    return {"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}", "Content-Type": "application/json"}
+
+
+def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
+    """
+    Upstash REST supports POST {url} with JSON: {"command": ["PING"]} etc.
+    Returns 'result' on success, else None.
+    """
+    if not _redis_ok():
+        return None
+    try:
+        r = requests.post(
+            UPSTASH_REDIS_REST_URL,
+            headers=_redis_headers(),
+            data=json.dumps({"command": command}),
+            timeout=timeout,
+        )
+        if r.status_code >= 400:
+            return None
+        j = r.json()
+        return j.get("result")
+    except Exception:
+        return None
+
+
+def _redis_ping() -> bool:
+    res = _redis_cmd(["PING"])
+    return (str(res or "")).upper() == "PONG"
+
+
+def _redis_get(key: str) -> Optional[str]:
+    res = _redis_cmd(["GET", key])
+    if res is None:
+        return None
+    # Upstash returns string or null
+    return res
+
+
+def _redis_setex(key: str, ttl_seconds: int, value: str) -> bool:
+    res = _redis_cmd(["SETEX", key, int(ttl_seconds), value])
+    return (str(res or "")).upper() == "OK"
+
+
+def _redis_incr_with_ttl(key: str, ttl_seconds: int) -> Optional[int]:
+    """
+    Fixed-window counter:
+    - INCR key
+    - On first increment, set EXPIRE
+    """
+    v = _redis_cmd(["INCR", key])
+    if v is None:
+        return None
+    try:
+        iv = int(v)
+    except Exception:
+        return None
+    if iv == 1:
+        _redis_cmd(["EXPIRE", key, int(ttl_seconds)])
+    return iv
+
+
+# ==========================
+# Simple cache (Redis-first, fallback memory)
+# ==========================
+_CACHE: Dict[str, Any] = {}
+_CACHE_TTL: Dict[str, float] = {}
+
+
+def _cache_get(key: str):
+    # Redis first
+    if _redis_ok():
+        raw = _redis_get(f"fxco:cache:{key}")
+        if raw is None:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return raw
+
+    # Memory fallback
+    if key in _CACHE and time.time() < _CACHE_TTL.get(key, 0):
+        return _CACHE[key]
+    return None
+
+
+def _cache_set(key: str, value, ttl: int = 60):
+    # Redis first
+    if _redis_ok():
+        try:
+            payload = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+        except Exception:
+            payload = json.dumps({"value": str(value)}, separators=(",", ":"), ensure_ascii=False)
+        _redis_setex(f"fxco:cache:{key}", int(ttl), payload)
+        return
+
+    # Memory fallback
+    _CACHE[key] = value
+    _CACHE_TTL[key] = time.time() + ttl
+
+
+# ==========================
 # Supabase helpers (PostgREST)
 # ==========================
 SUPABASE_URL = (os.getenv("SUPABASE_URL", "") or "").strip().rstrip("/")
 SUPABASE_SERVICE_ROLE_KEY = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
 
+
 def _sb_ok() -> bool:
     return bool(SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY)
+
 
 def _sb_headers():
     return {
@@ -327,6 +352,7 @@ def _sb_headers():
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+
 
 def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
     if not _sb_ok():
@@ -348,6 +374,7 @@ def _sb_select_one(table: str, filters: dict) -> Optional[dict]:
     except Exception:
         return None
 
+
 def _sb_upsert(table: str, row: dict, conflict: str) -> bool:
     if not _sb_ok():
         return False
@@ -362,6 +389,7 @@ def _sb_upsert(table: str, row: dict, conflict: str) -> bool:
         return 200 <= r.status_code < 300
     except Exception:
         return False
+
 
 def _sb_update(table: str, filters: dict, patch: dict) -> bool:
     if not _sb_ok():
@@ -378,6 +406,7 @@ def _sb_update(table: str, filters: dict, patch: dict) -> bool:
         return 200 <= r.status_code < 300
     except Exception:
         return False
+
 
 def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
     if not _sb_ok():
@@ -405,8 +434,10 @@ def _sb_insert_returning(table: str, row: dict) -> Optional[dict]:
 RESEND_API_KEY = (os.getenv("RESEND_API_KEY", "") or "").strip()
 RESEND_FROM_EMAIL = (os.getenv("RESEND_FROM_EMAIL", "") or "").strip()
 
+
 def _resend_ok() -> bool:
     return bool(RESEND_API_KEY and RESEND_FROM_EMAIL)
+
 
 def _send_email_resend(to_email: str, subject: str, html: str) -> Tuple[bool, str]:
     if not _resend_ok():
@@ -532,21 +563,26 @@ def _load_share_report(share_id: str) -> Optional[dict]:
 # ==========================
 AUTH_SIGNING_SECRET = (os.getenv("AUTH_SIGNING_SECRET", "") or "").strip()
 
+
 def _b64url_encode(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
+
 
 def _b64url_decode(s: str) -> bytes:
     pad = "=" * ((4 - (len(s) % 4)) % 4)
     return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
 
+
 def _sign(payload_bytes: bytes) -> str:
     key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
     return _b64url_encode(hmac.new(key, payload_bytes, hashlib.sha256).digest())
+
 
 def _make_token(email: str, trial_ends_epoch: int) -> str:
     payload = {"email": email, "trial_ends": int(trial_ends_epoch), "iat": int(_now()), "v": 1}
     pb = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     return f"{_b64url_encode(pb)}.{_sign(pb)}"
+
 
 def _verify_token(token: str) -> Optional[dict]:
     try:
@@ -578,17 +614,21 @@ def _email_ok(email: str) -> bool:
         return False
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email))
 
+
 def _otp_code() -> str:
     n = int.from_bytes(os.urandom(4), "big") % 1000000
     return f"{n:06d}"
+
 
 def _otp_hash(email: str, code: str) -> str:
     key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
     msg = (email.strip().lower() + ":" + code.strip()).encode("utf-8")
     return hashlib.sha256(hmac.new(key, msg, hashlib.sha256).digest()).hexdigest()
 
+
 def _trial_row(email: str) -> Optional[dict]:
     return _sb_select_one("fxco_trials", {"email": email})
+
 
 def _trial_active(email: str) -> Tuple[bool, int]:
     row = _trial_row(email)
@@ -612,15 +652,18 @@ PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
 PAYSTACK_CURRENCY = (os.getenv("PAYSTACK_CURRENCY", "NGN") or "NGN").strip().upper()
 PAYSTACK_BASE = "https://api.paystack.co"
 
+
 def _require_payment():
     v = (os.getenv("PAYSTACK_REQUIRE_PAYMENT", "") or os.getenv("REQUIRE_PAYMENT", "1") or "1").strip().lower()
     return v in ("1", "true", "yes", "y", "on")
+
 
 def _access_days():
     try:
         return max(1, int((os.getenv("PAYSTACK_ACCESS_DAYS", "30") or "30").strip()))
     except Exception:
         return 30
+
 
 def _paystack_amount_minor():
     amt_minor = (os.getenv("PAYSTACK_AMOUNT", "") or "").strip()
@@ -636,12 +679,14 @@ def _paystack_amount_minor():
         major = 10000
     return max(0, major) * 100
 
+
 def _paystack_headers():
     return {
         "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+
 
 def _callback_url():
     cb = (os.getenv("PAYSTACK_CALLBACK_URL", "") or "").strip()
@@ -652,6 +697,7 @@ def _callback_url():
         return origin
     return request.host_url.rstrip("/")
 
+
 def _ensure_paystack_success_param(url: str) -> str:
     u = (url or "").strip()
     if not u:
@@ -660,6 +706,7 @@ def _ensure_paystack_success_param(url: str) -> str:
         return u
     sep = "&" if "?" in u else "?"
     return f"{u}{sep}paystack=success"
+
 
 def _get_paid_until(client_id: str) -> int:
     if not client_id:
@@ -675,12 +722,14 @@ def _get_paid_until(client_id: str) -> int:
         return 0
     return int(dt.timestamp())
 
+
 def _is_client_unlocked(client_id: str) -> bool:
     if not _require_payment():
         return True
     if not client_id:
         return False
     return _now() < _get_paid_until(client_id)
+
 
 def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
     if not client_id:
@@ -694,13 +743,14 @@ def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
 
 
 # ==========================
-# Rate limiting (Redis-backed, falls back to memory)
+# Rate limiting (Redis-first, fixed window; fallback memory)
 # ==========================
 def _env_int(name: str, default: int) -> int:
     try:
         return max(1, int((os.getenv(name, str(default)) or str(default)).strip()))
     except Exception:
         return default
+
 
 FREE_LIMIT_60S = _env_int("FREE_LIMIT_60S", 5)
 FREE_LIMIT_24H = _env_int("FREE_LIMIT_24H", 50)
@@ -710,12 +760,9 @@ PAID_LIMIT_24H = _env_int("PAID_LIMIT_24H", 2000)
 _SHORT_WINDOW_SECONDS = 60
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 
-# legacy fallback
-_RATE_SHORT = {}
-_RATE_DAY = {}
+_RATE_SHORT: Dict[str, deque] = {}
+_RATE_DAY: Dict[str, deque] = {}
 
-def _rl_bucket(now: float, window: int) -> int:
-    return int(now // window)
 
 def _rate_check(identity_key: str, is_paid: bool):
     now = _now()
@@ -723,58 +770,53 @@ def _rate_check(identity_key: str, is_paid: bool):
     short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
     day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
 
-    # Prefer Redis fixed-window counters
+    plan = "paid" if is_paid else "free"
+
+    # Redis implementation (recommended)
     if _redis_ok():
-        short_bucket = _rl_bucket(now, _SHORT_WINDOW_SECONDS)
-        day_bucket = _rl_bucket(now, _DAY_WINDOW_SECONDS)
+        # Fixed windows: bucket by current minute/day
+        minute_bucket = int(now // _SHORT_WINDOW_SECONDS)
+        day_bucket = int(now // _DAY_WINDOW_SECONDS)
 
-        k_short = f"fxco:rl:60s:{identity_key}:{short_bucket}"
-        k_day = f"fxco:rl:24h:{identity_key}:{day_bucket}"
+        k60 = f"fxco:rl:{plan}:60s:{identity_key}:{minute_bucket}"
+        k24 = f"fxco:rl:{plan}:24h:{identity_key}:{day_bucket}"
 
-        ok1, c1 = _redis_cmd(["INCR", k_short], timeout=8)
-        if ok1 and int(c1 or 0) == 1:
-            _redis_cmd(["EXPIRE", k_short, _SHORT_WINDOW_SECONDS + 2], timeout=8)
+        c60 = _redis_incr_with_ttl(k60, _SHORT_WINDOW_SECONDS + 2)
+        c24 = _redis_incr_with_ttl(k24, _DAY_WINDOW_SECONDS + 60)
 
-        ok2, c2 = _redis_cmd(["INCR", k_day], timeout=8)
-        if ok2 and int(c2 or 0) == 1:
-            _redis_cmd(["EXPIRE", k_day, _DAY_WINDOW_SECONDS + 10], timeout=8)
-
-        # If Redis failed mid-way, fall back to memory
-        if not ok1 or not ok2:
-            logger.warning("Redis rate-limit failed; falling back to memory. err1=%s err2=%s", c1, c2)
+        # If Redis hiccups, fall back to memory
+        if c60 is None or c24 is None:
+            logger.warning("redis_rl_failed identity=%s", identity_key)
         else:
-            count_short = int(c1 or 0)
-            count_day = int(c2 or 0)
+            remaining_60 = max(0, short_limit - c60)
+            remaining_24 = max(0, day_limit - c24)
 
-            short_remaining = max(0, short_limit - count_short)
-            day_remaining = max(0, day_limit - count_day)
-
-            if short_remaining <= 0 or day_remaining <= 0:
-                # fixed-window retry: time until next bucket
+            if c60 > short_limit or c24 > day_limit:
                 retry_after = 1
-                retry_after = max(retry_after, int(_SHORT_WINDOW_SECONDS - (now % _SHORT_WINDOW_SECONDS)) + 1) if short_remaining <= 0 else retry_after
-                retry_after = max(retry_after, int(_DAY_WINDOW_SECONDS - (now % _DAY_WINDOW_SECONDS)) + 1) if day_remaining <= 0 else retry_after
+                # In fixed-window, retry is until window rollover
+                retry_after = max(retry_after, int((_SHORT_WINDOW_SECONDS - (now % _SHORT_WINDOW_SECONDS))) + 1) if c60 > short_limit else retry_after
+                retry_after = max(retry_after, int((_DAY_WINDOW_SECONDS - (now % _DAY_WINDOW_SECONDS))) + 1) if c24 > day_limit else retry_after
 
                 headers = {
                     "Retry-After": str(retry_after),
-                    "X-RateLimit-Plan": "paid" if is_paid else "free",
+                    "X-RateLimit-Plan": plan,
                     "X-RateLimit-Limit-60s": str(short_limit),
-                    "X-RateLimit-Remaining-60s": str(short_remaining),
+                    "X-RateLimit-Remaining-60s": str(max(0, short_limit - min(c60, short_limit))),
                     "X-RateLimit-Limit-24h": str(day_limit),
-                    "X-RateLimit-Remaining-24h": str(day_remaining),
+                    "X-RateLimit-Remaining-24h": str(max(0, day_limit - min(c24, day_limit))),
                 }
                 return False, retry_after, headers
 
             headers = {
-                "X-RateLimit-Plan": "paid" if is_paid else "free",
+                "X-RateLimit-Plan": plan,
                 "X-RateLimit-Limit-60s": str(short_limit),
-                "X-RateLimit-Remaining-60s": str(short_remaining),
+                "X-RateLimit-Remaining-60s": str(remaining_60),
                 "X-RateLimit-Limit-24h": str(day_limit),
-                "X-RateLimit-Remaining-24h": str(day_remaining),
+                "X-RateLimit-Remaining-24h": str(remaining_24),
             }
             return True, 0, headers
 
-    # Fallback memory queues
+    # Memory fallback (single instance)
     if identity_key not in _RATE_SHORT:
         _RATE_SHORT[identity_key] = deque()
     if identity_key not in _RATE_DAY:
@@ -800,7 +842,7 @@ def _rate_check(identity_key: str, is_paid: bool):
 
         headers = {
             "Retry-After": str(retry_after),
-            "X-RateLimit-Plan": "paid" if is_paid else "free",
+            "X-RateLimit-Plan": plan,
             "X-RateLimit-Limit-60s": str(short_limit),
             "X-RateLimit-Remaining-60s": str(short_remaining),
             "X-RateLimit-Limit-24h": str(day_limit),
@@ -812,7 +854,7 @@ def _rate_check(identity_key: str, is_paid: bool):
     day_q.append(now)
 
     headers = {
-        "X-RateLimit-Plan": "paid" if is_paid else "free",
+        "X-RateLimit-Plan": plan,
         "X-RateLimit-Limit-60s": str(short_limit),
         "X-RateLimit-Remaining-60s": str(short_remaining - 1),
         "X-RateLimit-Limit-24h": str(day_limit),
@@ -831,18 +873,25 @@ def index():
 
 @app.get("/health")
 def health():
-    redis_alive = False
-    if _redis_ok():
-        redis_alive = _redis_ping()
+    # Real ping test (so redis_ok reflects reality)
+    redis_ok = False
+    try:
+        redis_ok = _redis_ping() if _redis_ok() else False
+    except Exception:
+        redis_ok = False
+
+    openai_ok = bool(os.getenv("OPENAI_API_KEY", "").strip())
+    twelvedata_ok = bool(TWELVE_DATA_API_KEY)
+
     return jsonify(
         {
             "ok": True,
-            "openai_ok": bool(os.getenv("OPENAI_API_KEY", "").strip()),
-            "redis_ok": bool(redis_alive),
-            "require_payment": _require_payment(),
-            "resend_ok": _resend_ok(),
+            "openai_ok": openai_ok,
+            "twelvedata_ok": twelvedata_ok,
+            "redis_ok": redis_ok,
             "supabase_ok": _sb_ok(),
-            "twelvedata_ok": bool(TWELVE_DATA_API_KEY),
+            "resend_ok": _resend_ok(),
+            "require_payment": _require_payment(),
         }
     ), 200
 
@@ -1142,6 +1191,7 @@ def paystack_verify():
 def _norm_symbol(s: str) -> str:
     return (s or "").upper().replace("/", "").replace("-", "").replace(" ", "").strip()
 
+
 def td_symbol(s: str) -> str:
     raw = (s or "").upper().strip()
     if "/" in raw:
@@ -1150,6 +1200,7 @@ def td_symbol(s: str) -> str:
     if re.fullmatch(r"[A-Z]{6}", sym):
         return f"{sym[:3]}/{sym[3:]}"
     return sym
+
 
 def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
     txt = (signal_text or "").upper()
@@ -1173,6 +1224,7 @@ def detect_symbol_from_signal(signal_text: str, pair_type: str) -> str:
         return "BTCUSD"
     return "EURUSD"
 
+
 def _to_float(v):
     if v is None:
         return None
@@ -1188,6 +1240,7 @@ def _to_float(v):
         return float(m.group(0))
     except Exception:
         return None
+
 
 def _parse_targets(val):
     if val is None:
@@ -1208,6 +1261,7 @@ def _parse_targets(val):
         except Exception:
             pass
     return out
+
 
 def calculate_rr(entry, stop, targets):
     entry_f = _to_float(entry)
@@ -1247,6 +1301,7 @@ def _parse_duration_minutes(text: str) -> Optional[int]:
 
     return None
 
+
 def _normalize_mode(tf: str) -> str:
     t = (tf or "").strip().lower()
     if t in ("scalp", "scalping"):
@@ -1256,6 +1311,7 @@ def _normalize_mode(tf: str) -> str:
     if t in ("swing", "swinger", "swingtrade", "swing trading"):
         return "swing"
     return t or "intraday"
+
 
 def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, str]:
     mode = _normalize_mode(mode)
@@ -1284,6 +1340,7 @@ def _map_horizon_to_tfs(mode: str, hold_minutes: Optional[int]) -> Tuple[str, st
 # ==========================
 _TD_INTERVALS = ["1min", "5min", "15min", "30min", "1h", "4h", "1day"]
 
+
 def _normalize_chart_tf(chart_tf: str) -> str:
     s = (chart_tf or "").strip().lower()
     if not s:
@@ -1292,6 +1349,7 @@ def _normalize_chart_tf(chart_tf: str) -> str:
     s = s.replace(" ", "")
     s = s.replace("minutes", "min").replace("minute", "min")
     s = s.replace("hours", "h").replace("hour", "h")
+    s = s.replace("days", "day").replace("d", "day") if re.fullmatch(r"\d+d", s) else s
 
     if s in ("1m", "1min"):
         return "1min"
@@ -1309,6 +1367,7 @@ def _normalize_chart_tf(chart_tf: str) -> str:
         return "1day"
 
     return ""
+
 
 def _pick_execution_tf(structure_tf: str) -> str:
     try:
@@ -1353,6 +1412,7 @@ def td_price(symbol: str):
         out = {"ok": False, "symbol": symbol, "error": str(e), "source": "twelvedata", "timestamp_utc": snap_ts, "session": snap_session}
         _cache_set(cache_key, out, ttl=15)
         return out
+
 
 def td_candles(symbol: str, interval: str = "5min", limit: int = 120):
     if not TWELVE_DATA_API_KEY:
@@ -1404,6 +1464,7 @@ def _pivot_points(highs: List[float], lows: List[float], left: int = 2, right: i
         if all(l < lows[i - k] for k in range(1, left + 1)) and all(l < lows[i + k] for k in range(1, right + 1)):
             pl.append(i)
     return ph, pl
+
 
 def structure_from_candles(values):
     if not values or len(values) < 60:
@@ -1517,6 +1578,7 @@ def compute_confidence(analysis):
 
     return max(0, min(100, score))
 
+
 def build_why_this_trade(analysis):
     mc = analysis.get("market_context", {}) or {}
     sc = analysis.get("signal_check", {}) or {}
@@ -1534,6 +1596,7 @@ def build_why_this_trade(analysis):
     if sc.get("entry") and sc.get("stop_loss"):
         reasons.append("Defined entry and stop loss reduces ambiguity.")
     return reasons[:6]
+
 
 def build_invalidation_warnings(analysis, live_snapshot=None):
     warnings = []
@@ -1714,6 +1777,7 @@ def _pick_first(data, keys):
             return str(v).strip()
     return ""
 
+
 def _get_payload_fields():
     if request.is_json:
         data = request.get_json(silent=True) or {}
@@ -1736,6 +1800,7 @@ def _get_payload_fields():
 # ==========================
 def _as_text(v) -> str:
     return (str(v or "")).strip()
+
 
 def _institutional_score(analysis: dict) -> int:
     mc = analysis.get("market_context", {}) or {}
@@ -1798,6 +1863,7 @@ def _institutional_score(analysis: dict) -> int:
         score += 2
 
     return max(0, min(100, int(round(score))))
+
 
 def institutional_decision_engine(analysis: dict) -> dict:
     hard_blocks = []
@@ -1914,17 +1980,23 @@ def institutional_decision_engine(analysis: dict) -> dict:
 # ==========================
 # Analyze endpoint (trial OR paid)
 # ==========================
-# Browser-friendly test (GET)
-@app.get("/api/analyze")
-def analyze_get():
-    if request.args.get("test") == "1":
-        resp = jsonify({"ok": True, "mode": "rate_limit_test", "redis_ok": bool(_redis_ok() and _redis_ping())})
-        return resp, 200
-    return jsonify({"ok": False, "error": "Use POST /api/analyze for analysis. Add ?test=1 for a simple GET test."}), 405
-
-
-@app.post("/api/analyze")
+@app.route("/api/analyze", methods=["POST", "GET"])
 def analyze():
+    # Allow GET ?test=1 for a clean rate-limit + headers test
+    if request.method == "GET":
+        if request.args.get("test") == "1":
+            ip = _client_ip()
+            client_id = _get_client_id_header() or ("ip:" + ip)
+            paid_active = _is_client_unlocked(client_id)
+            identity_key = f"cid:{client_id}"
+            ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
+            resp = jsonify({"ok": ok, "mode": "rate_limit_test", "redis_ok": _redis_ping() if _redis_ok() else False})
+            resp.status_code = 200 if ok else 429
+            for k, v in rl_headers.items():
+                resp.headers[k] = v
+            return resp
+        return jsonify({"ok": False, "error": "Use POST /api/analyze for analysis or GET /api/analyze?test=1"}), 400
+
     ip = _client_ip()
     client_id = _get_client_id_header() or ("ip:" + ip)
 
