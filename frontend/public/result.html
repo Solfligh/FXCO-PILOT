@@ -646,6 +646,16 @@
       transform: translateX(-50%) translateY(-2px);
     }
 
+    /* Collapsible cleaner */
+     #cleanerCard.is-collapsed .subtle,
+     #cleanerCard.is-collapsed #cleanerBox {
+     display: none;
+    }
+     #cleanerCard.is-collapsed {
+     opacity: .92;
+    }
+
+
     /* Print */
     @media print{
       .topbar{ position: static; box-shadow: none; }
@@ -820,7 +830,7 @@
           <div class="ticketCard" id="cleanerCard">
             <div class="ticketTop">
               <b>Signal Cleaner</b>
-              <span class="pill info">Parsed</span>
+              <span class="pill info" id="cleanerPill">Parsed</span>
             </div>
             <div class="subtle" style="margin-bottom:8px;">
               This shows <b>what was understood</b> from a messy message — and what’s missing.
