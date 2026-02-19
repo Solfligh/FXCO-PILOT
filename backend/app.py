@@ -1856,33 +1856,45 @@ def _pick_first(data, keys):
 def _get_payload_fields():
     """
     Permanent unification:
-    - Accept BOTH `timeframe` and legacy `style` (UI/shell compatibility)
+    - Accept BOTH 'timeframe' and legacy 'style'
     - Works for JSON and multipart/form-data
+    - Extracts optional manual HTF Bias from signal text (e.g. "HTF Bias: Bullish ...")
+    Returns:
+        pair_type, timeframe, chart_tf, signal_text, manual_htf_bias
     """
+
+    def _extract_manual_htf_bias(text: str):
+        t = (text or "").strip()
+        m = re.search(r"HTF\s*Bias\s*:\s*([A-Za-z]+)", t, re.IGNORECASE)
+        if not m:
+            return None
+
+        val = m.group(1).strip().lower()
+        if val.startswith("bull"):
+            return "Bullish"
+        if val.startswith("bear"):
+            return "Bearish"
+        if val.startswith("neu"):
+            return "Neutral"
+        return m.group(1).strip().capitalize()
+
     if request.is_json:
         data = request.get_json(silent=True) or {}
         pair_type = _pick_first(data, ["pair_type", "pairType"])
-        # ✅ Permanent: allow `style` as alias for timeframe
         timeframe = _pick_first(data, ["timeframe", "style", "timeframe_mode", "timeframeMode"])
         chart_tf = _pick_first(data, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
         signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
-        return pair_type, timeframe, chart_tf, signal_text
+        manual_htf_bias = _extract_manual_htf_bias(signal_text)
+        return pair_type, timeframe, chart_tf, signal_text, manual_htf_bias
 
     form = request.form or {}
     pair_type = _pick_first(form, ["pair_type", "pairType"])
-    # ✅ Permanent: allow `style` as alias for timeframe
     timeframe = _pick_first(form, ["timeframe", "style", "timeframe_mode", "timeframeMode"])
     chart_tf = _pick_first(form, ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"])
     signal_text = _pick_first(form, ["signal_input", "signal", "signalText"])
-    return pair_type, timeframe, chart_tf, signal_text
+    manual_htf_bias = _extract_manual_htf_bias(signal_text)
 
-
-    signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
-
-    import re
-    htf_match = re.search(r"HTF\s*Bias\s*:\s*([A-Za-z]+)", signal_text or "", re.IGNORECASE)
-    manual_htf_bias = htf_match.group(1).capitalize() if htf_match else None
-
+    return pair_type, timeframe, chart_tf, signal_text, manual_htf_bias
 
 
 # ==========================
@@ -2127,7 +2139,8 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    pair_type, timeframe, chart_tf_raw, signal_text = _get_payload_fields()
+    pair_type, timeframe, chart_tf_raw, signal_text, manual_htf_bias = _get_payload_fields()
+
 
     missing = []
     if not pair_type:
@@ -2333,7 +2346,7 @@ Rules:
         structure_text = (mc.get("structure") or "").strip() or "Structure context not provided."
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
         structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
-        manual_htf_bias = analysis_obj.get("htf_bias")
+        
         analysis = {
             "bias": manual_htf_bias or analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
