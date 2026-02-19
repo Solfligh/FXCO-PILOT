@@ -515,7 +515,7 @@
     /* Context cards */
     .contextGrid{
       display:grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 10px;
       margin-top: 10px;
     }
@@ -647,14 +647,13 @@
     }
 
     /* Collapsible cleaner */
-     #cleanerCard.is-collapsed .subtle,
-     #cleanerCard.is-collapsed #cleanerBox {
-     display: none;
+    #cleanerCard.is-collapsed .subtle,
+    #cleanerCard.is-collapsed #cleanerBox {
+      display: none;
     }
-     #cleanerCard.is-collapsed {
-     opacity: .92;
+    #cleanerCard.is-collapsed {
+      opacity: .92;
     }
-
 
     /* Print */
     @media print{
@@ -844,7 +843,7 @@
       <section class="card">
         <div class="sectionTitle">
           <h3>Market Context</h3>
-          <span class="pill neutral" id="contextHint">Structure • Liquidity • Momentum</span>
+          <span class="pill neutral" id="contextHint">Structure • Liquidity • Momentum • Imbalance</span>
         </div>
         <div class="subtle">
           Simplified context summary. Deep details are still available below.
@@ -867,6 +866,12 @@
             <div class="k">Momentum</div>
             <div class="v" id="ctxMomentum">—</div>
             <div class="s" id="ctxMomentumS">—</div>
+          </div>
+
+          <div class="contextCard">
+            <div class="k">Imbalance</div>
+            <div class="v" id="ctxImbalance">—</div>
+            <div class="s" id="ctxImbalanceS">—</div>
           </div>
         </div>
       </section>
@@ -1090,7 +1095,55 @@
       });
     }
 
-    // Desk verdict (fallback)
+    // -------------------------
+    // Imbalance / FVG helpers
+    // -------------------------
+    function deriveImbalance(a){
+      const mc = a?.market_context || {};
+      // Accept a few possible shapes so backend can evolve freely.
+      // Examples:
+      // a.imbalance = "Bullish FVG below price"
+      // a.imbalance = { bias:"bullish", state:"present", note:"Unfilled FVG under current price" }
+      // mc.imbalance = ...
+      const raw = a?.imbalance ?? mc?.imbalance ?? a?.inefficiency ?? mc?.inefficiency ?? a?.fvg ?? mc?.fvg ?? null;
+
+      if (!raw) return { text:"", bias:"", state:"" };
+
+      if (typeof raw === "string"){
+        const s = raw.trim();
+        const lower = s.toLowerCase();
+        const bias =
+          lower.includes("bull") ? "BULLISH" :
+          lower.includes("bear") ? "BEARISH" : "";
+        const state =
+          lower.includes("unfilled") || lower.includes("open") ? "UNFILLED" :
+          lower.includes("filled") ? "FILLED" :
+          lower.includes("present") ? "PRESENT" : "";
+        return { text: s, bias, state };
+      }
+
+      if (typeof raw === "object"){
+        const bias = String(raw.bias || raw.direction || raw.side || "").trim().toUpperCase();
+        const state = String(raw.state || raw.status || raw.fill_state || "").trim().toUpperCase();
+        const note = String(raw.note || raw.summary || raw.text || "").trim();
+        const zone = raw.zone || raw.range || raw.levels || "";
+        const zoneText = zone ? (" • Zone: " + String(zone)) : "";
+        return { text: (note || "Imbalance detected") + zoneText, bias, state };
+      }
+
+      return { text: String(raw), bias:"", state:"" };
+    }
+
+    function isBiasAligned(direction, imbalanceBias){
+      const d = String(direction || "").toUpperCase();
+      const b = String(imbalanceBias || "").toUpperCase();
+      if (!d || !b) return null;
+      if (d.includes("BUY") || d.includes("LONG") || d.includes("BULL")) return b.includes("BULL");
+      if (d.includes("SELL") || d.includes("SHORT") || d.includes("BEAR")) return b.includes("BEAR");
+      return null;
+    }
+
+    // Desk verdict (fallback) + imbalance support
     function computeDeskVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
@@ -1109,21 +1162,41 @@
       const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const invCount = inv.length;
 
+      // Imbalance read
+      const imb = deriveImbalance(a);
+      const direction = sc.direction || a.bias || "";
+      const align = isBiasAligned(direction, imb.bias); // true/false/null
+
       const hardBlocks = [];
       if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
       if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
       if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
       if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
 
+      // Imbalance can become a “hard stop” only if it explicitly conflicts (rare, but useful)
+      // Example: you want to buy but there is a stated bearish imbalance overhead that should be filled first.
+      if (align === false && imb.text){
+        hardBlocks.push("Imbalance conflicts with direction (wait for fill/confirmation or invalidate).");
+      }
+
       const hardNo = hardBlocks.length > 0;
 
       const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
       let score =
-        (conf * 0.52) +
+        (conf * 0.50) +
         (str * 0.16) +
-        (clr * 0.22) +
+        (clr * 0.20) +
         (rrScore * 0.10);
+
+      // Add edge if imbalance aligns and is actionable (present/unfilled)
+      if (align === true && (imb.state === "UNFILLED" || imb.state === "PRESENT" || imb.state === "")){
+        score += 6;
+      }
+      // Penalize if imbalance is mentioned but unclear/contradictory
+      if (align === null && imb.text){
+        score -= 2;
+      }
 
       if (invCount >= 1) score -= 10;
       if (invCount >= 2) score -= 10;
@@ -1171,6 +1244,17 @@
       }
       if (tier === "DO_NOT_TRADE") {
         conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
+      }
+
+      // Imbalance-driven conditions (only if we actually have imbalance info)
+      if (imb.text){
+        if (align === true){
+          conditions.push("Use imbalance as a location: prefer entry on retest / fill reaction, not mid-air.");
+        } else if (align === false){
+          conditions.push("Wait for imbalance to fill/resolve, or require a structure shift before entry.");
+        } else {
+          conditions.push("Clarify imbalance location (FVG/inefficiency) before execution.");
+        }
       }
 
       return {
@@ -1300,7 +1384,6 @@
     function normalizeSymbol(pair){
       const s = String(pair || "").trim();
       if (!s) return "";
-      // If already contains '/', keep it; else try to add common format
       if (s.includes("/")) return s.toUpperCase();
       if (s.length === 6) return (s.slice(0,3) + "/" + s.slice(3)).toUpperCase();
       return s.toUpperCase();
@@ -1328,7 +1411,6 @@
       if (targets.length) lines.push(`TP: ${targets.join(", ")}`);
       if (rr) lines.push(`RR: ${rr}`);
 
-      // Minimal fallback if parsing is weak:
       if (!lines.length) return "—";
       return lines.join("\n");
     }
@@ -1360,18 +1442,7 @@
       return pieces.join("\n");
     }
 
-    function setTicketNotes(el, notes){
-      el.innerHTML = "";
-      (notes || []).slice(0, 6).forEach(n => {
-        const span = document.createElement("span");
-        span.className = "pill info";
-        span.textContent = n;
-        el.appendChild(span);
-      });
-    }
-
     function deriveChartTf(report){
-      // Prefer explicit report.chart_tf; else attempt from assessment horizon
       const a = report.analysis || {};
       const ah = a.assessment_horizon || {};
       return (report.chart_tf || report.chartTf || ah?.execution_tf || ah?.structure_tf || "").toString().trim();
@@ -1400,12 +1471,15 @@
       const hard = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
       const cond = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
 
+      const imb = deriveImbalance(a);
+      const direction = sc.direction || a.bias || "";
+      const align = isBiasAligned(direction, imb.bias);
+
       const now = [];
       const onlyIf = [];
       const invalidation = [];
       const risk = [];
 
-      // Base “now” steps
       if (tier === "DO_NOT_TRADE"){
         now.push("Stand down. Do not execute this ticket as-is.");
         now.push("Fix ticket quality (Entry/SL/TP + realistic RR) before re-checking.");
@@ -1420,17 +1494,28 @@
         now.push("No revenge entries. One clean attempt only.");
       }
 
-      // Only enter if
       const rrNum = parseRR(sc.rr);
       if (rrNum !== null && rrNum < 1.5) onlyIf.push("RR ≥ 1.5 (minimum expectancy).");
       if (sc.entry == null || String(sc.entry).trim() === "") onlyIf.push("Entry is defined (exact level).");
       if (sc.stop_loss == null || String(sc.stop_loss).trim() === "") onlyIf.push("Stop loss is defined (exact level).");
       if (!Array.isArray(sc.targets) || !sc.targets.length) onlyIf.push("At least TP1 is defined.");
 
-      // Conditions from backend or desk model
+      // Imbalance conditions (clean and institutional)
+      if (imb.text){
+        if (align === true){
+          onlyIf.push("Use imbalance as location: prefer entry on retest/fill reaction (not mid-air).");
+        } else if (align === false){
+          onlyIf.push("Imbalance conflicts with direction: wait for fill/resolve or structure shift before entry.");
+        } else {
+          onlyIf.push("Clarify imbalance (FVG/inefficiency) location before execution.");
+        }
+      } else if (tier === "EXECUTE" || tier === "EXECUTE_IF"){
+        // soft suggestion, not a blocker
+        onlyIf.push("Optional: mark any nearby imbalance/FVG on chart; avoid entering into it blindly.");
+      }
+
       (cond.length ? cond : (desk.conditions || [])).slice(0, 8).forEach(x => onlyIf.push(String(x)));
 
-      // Invalidation
       if (inv.length){
         inv.slice(0, 8).forEach(x => invalidation.push(String(x)));
       } else {
@@ -1438,10 +1523,6 @@
         invalidation.push("If conditions fail after entry, do not average down.");
       }
 
-      // Risk notes
-      if (Array.isArray(a.guidance) && a.guidance.length){
-        risk.push("Follow guidance: " + String(a.guidance[0]));
-      }
       if (hard.length){
         risk.push("Hard blocks exist — do not force execution.");
       } else {
@@ -1449,7 +1530,6 @@
       }
       risk.push("If trading news/volatility, reduce size or skip.");
 
-      // Ensure lists not empty
       return { now, onlyIf, invalidation, risk };
     }
 
@@ -1459,11 +1539,9 @@
       const mc = a.market_context || {};
       const ah = a.assessment_horizon || {};
 
-      // Header/meta
       document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
       document.getElementById("topMeta").textContent = deriveTopMeta(report);
 
-      // Tier selection
       const backendTierRaw =
         (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString().trim();
       const backendTier = normalizeTier(backendTierRaw);
@@ -1494,28 +1572,28 @@
         Number.isFinite(backendConf) && backendConf > 0 ? Math.round(backendConf)
         : desk.confidence;
 
-      // Decision meta — keep it short and producty
       const metaBits = [];
       if (ah.structure_tf) metaBits.push("Structure TF: " + fmt(ah.structure_tf));
       if (mc.timeframe_alignment) metaBits.push("Alignment: " + fmt(mc.timeframe_alignment));
       if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
       if (mc.momentum) metaBits.push("Momentum: " + fmt(mc.momentum));
+
+      const imb = deriveImbalance(a);
+      if (imb.text) metaBits.push("Imbalance: " + fmt(imb.bias ? (imb.bias + " — ") : "") + fmt(imb.state ? (imb.state + " — ") : "") + fmt(imb.text));
+
       const meta = metaBits.length ? metaBits.join(" • ") : `${desk.why} ${desk.action}`;
 
       setDecisionUI(tier, label, meta, score, confidence, sc.rr);
 
-      // KPIs
       document.getElementById("kpiPair").textContent = fmt(report.pair_type);
       document.getElementById("kpiStyle").textContent = fmt(report.timeframe || "—");
       document.getElementById("kpiChartTf").textContent = fmt(deriveChartTf(report) || "—");
       document.getElementById("kpiSide").textContent = safeUpper(sc.direction || a.bias || "—");
 
-      // Confidence bar
       const c = clamp(Number(confidence) || 0, 0, 100);
       document.getElementById("confText").textContent = c + "%";
       requestAnimationFrame(() => { document.getElementById("confFill").style.width = c + "%"; });
 
-      // Snapshot
       const snapshotList = document.getElementById("snapshotList");
       snapshotList.innerHTML = "";
 
@@ -1528,7 +1606,7 @@
       const hasSL = String(sl || "").trim() !== "";
       const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
 
-      const completeness = [hasEntry, hasSL, hasTP].filter(Boolean).length; // 0..3
+      const completeness = [hasEntry, hasSL, hasTP].filter(Boolean).length;
       const compPct = Math.round((completeness / 3) * 100);
       const compTone = compPct >= 100 ? "OK" : compPct >= 67 ? "WARN" : "BLOCK";
 
@@ -1554,7 +1632,6 @@
       setBullets(document.getElementById("planInv"), plan.invalidation, "—");
       setBullets(document.getElementById("planRisk"), plan.risk, "—");
 
-      // Primary action button label (contextual)
       const primary = document.getElementById("btnPrimaryAction");
       if (tier === "DO_NOT_TRADE") primary.textContent = "What would make this valid?";
       else if (tier === "WAIT") primary.textContent = "No position. Set alerts  Monitor and reassess on structure shift.";
@@ -1567,11 +1644,11 @@
 
       document.getElementById("cleanTicketBox").textContent = cleanTicket;
       document.getElementById("cleanerBox").textContent = cleaner;
-      
+
       const cleanerCard = document.getElementById("cleanerCard");
       const cleanerPill = document.getElementById("cleanerPill");
       const ticketStatus = document.getElementById("ticketStatus");
-      
+
       const missing = [];
       if (!hasEntry) missing.push("ENTRY");
       if (!hasSL) missing.push("SL");
@@ -1579,21 +1656,20 @@
       if (!String(sc.direction || a.bias || "").trim()) missing.push("DIRECTION");
 
       if (missing.length){
-      ticketStatus.className = "pill warn";
-      ticketStatus.textContent = "Missing: " + missing.join(", ");
+        ticketStatus.className = "pill warn";
+        ticketStatus.textContent = "Missing: " + missing.join(", ");
 
-      cleanerCard.classList.remove("is-collapsed");
-      cleanerPill.textContent = "Parsed";
-      cleanerPill.className = "pill info";
+        cleanerCard.classList.remove("is-collapsed");
+        cleanerPill.textContent = "Parsed";
+        cleanerPill.className = "pill info";
+      } else {
+        ticketStatus.className = "pill good";
+        ticketStatus.textContent = "Ticket ready ✅";
 
-    } else {
-      ticketStatus.className = "pill good";
-      ticketStatus.textContent = "Ticket ready ✅";
-
-      cleanerCard.classList.add("is-collapsed");
-      cleanerPill.textContent = "Clean";
-      cleanerPill.className = "pill good";
-    }
+        cleanerCard.classList.add("is-collapsed");
+        cleanerPill.textContent = "Clean";
+        cleanerPill.className = "pill good";
+      }
 
       // Market Context (simplified)
       const sTF = (ah.structure_tf || "").toString().trim();
@@ -1608,6 +1684,19 @@
       document.getElementById("ctxMomentum").textContent = fmt(mc.momentum || "—");
       document.getElementById("ctxMomentumS").textContent =
         fmt(a.structure ? ("Structure note: " + a.structure) : (a.volatility ? ("Volatility: " + a.volatility) : "—"));
+
+      // Imbalance tile
+      const imbBiasText = imb.bias ? imb.bias : "";
+      const imbStateText = imb.state ? imb.state : "";
+      document.getElementById("ctxImbalance").textContent = fmt(imb.text || "—");
+      const imbAlign = isBiasAligned(sc.direction || a.bias || "", imb.bias);
+      const alignText =
+        imbAlign === true ? "Aligned with direction ✅" :
+        imbAlign === false ? "Conflicts with direction ⚠️" :
+        (imb.text ? "Unclear alignment" : "No imbalance provided");
+      const extraText = [imbBiasText, imbStateText].filter(Boolean).join(" • ");
+      document.getElementById("ctxImbalanceS").textContent =
+        fmt((extraText ? (extraText + " • ") : "") + alignText);
 
       // Risks & Flags
       const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : (desk.hardBlocks || []);
@@ -1662,7 +1751,6 @@
 
       document.getElementById("analysisBox").textContent = reasoning || "No reasoning returned.";
 
-      // Raw JSON (deep details)
       const rawSafe = report.raw || report;
       try{
         document.getElementById("rawJsonBox").textContent = JSON.stringify(rawSafe, null, 2);
@@ -1670,7 +1758,6 @@
         document.getElementById("rawJsonBox").textContent = String(rawSafe);
       }
 
-      // Expose for actions
       window.__fxco_report = report;
       window.__fxco_copy = {
         tier,
@@ -1707,7 +1794,6 @@
         await navigator.clipboard.writeText(String(txt || ""));
         toast("Copied ✓");
       }catch{
-        // fallback
         const ta = document.createElement("textarea");
         ta.value = String(txt || "");
         document.body.appendChild(ta);
@@ -1766,7 +1852,6 @@
           return;
         }
 
-        // Keep payload lean
         const shareObj = {
           pair_type: report.pair_type || "",
           timeframe: report.timeframe || "",
@@ -1876,7 +1961,6 @@
       const payload = getQueryParam("p");
       const payloadMode = getQueryParam("pm") || "b64json";
 
-      // 1) Payload share mode
       if (payload){
         (async () => {
           try{
@@ -1921,7 +2005,6 @@
         return;
       }
 
-      // 2) Backend share id mode
       if (shareId){
         (async () => {
           try{
@@ -1969,7 +2052,6 @@
         return;
       }
 
-      // 3) Normal mode: use storage
       const raw = getStoredReportRaw();
       if (!raw){
         const fallback = {
