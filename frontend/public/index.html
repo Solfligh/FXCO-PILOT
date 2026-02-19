@@ -1,4 +1,4 @@
-<!-- index.html (FULL FILE • FIX: JSON POST when no file + remove double-submit; no features removed) -->
+<!-- index.html (FULL FILE • UX UPGRADE: Signal Cleaner + premium submit flow; no features removed) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -202,18 +202,6 @@
       background: rgba(147,197,253,0.12);
       color: #dbeafe;
     }
-    .topbtn.ok {
-      border: 1px solid rgba(34,197,94,0.30);
-      background: rgba(34,197,94,0.12);
-      color: #bbf7d0;
-      cursor: default;
-    }
-    .topbtn.bad {
-      border: 1px solid rgba(239,68,68,0.30);
-      background: rgba(239,68,68,0.12);
-      color: #fecaca;
-      cursor: default;
-    }
 
     .sessions span {
       margin-right: 20px;
@@ -223,7 +211,6 @@
       white-space: nowrap;
       line-height: 1.1;
     }
-
     .open { background: #00d46a22; color: #00d46a; }
     .closed { background: #ff444422; color: #ff7777; }
 
@@ -309,26 +296,30 @@
       resize: none;
     }
 
+    /* ✅ UX: subtle field highlight when missing */
+    .field-warn{
+      box-shadow: 0 0 0 3px rgba(251,191,36,0.18);
+      border-radius: 10px;
+    }
+
     .btn {
       appearance: none;
       width: 100%;
       padding: 15px;
-      border-radius: 10px;
+      border-radius: 12px;
       border: none;
       font-size: 18px;
-      font-weight: 700;
+      font-weight: 900;
       cursor: pointer;
       color: #fff;
       background: linear-gradient(90deg, #00d46a, #0ebb53);
       transition: 0.2s;
       line-height: 1.15;
     }
-
     .btn:hover {
-      transform: scale(1.03);
-      box-shadow: 0 0 20px rgba(0,255,140,0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 0 22px rgba(0,255,140,0.35);
     }
-
     .btn:disabled {
       cursor: not-allowed;
       opacity: 0.45;
@@ -379,6 +370,51 @@
       line-height: 1.6;
     }
     .hint-pill strong { color: #ffffff; }
+
+    /* ✅ NEW: Signal Cleaner card */
+    .signal-card{
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      border-radius: 16px;
+      padding: 12px 12px;
+      margin: -6px 0 16px;
+      display: none;
+    }
+    .signal-card .row{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(0,0,0,0.18);
+      color: #e5e7eb;
+      line-height: 1;
+    }
+    .tag.ok{ border-color: rgba(0,212,106,0.30); background: rgba(0,212,106,0.10); color:#b8ffdd; }
+    .tag.warn{ border-color: rgba(251,191,36,0.28); background: rgba(251,191,36,0.10); color:#fff3c4; }
+    .tag.bad{ border-color: rgba(239,68,68,0.28); background: rgba(239,68,68,0.10); color:#fecaca; }
+    .signal-meta{
+      margin-top: 8px;
+      font-size: 12px;
+      color: rgba(203,213,225,0.9);
+      line-height: 1.55;
+    }
+    .signal-actions{
+      margin-top: 10px;
+      display:flex;
+      gap: 10px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
 
     .consent-row {
       display: flex;
@@ -449,7 +485,6 @@
       color: #cbd5e1;
       text-align: center;
     }
-
     .fx-disclaimer strong { color: #fbbf24; }
 
     .fx-legal {
@@ -467,7 +502,6 @@
       text-decoration: none;
       font-weight: 700;
     }
-
     .fx-legal a:hover { text-decoration: underline; }
     .fx-legal .sep { color: rgba(255,255,255,0.25); }
 
@@ -803,7 +837,6 @@
       .sessions span { margin-right: 10px; }
       .topbar { padding: 12px 16px; }
     }
-
     @media(max-width: 620px){
       .sessions { display:none; }
     }
@@ -861,7 +894,6 @@
         <option>Indices</option>
       </select>
 
-      <!-- ✅ Style stays (for behavior/risk rules), but it is NOT the chart timeframe -->
       <label for="timeframe">Trading Style</label>
       <select id="timeframe">
         <option>Scalp</option>
@@ -869,7 +901,6 @@
         <option>Swing</option>
       </select>
 
-      <!-- ✅ NEW: actual chart timeframe the user is trading on -->
       <label for="chartTf">Chart Timeframe (what you’re on)</label>
       <select id="chartTf">
         <option value="">Select timeframe…</option>
@@ -892,13 +923,18 @@
       <label for="signal">Your signal</label>
       <textarea id="signal" placeholder="Example: XAU/USD BUY 2034-2030 SL 2025 TP 2050"></textarea>
 
+      <!-- ✅ NEW: Signal Cleaner Preview -->
+      <div id="signalCard" class="signal-card" role="region" aria-label="Signal preview">
+        <div class="row" id="signalTags"></div>
+        <div class="signal-meta" id="signalMeta"></div>
+        <div class="signal-actions">
+          <button class="topbtn" type="button" onclick="copyCleanSignal()">Copy Clean Signal</button>
+          <button class="topbtn primary" type="button" onclick="focusMissingFromSignal()">Fix Missing</button>
+        </div>
+      </div>
+
       <div class="consent-row">
-        <input
-          type="checkbox"
-          id="acceptLegal"
-          name="acceptLegal"
-          aria-describedby="consentHint"
-        />
+        <input type="checkbox" id="acceptLegal" name="acceptLegal" aria-describedby="consentHint" />
         <div class="consent-text">
           <label for="acceptLegal" class="consent-label">I accept the Terms and Privacy Policy.</label>
           <div class="consent-links" aria-label="Terms and privacy links">
@@ -910,9 +946,13 @@
         </div>
       </div>
 
-      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Analyze with AI</button>
+      <button id="analyzeBtn" class="btn" onclick="analyze()" disabled>Validate Trade</button>
       <div id="rateHint" class="rate-hint" role="status" aria-live="polite"></div>
       <div id="payHint" class="rate-hint" style="display:none;" role="status" aria-live="polite"></div>
+
+      <div style="margin-top:12px;opacity:0.85;font-size:12px;line-height:1.55;color:#cbd5e1;">
+        Tip: Press <b>Ctrl / Cmd + Enter</b> to validate.
+      </div>
     </div>
 
     <div class="section" aria-label="Results and reports">
@@ -1146,8 +1186,6 @@
     // -------------------------
     // ✅ API base helper
     // -------------------------
-    // Keep this as "" for Vercel/rewrites (recommended).
-    // Only set to full backend URL if you intentionally handle CORS.
     const API_BASE = "";
     function apiUrl(path) {
       if (!API_BASE) return path;
@@ -1308,8 +1346,8 @@
         const item = {
           ts: Date.now(),
           pairType: report?.pair_type || "",
-          timeframe: report?.timeframe || "",     // trading style
-          chart_tf: report?.chart_tf || "",       // actual chart timeframe
+          timeframe: report?.timeframe || "",
+          chart_tf: report?.chart_tf || "",
           signal: report?.signal_input || "",
           decision: report?.analysis?.decision || report?.analysis?.verdict || ""
         };
@@ -1358,7 +1396,7 @@
     }
 
     // -------------------------
-    // ✅ Client-side share payload helper (NO backend required)
+    // ✅ Client-side share payload helper
     // -------------------------
     function b64UrlEncodeUnicode(str) {
       try {
@@ -1880,7 +1918,155 @@
     }
 
     // -------------------------
-    // Desk verdict helpers (1% feel)
+    // ✅ Signal Cleaner (client-side)
+    // -------------------------
+    function normalizeSignalText(s){
+      return String(s || "")
+        .replace(/\u00A0/g, " ")
+        .replace(/[，]/g, ",")
+        .replace(/[–—]/g, "-")
+        .replace(/[“”]/g, "\"")
+        .replace(/[‘’]/g, "'")
+        .trim();
+    }
+
+    function detectPair(text){
+      const t = text.toUpperCase();
+
+      // Common aliases
+      if (/(XAU\/?USD|GOLD)\b/.test(t)) return "XAUUSD";
+      if (/(XAG\/?USD|SILVER)\b/.test(t)) return "XAGUSD";
+      if (/(BTC\/?USD|BTCUSDT|BITCOIN)\b/.test(t)) return "BTCUSD";
+      if (/(ETH\/?USD|ETHUSDT|ETHEREUM)\b/.test(t)) return "ETHUSD";
+
+      // Forex pairs: EURUSD, EUR/USD, GBPJPY etc.
+      const m = t.match(/\b([A-Z]{3})\s*\/?\s*([A-Z]{3})\b/);
+      if (m) return (m[1] + m[2]).toUpperCase();
+
+      // Fallback: explicit 6-letter (EURUSD)
+      const m2 = t.match(/\b([A-Z]{6})\b/);
+      if (m2) return m2[1].toUpperCase();
+
+      return "";
+    }
+
+    function detectSide(text){
+      const t = text.toUpperCase();
+      if (/\b(BUY|LONG|BULL|CALL)\b/.test(t)) return "BUY";
+      if (/\b(SELL|SHORT|BEAR|PUT)\b/.test(t)) return "SELL";
+      return "";
+    }
+
+    function detectPrices(text){
+      const t = text.toUpperCase();
+
+      // SL
+      let sl = "";
+      const slm = t.match(/\bSL\b[^0-9]*([0-9]+(?:\.[0-9]+)?)/);
+      if (slm) sl = slm[1];
+
+      // TP targets
+      let tps = [];
+      // TP 2050 / TP1 2050 / TP: 2050,2060
+      const tpm = t.match(/\bTP(?:\d+)?\b[^0-9]*([0-9]+(?:\.[0-9]+)?(?:\s*[-,]\s*[0-9]+(?:\.[0-9]+)?)*)/);
+      if (tpm) {
+        tps = tpm[1].split(/[-,]/).map(x => x.trim()).filter(Boolean);
+      }
+
+      // Entry: try explicit keywords first
+      let entry = "";
+      const em1 = t.match(/\bENTRY\b[^0-9]*([0-9]+(?:\.[0-9]+)?(?:\s*[-,]\s*[0-9]+(?:\.[0-9]+)?)*)/);
+      if (em1) entry = em1[1].split(/[-,]/).map(x => x.trim()).filter(Boolean).join(" - ");
+
+      // If no entry keyword, try pattern after BUY/SELL
+      if (!entry) {
+        const em2 = t.match(/\b(BUY|SELL|LONG|SHORT)\b[^0-9]*([0-9]+(?:\.[0-9]+)?(?:\s*[-,]\s*[0-9]+(?:\.[0-9]+)?)*)/);
+        if (em2) entry = em2[2].split(/[-,]/).map(x => x.trim()).filter(Boolean).join(" - ");
+      }
+
+      return { entry, sl, tps };
+    }
+
+    function buildCleanSignal(pair, side, entry, sl, tps){
+      const parts = [];
+      if (pair) parts.push(pair);
+      if (side) parts.push(side);
+      if (entry) parts.push(`ENTRY ${entry}`);
+      if (sl) parts.push(`SL ${sl}`);
+      if (tps && tps.length) parts.push(`TP ${tps.join(", ")}`);
+      return parts.join(" • ").trim();
+    }
+
+    function renderSignalCard(){
+      const ta = document.getElementById("signal");
+      const card = document.getElementById("signalCard");
+      const tags = document.getElementById("signalTags");
+      const meta = document.getElementById("signalMeta");
+      if (!ta || !card || !tags || !meta) return;
+
+      const raw = normalizeSignalText(ta.value || "");
+      if (!raw) { card.style.display = "none"; return; }
+
+      const pair = detectPair(raw);
+      const side = detectSide(raw);
+      const { entry, sl, tps } = detectPrices(raw);
+
+      const missing = [];
+      if (!pair) missing.push("pair");
+      if (!side) missing.push("direction");
+      if (!entry) missing.push("entry");
+      if (!sl) missing.push("SL");
+      if (!tps || !tps.length) missing.push("TP");
+
+      const clean = buildCleanSignal(pair, side, entry, sl, tps);
+
+      const tagHtml = [];
+      tagHtml.push(`<span class="tag ${pair ? "ok":"warn"}">Pair: ${esc(pair || "—")}</span>`);
+      tagHtml.push(`<span class="tag ${side ? "ok":"warn"}">Side: ${esc(side || "—")}</span>`);
+      tagHtml.push(`<span class="tag ${entry ? "ok":"warn"}">Entry: ${esc(entry || "—")}</span>`);
+      tagHtml.push(`<span class="tag ${sl ? "ok":"warn"}">SL: ${esc(sl || "—")}</span>`);
+      tagHtml.push(`<span class="tag ${(tps && tps.length) ? "ok":"warn"}">TP: ${esc((tps && tps.length) ? tps.join(", ") : "—")}</span>`);
+
+      if (missing.length === 0) tagHtml.push(`<span class="tag ok">Ticket complete</span>`);
+      else tagHtml.push(`<span class="tag warn">Missing: ${esc(missing.join(", "))}</span>`);
+
+      tags.innerHTML = tagHtml.join("");
+
+      meta.innerHTML = `
+        <div><b>Clean format:</b> ${esc(clean || raw)}</div>
+        <div style="margin-top:6px;opacity:0.9;">If your signal is messy, FXCO-PILOT still works — but complete tickets get better risk checks.</div>
+      `;
+
+      window.__fxco_clean_signal = clean || raw;
+      window.__fxco_signal_missing = missing;
+
+      card.style.display = "block";
+    }
+
+    function copyCleanSignal(){
+      const txt = window.__fxco_clean_signal || "";
+      if (!txt) return;
+      navigator.clipboard?.writeText(txt).then(() => {
+        setRateHint("Copied clean signal ✅", true);
+        setTimeout(() => { if (!rateTimer) setRateHint("", false); }, 1800);
+      }).catch(() => {
+        alert("Copy failed. Please copy manually.");
+      });
+    }
+
+    function focusMissingFromSignal(){
+      const missing = window.__fxco_signal_missing || [];
+      // We can't auto-fill without guessing — we guide.
+      const el = document.getElementById("signal");
+      if (el) el.focus();
+      if (missing.length) {
+        setRateHint("Quick fix: add " + missing.join(", ") + " into your signal (Entry / SL / TP).", true);
+        setTimeout(() => { if (!rateTimer) setRateHint("", false); }, 3500);
+      }
+    }
+
+    // -------------------------
+    // Desk verdict helpers (unchanged)
     // -------------------------
     function parseRR(rr){
       if (rr === null || rr === undefined) return null;
@@ -1994,12 +2180,33 @@
     }
 
     // -------------------------
-    // Analyze
+    // ✅ Field guard helpers (UX)
+    // -------------------------
+    function clearFieldWarn(){
+      ["pairType","timeframe","chartTf","signal"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("field-warn");
+      });
+    }
+
+    function warnField(id){
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add("field-warn");
+      try { el.scrollIntoView({ behavior:"smooth", block:"center" }); } catch {}
+      el.focus?.();
+      setTimeout(() => el.classList.remove("field-warn"), 2200);
+    }
+
+    // -------------------------
+    // Analyze (keeps your backend behavior intact)
     // -------------------------
     async function analyze() {
       const accepted = document.getElementById("acceptLegal")?.checked;
       if (!accepted) { setAnalyzeEnabled(false); return; }
       if (rateTimer) return;
+
+      clearFieldWarn();
 
       if (!navigator.onLine) {
         document.getElementById("result").innerHTML =
@@ -2016,26 +2223,26 @@
       setRateHint("", false);
 
       const pairType = (document.getElementById("pairType")?.value || "").trim();
-      const timeframe = (document.getElementById("timeframe")?.value || "").trim(); // trading style
-      const chartTf = (document.getElementById("chartTf")?.value || "").trim();     // actual chart timeframe
-      const signal = (document.getElementById("signal")?.value || "").trim();
+      const timeframe = (document.getElementById("timeframe")?.value || "").trim();
+      const chartTf = (document.getElementById("chartTf")?.value || "").trim();
+      const signalEl = document.getElementById("signal");
+      const signal = (signalEl?.value || "").trim();
 
-      if (!pairType || !timeframe || !signal) {
-        document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> Missing Pair Type, Trading Style, or Signal.";
-        return;
-      }
-
+      if (!pairType) { warnField("pairType"); return; }
+      if (!timeframe) { warnField("timeframe"); return; }
       if (!chartTf) {
+        warnField("chartTf");
         document.getElementById("result").innerHTML =
-          "<b style='color:#ff6b6b'>Request failed:</b> Please select your <b>Chart Timeframe</b> (what you’re on).";
+          "<b style='color:#ff6b6b'>Missing:</b> Select your <b>Chart Timeframe</b> (what you’re on).";
         return;
       }
+      if (!signal) { warnField("signal"); return; }
 
       const file = document.getElementById("chart")?.files?.[0] || null;
 
       const btn = document.getElementById("analyzeBtn");
       btn.disabled = true;
+      btn.innerText = "Validating…";
       document.getElementById("result").innerHTML = "Analyzing…";
 
       try {
@@ -2047,7 +2254,6 @@
         const ref = getPaidRef();
         if (ref) headers["X-FXCO-Paystack-Ref"] = ref;
 
-        // ✅ FIX: JSON when no file, FormData only when file exists
         let res;
         if (file) {
           const formData = new FormData();
@@ -2091,6 +2297,7 @@
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Rate limit:</b> Too many requests. Please slow down.";
           startRateCooldown(seconds);
+          btn.innerText = "Validate Trade";
           btn.disabled = false;
           applyPaymentGateUI();
           return;
@@ -2103,6 +2310,7 @@
           document.getElementById("result").innerHTML =
             "<b style='color:#ffd86b'>Access locked:</b> " + esc(j?.error || "Payment required.") +
             "<br/><span style='opacity:0.9'>Start Trial (verify email) or open Pricing to unlock.</span>";
+          btn.innerText = "Validate Trade";
           btn.disabled = false;
           applyPaymentGateUI();
           openAuth();
@@ -2117,6 +2325,7 @@
           document.getElementById("result").innerHTML =
             "<b style='color:#ff6b6b'>Request failed (400):</b> " + esc(j?.error || "Bad request") +
             (missing ? `<br/><span style="opacity:0.9">Missing: ${esc(missing)}</span>` : "");
+          btn.innerText = "Validate Trade";
           btn.disabled = false;
           applyPaymentGateUI();
           return;
@@ -2285,10 +2494,10 @@
       } catch (err) {
         document.getElementById("result").innerHTML =
           "<b style='color:#ff6b6b'>Request failed:</b> " + esc(err?.message || "Unknown error");
-        const btn = document.getElementById("analyzeBtn");
-        if (btn) btn.disabled = false;
         applyPaymentGateUI();
       } finally {
+        const btn = document.getElementById("analyzeBtn");
+        if (btn) btn.innerText = "Validate Trade";
         if (!rateTimer) applyPaymentGateUI();
       }
     }
@@ -2316,6 +2525,7 @@
 
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") { closeLegal(); closePricing(); closeAuth(); closePreview(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { analyze(); }
       });
 
       initConsentGate();
@@ -2325,6 +2535,14 @@
       updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
+
+      // ✅ Signal cleaner wiring
+      const sig = document.getElementById("signal");
+      if (sig) {
+        sig.addEventListener("input", () => renderSignalCard());
+        sig.addEventListener("blur", () => renderSignalCard());
+      }
+      renderSignalCard();
 
       applyPaymentGateUI();
     }
@@ -2350,6 +2568,10 @@
     window.startPaystackCheckout = startPaystackCheckout;
     window.acknowledgeRisk = acknowledgeRisk;
     window.installApp = installApp;
+
+    // ✅ new global helpers
+    window.copyCleanSignal = copyCleanSignal;
+    window.focusMissingFromSignal = focusMissingFromSignal;
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", initAll);
