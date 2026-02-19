@@ -2192,12 +2192,12 @@
     // -------------------------
     // ✅ Field guard helpers (UX)
     // -------------------------
-    function clearFieldWarn(){
-      ["pairType","timeframe","chartTf","signal"].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.remove("field-warn");
-      });
-    }
+   function clearFieldWarn(){
+    ["pairType","timeframe","chartTf","htfBias","signal"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("field-warn");
+   });
+  }
 
     function warnField(id){
       const el = document.getElementById(id);
@@ -2212,6 +2212,7 @@
     // Analyze (keeps your backend behavior intact)
     // -------------------------
     async function analyze() {
+      const htfBias = (document.getElementById("htfBias")?.value || "").trim();
       const accepted = document.getElementById("acceptLegal")?.checked;
       if (!accepted) { setAnalyzeEnabled(false); return; }
       if (rateTimer) return;
@@ -2246,6 +2247,13 @@
           "<b style='color:#ff6b6b'>Missing:</b> Select your <b>Chart Timeframe</b> (what you’re on).";
         return;
       }
+      if (!htfBias) {
+        warnField("htfBias");
+      document.getElementById("result").innerHTML =
+     "<b style='color:#ff6b6b'>Missing:</b> Select your <b>Higher Timeframe Bias</b> (Bullish/Bearish/Range/Unclear).";
+    return;
+      }
+
       if (!signal) { warnField("signal"); return; }
 
       const file = document.getElementById("chart")?.files?.[0] || null;
