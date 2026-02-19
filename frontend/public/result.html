@@ -786,22 +786,22 @@
 
         <div class="planGrid">
           <div class="planBox">
-            <h4>Do this now</h4>
+            <h4>Immediate Directive</h4>
             <ul class="bullets" id="planNow"></ul>
           </div>
 
           <div class="planBox">
-            <h4>Only enter if</h4>
+            <h4>Execution Conditions</h4>
             <ul class="bullets" id="planIf"></ul>
           </div>
 
           <div class="planBox">
-            <h4>Invalidation</h4>
+            <h4>Failure Criteria</h4>
             <ul class="bullets" id="planInv"></ul>
           </div>
 
           <div class="planBox">
-            <h4>Risk note</h4>
+            <h4>Risk Protocol</h4>
             <ul class="bullets" id="planRisk"></ul>
           </div>
         </div>
@@ -1413,8 +1413,8 @@
         now.push("No entry now. Set alerts at key levels and reassess on reaction.");
         now.push("Wait for structure alignment or a clean confirmation candle.");
       } else if (tier === "EXECUTE_IF"){
-        now.push("Treat as conditional execution. Reduce size.");
-        now.push("Wait for confirmation (break/close, sweep, or retest) before entry.");
+        now.push("Reduce size. No full exposure until confirmation.");
+        now.push("Entry invalid without structural confirmation. (break/close, sweep, or retest) before entry.");
       } else if (tier === "EXECUTE"){
         now.push("Execute with strict size and a hard stop.");
         now.push("No revenge entries. One clean attempt only.");
@@ -1557,7 +1557,7 @@
       // Primary action button label (contextual)
       const primary = document.getElementById("btnPrimaryAction");
       if (tier === "DO_NOT_TRADE") primary.textContent = "What would make this valid?";
-      else if (tier === "WAIT") primary.textContent = "Set alerts + wait plan";
+      else if (tier === "WAIT") primary.textContent = "No position. Set alerts  Monitor and reassess on structure shift.";
       else if (tier === "EXECUTE_IF") primary.textContent = "Show entry conditions";
       else primary.textContent = "Execution checklist";
 
