@@ -1567,28 +1567,33 @@
 
       document.getElementById("cleanTicketBox").textContent = cleanTicket;
       document.getElementById("cleanerBox").textContent = cleaner;
-
+      
+      const cleanerCard = document.getElementById("cleanerCard");
+      const cleanerPill = document.getElementById("cleanerPill");
       const ticketStatus = document.getElementById("ticketStatus");
+      
       const missing = [];
       if (!hasEntry) missing.push("ENTRY");
       if (!hasSL) missing.push("SL");
       if (!hasTP) missing.push("TP");
-      if (missing.length){
-        ticketStatus.className = "pill warn";
-        ticketStatus.textContent = "Missing: " + missing.join(", ");
-      } else {
-        ticketStatus.className = "pill good";
-        ticketStatus.textContent = "Ticket ready ✅";
-      }
+      if (!String(sc.direction || a.bias || "").trim()) missing.push("DIRECTION");
 
-      const notes = [];
-      if (String(report.pair_type || "").trim()) notes.push("Normalized pair");
-      if (String(sc.direction || a.bias || "").trim()) notes.push("Direction detected");
-      if (hasEntry) notes.push("Entry extracted");
-      if (hasSL) notes.push("SL extracted");
-      if (hasTP) notes.push("Targets extracted");
-      if (rrNum !== null) notes.push("RR parsed");
-      setTicketNotes(document.getElementById("ticketNotes"), notes);
+      if (missing.length){
+      ticketStatus.className = "pill warn";
+      ticketStatus.textContent = "Missing: " + missing.join(", ");
+
+      cleanerCard.classList.remove("is-collapsed");
+      cleanerPill.textContent = "Parsed";
+      cleanerPill.className = "pill info";
+
+    } else {
+      ticketStatus.className = "pill good";
+      ticketStatus.textContent = "Ticket ready ✅";
+
+      cleanerCard.classList.add("is-collapsed");
+      cleanerPill.textContent = "Clean";
+      cleanerPill.className = "pill good";
+    }
 
       // Market Context (simplified)
       const sTF = (ah.structure_tf || "").toString().trim();
