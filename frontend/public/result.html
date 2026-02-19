@@ -1,10 +1,9 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FXCO-Pilot Trade Validation Report</title>
+  <title>FXCO-Pilot — Trade Validation Report</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,16 +26,20 @@
       --red:#ef4444;
       --amber:#f59e0b;
       --slate:#64748b;
+      --blue:#3b82f6;
 
       --greenBg: rgba(34,197,94,.10);
       --redBg: rgba(239,68,68,.10);
       --amberBg: rgba(245,158,11,.10);
       --slateBg: rgba(100,116,139,.10);
+      --blueBg: rgba(59,130,246,.10);
 
       --btn:#0b1220;
       --btnInk:#ffffff;
       --btn2:#ffffff;
       --btn2Ink:#0b1220;
+
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
 
     * { box-sizing: border-box; }
@@ -50,29 +53,41 @@
         radial-gradient(900px 450px at 85% 0%, rgba(34,197,94,.10), transparent 60%),
         linear-gradient(180deg, var(--bg1), var(--bg2));
     }
-
     a { color: inherit; text-decoration: none; }
 
     .wrap{
       max-width: 1120px;
       margin: 0 auto;
-      padding: 28px 18px 70px;
+      padding: 16px 18px 84px;
     }
 
+    /* Sticky top header */
     .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      margin: 0 -18px;
+      padding: 12px 18px;
+      background: rgba(255,255,255,.82);
+      border-bottom: 1px solid rgba(15,23,42,.08);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 30px rgba(15,23,42,.06);
+    }
+    .topbarInner{
+      max-width: 1120px;
+      margin: 0 auto;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap: 12px;
-      padding: 10px 4px 18px;
     }
 
     .brand{
       display:flex;
       align-items:center;
       gap: 10px;
+      min-width: 0;
     }
-
     .mark{
       width: 38px; height: 38px;
       border-radius: 12px;
@@ -81,20 +96,27 @@
         linear-gradient(135deg, rgba(14,165,233,.95), rgba(34,197,94,.90));
       box-shadow: 0 10px 30px rgba(14,165,233,.18);
       border: 1px solid rgba(255,255,255,.6);
+      flex: 0 0 auto;
     }
-
+    .brandText{ min-width: 0; }
     .brand h1{
-      font-size: 14px;
+      font-size: 13px;
       margin:0;
       letter-spacing: .2px;
-      font-weight: 700;
+      font-weight: 800;
       line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .brand p{
       margin:2px 0 0;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--muted);
-      line-height: 1.1;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .actions{
@@ -112,14 +134,15 @@
       padding: 10px 12px;
       border-radius: 12px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       box-shadow: 0 10px 22px rgba(15,23,42,.06);
       cursor: pointer;
-      transition: transform .12s ease, box-shadow .12s ease;
+      transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
       display:inline-flex;
       align-items:center;
       gap: 8px;
       user-select: none;
+      line-height: 1;
     }
     .btn:hover{ transform: translateY(-1px); box-shadow: 0 14px 28px rgba(15,23,42,.09); }
     .btn.primary{
@@ -128,12 +151,9 @@
       border-color: rgba(255,255,255,.08);
       box-shadow: 0 16px 40px rgba(11,18,32,.20);
     }
-    .btn.danger{
-      background: #fff;
-      color: var(--red);
-      border-color: rgba(239,68,68,.25);
+    .btn.ghost{
+      background: rgba(255,255,255,.65);
     }
-
     .btn[disabled]{
       opacity:.6;
       cursor:not-allowed;
@@ -141,92 +161,122 @@
       box-shadow: 0 10px 22px rgba(15,23,42,.06) !important;
     }
 
-    .hero{
-      margin-top: 10px;
-      border-radius: var(--radius);
-      background: rgba(255,255,255,.82);
-      border: 1px solid rgba(255,255,255,.55);
-      box-shadow: var(--shadow);
-      padding: 18px;
-      backdrop-filter: blur(10px);
-    }
-
-    .heroGrid{
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap: 14px;
-      align-items: start;
-    }
-    @media (max-width: 900px){
-      .heroGrid{ grid-template-columns: 1fr; }
-    }
-
-    .titleRow{
+    /* Page header (non-sticky) */
+    .pageHead{
+      margin-top: 16px;
       display:flex;
-      align-items:flex-start;
-      justify-content: space-between;
       gap: 12px;
+      justify-content: space-between;
+      align-items:flex-end;
       flex-wrap: wrap;
     }
-
-    .hero h2{
+    .pageHead h2{
       margin:0;
       font-size: 18px;
+      font-weight: 900;
       letter-spacing: .2px;
-      font-weight: 700;
+      line-height: 1.15;
     }
-
-    .sub{
+    .metaLine{
       margin: 6px 0 0;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.6;
     }
 
-    /* Decision Banner */
+    /* Cards */
+    .card{
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.86);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow2);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+    .sectionTitle{
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .card h3{
+      margin:0;
+      font-size: 14px;
+      font-weight: 1000;
+      letter-spacing: .2px;
+    }
+    .subtle{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    /* HERO verdict */
+    .hero{
+      margin-top: 14px;
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.82);
+      border: 1px solid rgba(255,255,255,.55);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 14px;
+      align-items: start;
+    }
+    @media (max-width: 980px){
+      .heroGrid{ grid-template-columns: 1fr; }
+    }
+
     .decisionBanner{
       margin-top: 12px;
-      border-radius: 16px;
-      border: 1px solid var(--line);
-      padding: 12px 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(15,23,42,.10);
+      padding: 14px;
       display:flex;
       align-items:flex-start;
       justify-content: space-between;
       gap: 12px;
       flex-wrap: wrap;
+      background: rgba(255,255,255,.68);
     }
 
     .decisionLeft{
       display:flex;
       align-items:flex-start;
-      gap: 10px;
+      gap: 12px;
       min-width: 0;
     }
-
     .seal{
-      width: 40px; height: 40px;
-      border-radius: 14px;
+      width: 44px; height: 44px;
+      border-radius: 16px;
       display:flex;
       align-items:center;
       justify-content:center;
-      font-weight: 900;
+      font-weight: 1000;
       font-size: 14px;
       flex: 0 0 auto;
       border: 1px solid rgba(15,23,42,.12);
+      letter-spacing: .2px;
     }
-
     .decisionTitle{
       margin:0;
-      font-size: 14px;
-      font-weight: 900;
+      font-size: 15px;
+      font-weight: 1000;
       letter-spacing: .25px;
+      line-height: 1.2;
     }
-
     .decisionMeta{
-      margin: 3px 0 0;
+      margin: 6px 0 0;
       font-size: 12px;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.6;
+      max-width: 62ch;
     }
 
     .pillRow{
@@ -236,23 +286,21 @@
       align-items:center;
       justify-content:flex-end;
     }
-
     .pill{
       border-radius: 999px;
       padding: 8px 10px;
       font-size: 11px;
-      font-weight: 800;
+      font-weight: 900;
       border: 1px solid rgba(15,23,42,.12);
       background: rgba(255,255,255,.7);
       white-space: nowrap;
     }
-
     .pill.good{ color: var(--green); background: var(--greenBg); border-color: rgba(34,197,94,.25); }
     .pill.warn{ color: var(--amber); background: var(--amberBg); border-color: rgba(245,158,11,.25); }
     .pill.bad{ color: var(--red); background: var(--redBg); border-color: rgba(239,68,68,.25); }
     .pill.neutral{ color: var(--slate); background: var(--slateBg); border-color: rgba(100,116,139,.25); }
+    .pill.info{ color: var(--blue); background: var(--blueBg); border-color: rgba(59,130,246,.25); }
 
-    /* KPIs */
     .kpis{
       display:grid;
       grid-template-columns: repeat(4, 1fr);
@@ -265,11 +313,10 @@
     @media (max-width: 560px){
       .kpis{ grid-template-columns: 1fr; }
     }
-
     .kpi{
       border-radius: var(--radius2);
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.68);
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
       padding: 12px;
       box-shadow: var(--shadow2);
     }
@@ -277,24 +324,25 @@
       color: var(--muted);
       font-size: 11px;
       margin:0 0 6px;
-      font-weight: 600;
+      font-weight: 800;
       letter-spacing: .2px;
       text-transform: uppercase;
     }
     .kpi .value{
       margin:0;
       font-size: 14px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: .2px;
       word-break: break-word;
+      line-height: 1.2;
     }
 
     /* Confidence bar */
     .barWrap{
       margin-top: 12px;
       border-radius: 14px;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.65);
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
       padding: 10px 12px;
     }
     .barTop{
@@ -304,7 +352,7 @@
       align-items:center;
       font-size: 12px;
       color: var(--muted);
-      font-weight: 700;
+      font-weight: 900;
     }
     .track{
       margin-top: 8px;
@@ -322,7 +370,41 @@
       transition: width 400ms ease;
     }
 
-    /* Below layout */
+    /* Snapshot rows */
+    .list{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+    }
+    .row{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
+      border-radius: 14px;
+      padding: 12px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .row .left{ min-width: 0; }
+    .row .key{
+      font-size: 11px;
+      color: var(--muted);
+      margin:0 0 4px;
+      font-weight: 900;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .row .val{
+      margin:0;
+      font-size: 13px;
+      font-weight: 800;
+      word-wrap: break-word;
+      line-height: 1.35;
+    }
+
+    /* Main content grid */
     .grid{
       display:grid;
       grid-template-columns: 1fr 1fr;
@@ -333,68 +415,204 @@
       .grid{ grid-template-columns: 1fr; }
     }
 
-    .card{
-      border-radius: var(--radius);
-      background: rgba(255,255,255,.86);
-      border: 1px solid rgba(255,255,255,.55);
-      box-shadow: var(--shadow2);
-      padding: 16px;
-      backdrop-filter: blur(10px);
+    /* Action Plan */
+    .planGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
     }
-
-    .card h3{
-      margin:0 0 10px;
-      font-size: 14px;
-      font-weight: 900;
-      letter-spacing: .2px;
+    @media (max-width: 760px){
+      .planGrid{ grid-template-columns: 1fr; }
     }
-
-    .list{
-      display:flex;
-      flex-direction:column;
-      gap: 10px;
-    }
-
-    .row{
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.68);
+    .planBox{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
       border-radius: 14px;
       padding: 12px;
+    }
+    .planBox h4{
+      margin:0 0 8px;
+      font-size: 12px;
+      font-weight: 1000;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+      color: rgba(11,18,32,.90);
+    }
+    .bullets{
+      margin: 0;
+      padding-left: 18px;
+      color: rgba(11,18,32,.92);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .bullets li{ margin: 4px 0; }
+
+    /* Ticket / Cleaner */
+    .ticketGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    @media (max-width: 900px){
+      .ticketGrid{ grid-template-columns: 1fr; }
+    }
+    .ticketCard{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .ticketTop{
       display:flex;
-      align-items:flex-start;
+      align-items:center;
       justify-content: space-between;
       gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .ticketTop b{
+      font-size: 12px;
+      font-weight: 1000;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+      color: rgba(11,18,32,.90);
+    }
+    .miniBtn{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.85);
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      line-height: 1;
+    }
+    .miniBtn:hover{ transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15,23,42,.08); }
+    .monoBox{
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.6;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.85);
+      border-radius: 14px;
+      padding: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: rgba(11,18,32,.92);
+    }
+    .miniNotes{
+      margin-top: 8px;
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
-    .row .left{ min-width: 0; }
-    .row .key{
+    /* Context cards */
+    .contextGrid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 10px;
+    }
+    @media (max-width: 980px){
+      .contextGrid{ grid-template-columns: 1fr; }
+    }
+    .contextCard{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
+      border-radius: 14px;
+      padding: 12px;
+    }
+    .contextCard .k{
       font-size: 11px;
       color: var(--muted);
-      margin:0 0 4px;
-      font-weight: 800;
+      font-weight: 900;
+      letter-spacing: .2px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .contextCard .v{
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.35;
+      color: rgba(11,18,32,.92);
+    }
+    .contextCard .s{
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(11,18,32,.78);
+      line-height: 1.6;
+    }
+
+    /* Risks */
+    .alertBox{
+      border-radius: 16px;
+      border: 1px solid rgba(15,23,42,.10);
+      padding: 12px;
+      background: rgba(255,255,255,.70);
+    }
+    .alertBox.red{ border-color: rgba(239,68,68,.22); background: rgba(239,68,68,.06); }
+    .alertBox.amber{ border-color: rgba(245,158,11,.22); background: rgba(245,158,11,.06); }
+    .alertBox h4{
+      margin:0 0 8px;
+      font-size: 12px;
+      font-weight: 1000;
       letter-spacing: .2px;
       text-transform: uppercase;
     }
-    .row .val{
-      margin:0;
-      font-size: 13px;
-      font-weight: 700;
-      word-wrap: break-word;
-    }
+    .alertBox.red h4{ color: rgba(239,68,68,.95); }
+    .alertBox.amber h4{ color: rgba(245,158,11,.95); }
 
-    .analysis{
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.68);
-      border-radius: 14px;
-      padding: 14px;
-      line-height: 1.75;
-      color: #0b1220;
+    /* Accordion (deep details) */
+    details.accordion{
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.70);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    details.accordion summary{
+      cursor: pointer;
+      list-style: none;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+      font-weight: 1000;
       font-size: 13px;
+      letter-spacing: .2px;
+    }
+    details.accordion summary::-webkit-details-marker{ display:none; }
+    .chev{
+      width: 30px;
+      height: 30px;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,.10);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(255,255,255,.85);
+      font-weight: 1000;
+      user-select:none;
+    }
+    details[open] .chev{ transform: rotate(180deg); }
+    .jsonBox{
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      line-height: 1.65;
+      border: 1px solid rgba(15,23,42,.10);
+      background: rgba(255,255,255,.85);
+      border-radius: 14px;
+      padding: 12px;
       white-space: pre-wrap;
       word-break: break-word;
+      color: rgba(11,18,32,.92);
     }
-
-    .muted{ color: var(--muted); font-size: 12px; line-height: 1.65; }
 
     .foot{
       margin-top: 14px;
@@ -405,6 +623,7 @@
       padding: 10px 6px 0;
     }
 
+    /* Toast */
     .toast{
       position: fixed;
       bottom: 18px;
@@ -415,7 +634,7 @@
       padding: 10px 12px;
       border-radius: 12px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 900;
       box-shadow: 0 16px 50px rgba(11,18,32,.25);
       opacity: 0;
       pointer-events: none;
@@ -427,7 +646,9 @@
       transform: translateX(-50%) translateY(-2px);
     }
 
+    /* Print */
     @media print{
+      .topbar{ position: static; box-shadow: none; }
       .topbar .actions{ display:none !important; }
       body{ background: #fff; }
       .hero, .card{ box-shadow: none; border: 1px solid #ddd; }
@@ -435,42 +656,44 @@
     }
   </style>
 
-  <!-- ✅ Client-side PDF libraries (with resilient fallbacks) -->
+  <!-- ✅ Client-side PDF libraries -->
   <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 
 <body>
-  <div class="wrap" id="reportRoot">
-    <div class="topbar">
+  <!-- Sticky header -->
+  <div class="topbar">
+    <div class="topbarInner">
       <div class="brand">
         <div class="mark"></div>
-        <div>
-          <h1>FXCO-Pilot</h1>
-          <p>AI Trade Validator • Report</p>
+        <div class="brandText">
+          <h1>FXCO-Pilot — Report</h1>
+          <p id="topMeta">Loading report…</p>
         </div>
       </div>
 
-      <!-- ✅ CLEANED ACTIONS: Back • Share Report • Save PDF • New Validation -->
       <div class="actions">
-        <button class="btn" id="btnBack">← Back</button>
-        <button class="btn" id="btnShare">Share Report</button>
-        <button class="btn" id="btnPdf">Save PDF</button>
+        <button class="btn ghost" id="btnBack">← Back</button>
+        <button class="btn" id="btnShare">Copy Share Link</button>
+        <button class="btn" id="btnPdf">Download PDF</button>
         <button class="btn primary" id="btnNew">New Validation</button>
       </div>
     </div>
+  </div>
 
+  <div class="wrap" id="reportRoot">
+    <div class="pageHead">
+      <div>
+        <h2>Trade Validation Report</h2>
+        <div class="metaLine" id="metaLine">Generated —</div>
+      </div>
+    </div>
+
+    <!-- HERO -->
     <section class="hero">
       <div class="heroGrid">
         <div>
-          <div class="titleRow">
-            <div>
-              <h2>Trade Validation Report</h2>
-              <p class="sub" id="metaLine">Generated —</p>
-            </div>
-          </div>
-
-          <!-- Big decision banner -->
           <div class="decisionBanner" id="decisionBanner">
             <div class="decisionLeft">
               <div class="seal" id="seal">—</div>
@@ -482,8 +705,9 @@
 
             <div class="pillRow">
               <span class="pill" id="pillTier">Tier —</span>
-              <span class="pill neutral" id="pillScore">Score —</span>
+              <span class="pill neutral" id="pillScore">Edge —</span>
               <span class="pill neutral" id="pillConfidence">Confidence —</span>
+              <span class="pill info" id="pillRR">RR —</span>
             </div>
           </div>
 
@@ -493,16 +717,16 @@
               <p class="value" id="kpiPair">—</p>
             </div>
             <div class="kpi">
-              <p class="label">Timeframe</p>
-              <p class="value" id="kpiTf">—</p>
+              <p class="label">Trading Style</p>
+              <p class="value" id="kpiStyle">—</p>
+            </div>
+            <div class="kpi">
+              <p class="label">Chart Timeframe</p>
+              <p class="value" id="kpiChartTf">—</p>
             </div>
             <div class="kpi">
               <p class="label">Direction / Bias</p>
               <p class="value" id="kpiSide">—</p>
-            </div>
-            <div class="kpi">
-              <p class="label">R:R (approx)</p>
-              <p class="value" id="kpiRR">—</p>
             </div>
           </div>
 
@@ -516,42 +740,191 @@
             </div>
           </div>
 
-          <p class="muted" style="margin: 12px 2px 0;">
-            Institutional-style output: guards first, then score, then tier. This is decision support not a signal.
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn primary" id="btnPrimaryAction">Open Action Plan</button>
+            <button class="btn" id="btnCopyTicket">Copy Trade Ticket</button>
+          </div>
+
+          <p class="subtle" style="margin: 10px 2px 0;">
+            This is decision support, not a signal. The report prioritizes: <b>guards → ticket quality → context → verdict</b>.
           </p>
         </div>
 
         <div>
           <div class="card" style="padding: 14px;">
-            <h3 style="margin-bottom: 10px;">Snapshot</h3>
+            <div class="sectionTitle">
+              <h3>Snapshot</h3>
+              <span class="pill neutral" id="snapshotPill">—</span>
+            </div>
             <div class="list" id="snapshotList"></div>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- Main grid -->
     <div class="grid">
-      <section class="card">
-        <h3>Blocks & Conditions</h3>
-        <div class="list" id="blocksList"></div>
-        <p class="muted" style="margin: 12px 2px 0;">
-          Red items = execution blocked. Yellow items = “execute only if…” conditions.
-        </p>
+      <!-- Action Plan -->
+      <section class="card" id="actionPlanCard">
+        <div class="sectionTitle">
+          <h3>Action Plan</h3>
+          <span class="pill info" id="planHint">What to do next</span>
+        </div>
+        <div class="subtle" id="planIntro">
+          Clear next steps — so you’re not staring at analysis text.
+        </div>
+
+        <div class="planGrid">
+          <div class="planBox">
+            <h4>Do this now</h4>
+            <ul class="bullets" id="planNow"></ul>
+          </div>
+
+          <div class="planBox">
+            <h4>Only enter if</h4>
+            <ul class="bullets" id="planIf"></ul>
+          </div>
+
+          <div class="planBox">
+            <h4>Invalidation</h4>
+            <ul class="bullets" id="planInv"></ul>
+          </div>
+
+          <div class="planBox">
+            <h4>Risk note</h4>
+            <ul class="bullets" id="planRisk"></ul>
+          </div>
+        </div>
       </section>
 
-      <section class="card">
-        <h3>AI Reasoning</h3>
-        <div class="analysis" id="analysisBox">Loading…</div>
+      <!-- Ticket + Cleaner -->
+      <section class="card" id="ticketCard">
+        <div class="sectionTitle">
+          <h3>Trade Ticket & Signal Cleaner</h3>
+          <span class="pill neutral" id="ticketStatus">—</span>
+        </div>
+        <div class="subtle">
+          Your pasted signal is normalized into a clean “ticket” you can copy to your journal.
+        </div>
+
+        <div class="ticketGrid">
+          <div class="ticketCard">
+            <div class="ticketTop">
+              <b>Clean Trade Ticket</b>
+              <button class="miniBtn" id="btnCopyTicketMini">Copy</button>
+            </div>
+            <div class="monoBox" id="cleanTicketBox">—</div>
+            <div class="miniNotes" id="ticketNotes"></div>
+          </div>
+
+          <div class="ticketCard" id="cleanerCard">
+            <div class="ticketTop">
+              <b>Signal Cleaner</b>
+              <span class="pill info">Parsed</span>
+            </div>
+            <div class="subtle" style="margin-bottom:8px;">
+              This shows <b>what was understood</b> from a messy message — and what’s missing.
+            </div>
+            <div class="monoBox" id="cleanerBox">—</div>
+          </div>
+        </div>
       </section>
 
+      <!-- Market Context -->
       <section class="card">
-        <h3>Key Checks</h3>
-        <div class="list" id="checksList"></div>
+        <div class="sectionTitle">
+          <h3>Market Context</h3>
+          <span class="pill neutral" id="contextHint">Structure • Liquidity • Momentum</span>
+        </div>
+        <div class="subtle">
+          Simplified context summary. Deep details are still available below.
+        </div>
+
+        <div class="contextGrid">
+          <div class="contextCard">
+            <div class="k">Structure</div>
+            <div class="v" id="ctxStructure">—</div>
+            <div class="s" id="ctxStructureS">—</div>
+          </div>
+
+          <div class="contextCard">
+            <div class="k">Liquidity</div>
+            <div class="v" id="ctxLiquidity">—</div>
+            <div class="s" id="ctxLiquidityS">—</div>
+          </div>
+
+          <div class="contextCard">
+            <div class="k">Momentum</div>
+            <div class="v" id="ctxMomentum">—</div>
+            <div class="s" id="ctxMomentumS">—</div>
+          </div>
+        </div>
       </section>
 
+      <!-- Risks & Flags -->
       <section class="card">
-        <h3>Signal</h3>
-        <div class="analysis" id="signalBox">—</div>
+        <div class="sectionTitle">
+          <h3>Risks & Flags</h3>
+          <span class="pill neutral" id="riskPill">—</span>
+        </div>
+
+        <div class="alertBox red" id="hardBlocksBox" style="display:none;">
+          <h4>Hard Blocks</h4>
+          <ul class="bullets" id="hardBlocksList"></ul>
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="alertBox amber" id="warningsBox" style="display:none;">
+          <h4>Warnings</h4>
+          <ul class="bullets" id="warningsList"></ul>
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="alertBox" id="conditionsBox" style="display:none;">
+          <h4 style="color: rgba(11,18,32,.90);">Conditions</h4>
+          <ul class="bullets" id="conditionsList"></ul>
+        </div>
+
+        <div class="subtle" style="margin-top:10px;">
+          “Hard Blocks” are desk-level stops. “Conditions” are <b>execute only if</b>.
+        </div>
+      </section>
+
+      <!-- Reasoning (human-friendly) -->
+      <section class="card">
+        <div class="sectionTitle">
+          <h3>Why this verdict?</h3>
+          <span class="pill neutral" id="whyPill">Reasoning</span>
+        </div>
+        <div class="subtle" style="margin-bottom:10px;">
+          This is the narrative. Technical JSON is hidden in “Technical Details”.
+        </div>
+        <div class="monoBox" id="analysisBox" style="font-family: Poppins, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; white-space: pre-wrap;">Loading…</div>
+      </section>
+
+      <!-- Technical Details (collapsed) -->
+      <section class="card">
+        <div class="sectionTitle">
+          <h3>Technical Details</h3>
+          <span class="pill neutral">For advanced users</span>
+        </div>
+
+        <details class="accordion">
+          <summary>
+            <span>Show raw payload (debug)</span>
+            <span class="chev">⌄</span>
+          </summary>
+          <div class="jsonBox" id="rawJsonBox">—</div>
+          <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn" id="btnCopyJson">Copy JSON</button>
+            <button class="btn" id="btnCopyReasoning">Copy Reasoning</button>
+          </div>
+          <div class="subtle" style="margin-top:10px;">
+            Tip: keep this section collapsed for a clean “product” feel. Expand only when debugging.
+          </div>
+        </details>
       </section>
     </div>
 
@@ -563,21 +936,16 @@
   <div class="toast" id="toast">—</div>
 
   <script>
-    // Storage keys (session first, local fallback)
+    // Storage keys
     const REPORT_KEY = "fxcoReport";
     const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
-
-    // ✅ Share storage (for "Share Report" even without backend share_id)
-    // Enables shareable reports purely client-side (no DB) using ?p=<payload>
     const SHARE_LOCAL_KEY = "fxco_share_payload_v1";
 
     function fmt(v){
       if (v === null || v === undefined || v === "") return "—";
       return String(v);
     }
-
     function safeUpper(v){ return fmt(v).toUpperCase(); }
-
     function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
 
     function stampFrom(ts){
@@ -598,7 +966,7 @@
       return (u.searchParams.get(name) || "").trim();
     }
 
-    // ✅ Normalize tier to underscores (backend truth)
+    // Tier normalization
     function normalizeTier(tier){
       const t = String(tier || "").trim().toUpperCase();
       if (!t || t === "—") return "";
@@ -616,13 +984,14 @@
       return "neutral";
     }
 
-    function setDecisionUI(tier, label, meta, score, confidence){
+    function setDecisionUI(tier, label, meta, score, confidence, rr){
       const seal = document.getElementById("seal");
       const title = document.getElementById("decisionTitle");
       const metaEl = document.getElementById("decisionMeta");
       const pillTier = document.getElementById("pillTier");
       const pillScore = document.getElementById("pillScore");
       const pillConf = document.getElementById("pillConfidence");
+      const pillRR = document.getElementById("pillRR");
 
       const T = normalizeTier(tier);
       const tone = pillToneForTier(T);
@@ -654,10 +1023,24 @@
       pillTier.textContent = "Tier: " + (T || "—");
 
       pillScore.className = "pill " + (score >= 78 ? "good" : score >= 62 ? "warn" : score >= 48 ? "neutral" : "bad");
-      pillScore.textContent = "Score: " + (Number.isFinite(score) ? score : "—");
+      pillScore.textContent = "Edge: " + (Number.isFinite(score) ? score + "/100" : "—");
 
       pillConf.className = "pill " + (confidence >= 70 ? "good" : confidence >= 55 ? "warn" : confidence >= 40 ? "neutral" : "bad");
       pillConf.textContent = "Confidence: " + (Number.isFinite(confidence) ? confidence + "%" : "—%");
+
+      const rrNum = parseRR(rr);
+      pillRR.textContent = rrNum !== null ? ("RR: " + rrNum.toFixed(2)) : "RR: —";
+      pillRR.className = "pill info";
+    }
+
+    function parseRR(rr){
+      if (rr === null || rr === undefined) return null;
+      if (typeof rr === "number" && isFinite(rr)) return rr;
+      const s = String(rr);
+      const m = s.match(/(\d+(\.\d+)?)/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      return isFinite(n) ? n : null;
     }
 
     function chipClass(level){
@@ -681,17 +1064,23 @@
       container.appendChild(el);
     }
 
-    function parseRR(rr){
-      if (rr === null || rr === undefined) return null;
-      if (typeof rr === "number" && isFinite(rr)) return rr;
-      const s = String(rr);
-      const m = s.match(/(\d+(\.\d+)?)/);
-      if (!m) return null;
-      const n = Number(m[1]);
-      return isFinite(n) ? n : null;
+    function setBullets(ul, items, fallback){
+      ul.innerHTML = "";
+      const list = (Array.isArray(items) ? items : []).filter(Boolean).slice(0, 12);
+      if (!list.length){
+        const li = document.createElement("li");
+        li.textContent = fallback || "—";
+        ul.appendChild(li);
+        return;
+      }
+      list.forEach(x => {
+        const li = document.createElement("li");
+        li.textContent = String(x);
+        ul.appendChild(li);
+      });
     }
 
-    // 1% "desk model" verdict computed client-side when backend doesn't provide a tier/score
+    // Desk verdict (fallback)
     function computeDeskVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
@@ -738,18 +1127,6 @@
       else if (score >= 48) tier = "WAIT";
       else tier = "DO_NOT_TRADE";
 
-      const conditions = [];
-      if (tier === "EXECUTE_IF") {
-        conditions.push("Require confirmation before entry (break/close, sweep, or retest).");
-        conditions.push("Reduce size; treat as conditional execution.");
-      }
-      if (tier === "WAIT") {
-        conditions.push("Set alerts at levels; reassess when structure aligns.");
-      }
-      if (tier === "DO_NOT_TRADE") {
-        conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
-      }
-
       const label =
         tier === "EXECUTE" ? "EXECUTE (DESK-GRADE)" :
         tier === "EXECUTE_IF" ? "EXECUTE IF CONFIRMED" :
@@ -774,6 +1151,18 @@
           ? "No trade now. Set alert + reassess."
           : "Stand down. Find a higher-quality setup.";
 
+      const conditions = [];
+      if (tier === "EXECUTE_IF") {
+        conditions.push("Require confirmation before entry (break/close, sweep, or retest).");
+        conditions.push("Reduce size; treat as conditional execution.");
+      }
+      if (tier === "WAIT") {
+        conditions.push("Set alerts at levels; reassess when structure aligns.");
+      }
+      if (tier === "DO_NOT_TRADE") {
+        conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
+      }
+
       return {
         tier,
         label,
@@ -788,16 +1177,16 @@
 
     function parseReport(raw){
       // Expected storage from index.html:
-      // { pair_type, timeframe, signal_input, analysis: {...}, raw: {...}, generated_at }
+      // { pair_type, timeframe, chart_tf, signal_input, analysis: {...}, raw: {...}, generated_at }
       const r = raw || {};
       if (typeof r === "string"){
-        return { pair_type:"", timeframe:"", signal_input:"", analysis:{ reasoning_text: r }, raw: { }, generated_at: Date.now() };
+        return { pair_type:"", timeframe:"", chart_tf:"", signal_input:"", analysis:{ reasoning_text: r }, raw: { }, generated_at: Date.now() };
       }
-
       const analysis = r.analysis || r.result || r.raw?.analysis || {};
       return {
         pair_type: r.pair_type || r.pairType || "",
         timeframe: r.timeframe || "",
+        chart_tf: r.chart_tf || r.chartTf || (analysis?.assessment_horizon?.execution_tf || "") || "",
         signal_input: r.signal_input || r.signal || "",
         analysis: analysis || {},
         raw: r.raw || r,
@@ -808,47 +1197,34 @@
     }
 
     function ensureLocalFallback(reportObj){
-      // Save a fallback copy so refresh / new tab still works
-      try{
-        localStorage.setItem(REPORT_FALLBACK_KEY, JSON.stringify(reportObj));
-      }catch{}
+      try{ localStorage.setItem(REPORT_FALLBACK_KEY, JSON.stringify(reportObj)); }catch{}
     }
 
     function getStoredReportRaw(){
-      // 1) sessionStorage (best)
       try{
         const s = sessionStorage.getItem(REPORT_KEY);
         if (s) return s;
       }catch{}
-
-      // 2) localStorage fallback
       try{
         const l = localStorage.getItem(REPORT_FALLBACK_KEY);
         if (l) return l;
       }catch{}
-
       return "";
     }
 
-    // -------------------------
-    // ✅ Shareable reports (client-side)
-    // -------------------------
+    // Share helpers (client payload)
     function b64urlEncode(bytesOrString){
       const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
       const b64 = btoa(unescape(encodeURIComponent(str)));
       return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
     }
-
     function b64urlDecodeToString(b64url){
       const b64 = String(b64url || "").replace(/-/g, "+").replace(/_/g, "/");
       const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
       const txt = decodeURIComponent(escape(atob(b64 + pad)));
       return txt;
     }
-
-    // Try to use CompressionStream / DecompressionStream if available
     async function compressToUrlSafe(jsonString){
-      // returns { payload, mode }
       try{
         if (!("CompressionStream" in window)) throw new Error("no CompressionStream");
         const cs = new CompressionStream("deflate");
@@ -862,7 +1238,6 @@
         return { payload: b64urlEncode(jsonString), mode: "b64json" };
       }
     }
-
     async function decompressFromUrlSafe(payload, mode){
       if (!payload) throw new Error("empty payload");
       if (mode !== "deflate"){
@@ -882,7 +1257,6 @@
       const json = new TextDecoder().decode(decompressed);
       return JSON.parse(json);
     }
-
     function buildShareUrlFromPayload(payload, mode){
       const u = new URL(window.location.href);
       u.searchParams.delete("r");
@@ -891,7 +1265,6 @@
       else u.searchParams.delete("pm");
       return u.toString();
     }
-
     function buildShareUrlFromId(shareId){
       const u = new URL(window.location.href);
       u.searchParams.set("r", shareId);
@@ -900,24 +1273,192 @@
       return u.toString();
     }
 
-    // -------------------------
-    // Render
-    // -------------------------
-    function render(report){
-      // Meta line should reflect report generation time (not "now" on refresh)
-      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
+    // Try backend share id (existing)
+    async function fetchSharedReport(shareId){
+      const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" }
+      });
+      if (!r.ok){
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || `Failed to load share report (${r.status})`);
+      }
+      return await r.json();
+    }
 
+    // Build clean ticket text (so Ticket/Cleaner always feels “real”)
+    function normalizeSymbol(pair){
+      const s = String(pair || "").trim();
+      if (!s) return "";
+      // If already contains '/', keep it; else try to add common format
+      if (s.includes("/")) return s.toUpperCase();
+      if (s.length === 6) return (s.slice(0,3) + "/" + s.slice(3)).toUpperCase();
+      return s.toUpperCase();
+    }
+
+    function buildCleanTicket(report){
+      const a = report.analysis || {};
+      const sc = a.signal_check || {};
+      const pair = normalizeSymbol(report.pair_type || "");
+      const dir = (sc.direction || a.bias || "").toString().trim().toUpperCase();
+      const entry = sc.entry != null ? String(sc.entry).trim() : "";
+      const sl = sc.stop_loss != null ? String(sc.stop_loss).trim() : "";
+      const targets = Array.isArray(sc.targets) ? sc.targets.filter(x => x != null && String(x).trim() !== "").map(x => String(x).trim()) : [];
+      const rr = sc.rr != null ? String(sc.rr).trim() : "";
+      const style = (report.timeframe || "").toString().trim();
+      const chartTf = (report.chart_tf || "").toString().trim();
+
+      const lines = [];
+      if (pair) lines.push(`PAIR: ${pair}`);
+      if (dir) lines.push(`DIRECTION: ${dir}`);
+      if (style) lines.push(`STYLE: ${style}`);
+      if (chartTf) lines.push(`CHART_TF: ${chartTf}`);
+      if (entry) lines.push(`ENTRY: ${entry}`);
+      if (sl) lines.push(`SL: ${sl}`);
+      if (targets.length) lines.push(`TP: ${targets.join(", ")}`);
+      if (rr) lines.push(`RR: ${rr}`);
+
+      // Minimal fallback if parsing is weak:
+      if (!lines.length) return "—";
+      return lines.join("\n");
+    }
+
+    function buildCleanerSummary(report){
+      const a = report.analysis || {};
+      const sc = a.signal_check || {};
+      const pair = normalizeSymbol(report.pair_type || "");
+      const dir = (sc.direction || a.bias || "").toString().trim();
+      const entry = sc.entry != null ? String(sc.entry).trim() : "";
+      const sl = sc.stop_loss != null ? String(sc.stop_loss).trim() : "";
+      const targets = Array.isArray(sc.targets) ? sc.targets.filter(Boolean) : [];
+      const missing = [];
+      if (!pair) missing.push("PAIR");
+      if (!dir) missing.push("DIRECTION");
+      if (!entry) missing.push("ENTRY");
+      if (!sl) missing.push("SL");
+      if (!targets.length) missing.push("TP");
+
+      const pieces = [];
+      pieces.push(`ORIGINAL:\n${fmt(report.signal_input)}`);
+      pieces.push(`\nCLEANED:\n${buildCleanTicket(report)}`);
+
+      if (missing.length){
+        pieces.push(`\nMISSING:\n- ${missing.join("\n- ")}`);
+      } else {
+        pieces.push(`\nSTATUS:\n- Ticket fields detected ✅`);
+      }
+      return pieces.join("\n");
+    }
+
+    function setTicketNotes(el, notes){
+      el.innerHTML = "";
+      (notes || []).slice(0, 6).forEach(n => {
+        const span = document.createElement("span");
+        span.className = "pill info";
+        span.textContent = n;
+        el.appendChild(span);
+      });
+    }
+
+    function deriveChartTf(report){
+      // Prefer explicit report.chart_tf; else attempt from assessment horizon
+      const a = report.analysis || {};
+      const ah = a.assessment_horizon || {};
+      return (report.chart_tf || report.chartTf || ah?.execution_tf || ah?.structure_tf || "").toString().trim();
+    }
+
+    function deriveTopMeta(report){
+      const a = report.analysis || {};
+      const ah = a.assessment_horizon || {};
+      const pair = fmt(report.pair_type || "—");
+      const style = fmt(report.timeframe || "—");
+      const chartTf = fmt(deriveChartTf(report) || "—");
+      const ts = stampFrom(report.generated_at || Date.now());
+      const execTf = (ah.execution_tf || "").toString().trim();
+      const bits = [
+        `${pair} • ${style} • Chart TF ${chartTf}`,
+        `Generated ${ts}`
+      ];
+      if (execTf && execTf !== chartTf) bits.push(`Exec TF ${execTf}`);
+      return bits.join(" • ");
+    }
+
+    function buildActionPlan(report, tier, desk){
+      const a = report.analysis || {};
+      const sc = a.signal_check || {};
+      const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const hard = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
+      const cond = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
+
+      const now = [];
+      const onlyIf = [];
+      const invalidation = [];
+      const risk = [];
+
+      // Base “now” steps
+      if (tier === "DO_NOT_TRADE"){
+        now.push("Stand down. Do not execute this ticket as-is.");
+        now.push("Fix ticket quality (Entry/SL/TP + realistic RR) before re-checking.");
+      } else if (tier === "WAIT"){
+        now.push("No entry now. Set alerts at key levels and reassess on reaction.");
+        now.push("Wait for structure alignment or a clean confirmation candle.");
+      } else if (tier === "EXECUTE_IF"){
+        now.push("Treat as conditional execution. Reduce size.");
+        now.push("Wait for confirmation (break/close, sweep, or retest) before entry.");
+      } else if (tier === "EXECUTE"){
+        now.push("Execute with strict size and a hard stop.");
+        now.push("No revenge entries. One clean attempt only.");
+      }
+
+      // Only enter if
+      const rrNum = parseRR(sc.rr);
+      if (rrNum !== null && rrNum < 1.5) onlyIf.push("RR ≥ 1.5 (minimum expectancy).");
+      if (sc.entry == null || String(sc.entry).trim() === "") onlyIf.push("Entry is defined (exact level).");
+      if (sc.stop_loss == null || String(sc.stop_loss).trim() === "") onlyIf.push("Stop loss is defined (exact level).");
+      if (!Array.isArray(sc.targets) || !sc.targets.length) onlyIf.push("At least TP1 is defined.");
+
+      // Conditions from backend or desk model
+      (cond.length ? cond : (desk.conditions || [])).slice(0, 8).forEach(x => onlyIf.push(String(x)));
+
+      // Invalidation
+      if (inv.length){
+        inv.slice(0, 8).forEach(x => invalidation.push(String(x)));
+      } else {
+        invalidation.push("If price invalidates your structure level, stand down.");
+        invalidation.push("If conditions fail after entry, do not average down.");
+      }
+
+      // Risk notes
+      if (Array.isArray(a.guidance) && a.guidance.length){
+        risk.push("Follow guidance: " + String(a.guidance[0]));
+      }
+      if (hard.length){
+        risk.push("Hard blocks exist — do not force execution.");
+      } else {
+        risk.push("Keep risk tight. Use position sizing and respect SL.");
+      }
+      risk.push("If trading news/volatility, reduce size or skip.");
+
+      // Ensure lists not empty
+      return { now, onlyIf, invalidation, risk };
+    }
+
+    function render(report){
       const a = report.analysis || {};
       const sc = a.signal_check || {};
       const mc = a.market_context || {};
+      const ah = a.assessment_horizon || {};
 
-      // If backend doesn't provide a proper decision tier/score, compute with desk model
+      // Header/meta
+      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
+      document.getElementById("topMeta").textContent = deriveTopMeta(report);
+
+      // Tier selection
       const backendTierRaw =
         (a.decision_tier || a.tier || a.decisionTier || a.decision_tier_label || "").toString().trim();
       const backendTier = normalizeTier(backendTierRaw);
       const hasBackendTier = !!backendTier;
 
-      // Score fields (sometimes backend uses different names)
       const backendScoreCandidate =
         Number.isFinite(Number(a.score)) ? Number(a.score) :
         Number.isFinite(Number(a.edge_score)) ? Number(a.edge_score) :
@@ -943,26 +1484,28 @@
         Number.isFinite(backendConf) && backendConf > 0 ? Math.round(backendConf)
         : desk.confidence;
 
+      // Decision meta — keep it short and producty
       const metaBits = [];
-      if (mc.structure) metaBits.push("Structure: " + fmt(mc.structure));
-      if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
+      if (ah.structure_tf) metaBits.push("Structure TF: " + fmt(ah.structure_tf));
       if (mc.timeframe_alignment) metaBits.push("Alignment: " + fmt(mc.timeframe_alignment));
+      if (mc.liquidity) metaBits.push("Liquidity: " + fmt(mc.liquidity));
+      if (mc.momentum) metaBits.push("Momentum: " + fmt(mc.momentum));
       const meta = metaBits.length ? metaBits.join(" • ") : `${desk.why} ${desk.action}`;
 
-      setDecisionUI(tier, label, meta, score, confidence);
+      setDecisionUI(tier, label, meta, score, confidence, sc.rr);
 
       // KPIs
       document.getElementById("kpiPair").textContent = fmt(report.pair_type);
-      document.getElementById("kpiTf").textContent = fmt(report.timeframe);
+      document.getElementById("kpiStyle").textContent = fmt(report.timeframe || "—");
+      document.getElementById("kpiChartTf").textContent = fmt(deriveChartTf(report) || "—");
       document.getElementById("kpiSide").textContent = safeUpper(sc.direction || a.bias || "—");
-      document.getElementById("kpiRR").textContent = fmt(sc.rr || "—");
 
       // Confidence bar
       const c = clamp(Number(confidence) || 0, 0, 100);
       document.getElementById("confText").textContent = c + "%";
       requestAnimationFrame(() => { document.getElementById("confFill").style.width = c + "%"; });
 
-      // Snapshot (ticket + completeness feel)
+      // Snapshot
       const snapshotList = document.getElementById("snapshotList");
       snapshotList.innerHTML = "";
 
@@ -970,6 +1513,7 @@
       const entry = sc.entry ?? "";
       const sl = sc.stop_loss ?? "";
       const rr = sc.rr ?? "";
+
       const hasEntry = String(entry || "").trim() !== "";
       const hasSL = String(sl || "").trim() !== "";
       const hasTP = Array.isArray(sc.targets) && sc.targets.length > 0;
@@ -978,140 +1522,240 @@
       const compPct = Math.round((completeness / 3) * 100);
       const compTone = compPct >= 100 ? "OK" : compPct >= 67 ? "WARN" : "BLOCK";
 
+      const snapPill = document.getElementById("snapshotPill");
+      snapPill.className = chipClass(compTone);
+      snapPill.textContent = "Ticket " + compPct + "%";
+
       addRow(snapshotList, "Ticket Completeness", `${compPct}% (Entry/SL/TP)`, compTone);
       addRow(snapshotList, "Entry", fmt(entry), hasEntry ? "OK" : "BLOCK");
       addRow(snapshotList, "Stop Loss", fmt(sl), hasSL ? "OK" : "BLOCK");
       addRow(snapshotList, "Targets", fmt(targetsText), hasTP ? "OK" : "BLOCK");
-      addRow(snapshotList, "Approx RR", fmt(rr), rr ? "OK" : "WARN");
+
+      const rrNum = parseRR(rr);
+      addRow(snapshotList, "Risk/Reward", fmt(rr || "—"), rrNum !== null ? (rrNum >= 1.5 ? "OK" : "BLOCK") : "WARN");
+
       if (a.bias) addRow(snapshotList, "Bias", fmt(a.bias), "OK");
+      if (mc.timeframe_alignment) addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
 
-      // Blocks & Conditions (prefer backend if present, else desk computed)
-      const blocksList = document.getElementById("blocksList");
-      blocksList.innerHTML = "";
+      // Action Plan
+      const plan = buildActionPlan(report, tier, desk);
+      setBullets(document.getElementById("planNow"), plan.now, "—");
+      setBullets(document.getElementById("planIf"), plan.onlyIf, "—");
+      setBullets(document.getElementById("planInv"), plan.invalidation, "—");
+      setBullets(document.getElementById("planRisk"), plan.risk, "—");
 
-      const backendHard = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : [];
-      const backendCond = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : [];
-      const invalids = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      // Primary action button label (contextual)
+      const primary = document.getElementById("btnPrimaryAction");
+      if (tier === "DO_NOT_TRADE") primary.textContent = "What would make this valid?";
+      else if (tier === "WAIT") primary.textContent = "Set alerts + wait plan";
+      else if (tier === "EXECUTE_IF") primary.textContent = "Show entry conditions";
+      else primary.textContent = "Execution checklist";
 
-      const hardBlocks = backendHard.length ? backendHard : (desk.hardBlocks || []);
-      const conditions = backendCond.length ? backendCond : (desk.conditions || []);
+      // Ticket + cleaner
+      const cleanTicket = buildCleanTicket(report);
+      const cleaner = buildCleanerSummary(report);
+
+      document.getElementById("cleanTicketBox").textContent = cleanTicket;
+      document.getElementById("cleanerBox").textContent = cleaner;
+
+      const ticketStatus = document.getElementById("ticketStatus");
+      const missing = [];
+      if (!hasEntry) missing.push("ENTRY");
+      if (!hasSL) missing.push("SL");
+      if (!hasTP) missing.push("TP");
+      if (missing.length){
+        ticketStatus.className = "pill warn";
+        ticketStatus.textContent = "Missing: " + missing.join(", ");
+      } else {
+        ticketStatus.className = "pill good";
+        ticketStatus.textContent = "Ticket ready ✅";
+      }
+
+      const notes = [];
+      if (String(report.pair_type || "").trim()) notes.push("Normalized pair");
+      if (String(sc.direction || a.bias || "").trim()) notes.push("Direction detected");
+      if (hasEntry) notes.push("Entry extracted");
+      if (hasSL) notes.push("SL extracted");
+      if (hasTP) notes.push("Targets extracted");
+      if (rrNum !== null) notes.push("RR parsed");
+      setTicketNotes(document.getElementById("ticketNotes"), notes);
+
+      // Market Context (simplified)
+      const sTF = (ah.structure_tf || "").toString().trim();
+      document.getElementById("ctxStructure").textContent = fmt(mc.structure || (sTF ? ("Structure TF " + sTF) : "—"));
+      document.getElementById("ctxStructureS").textContent =
+        fmt(mc.timeframe_alignment ? ("Alignment: " + mc.timeframe_alignment) : (a.bias ? ("Bias: " + a.bias) : "—"));
+
+      document.getElementById("ctxLiquidity").textContent = fmt(mc.liquidity || "—");
+      document.getElementById("ctxLiquidityS").textContent =
+        fmt(a.liquidity_condition ? ("Condition: " + a.liquidity_condition) : (a.session ? ("Session: " + a.session) : "—"));
+
+      document.getElementById("ctxMomentum").textContent = fmt(mc.momentum || "—");
+      document.getElementById("ctxMomentumS").textContent =
+        fmt(a.structure ? ("Structure note: " + a.structure) : (a.volatility ? ("Volatility: " + a.volatility) : "—"));
+
+      // Risks & Flags
+      const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : (desk.hardBlocks || []);
+      const warnings = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
+      const conditions = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : (desk.conditions || []);
+
+      const riskPill = document.getElementById("riskPill");
+      const hardCount = hardBlocks.length;
+      const warnCount = warnings.length;
+      if (hardCount){
+        riskPill.className = "pill bad";
+        riskPill.textContent = `${hardCount} hard block${hardCount>1?"s":""}`;
+      } else if (warnCount){
+        riskPill.className = "pill warn";
+        riskPill.textContent = `${warnCount} warning${warnCount>1?"s":""}`;
+      } else {
+        riskPill.className = "pill good";
+        riskPill.textContent = "No major flags";
+      }
+
+      const hardBox = document.getElementById("hardBlocksBox");
+      const warnBox = document.getElementById("warningsBox");
+      const condBox = document.getElementById("conditionsBox");
 
       if (hardBlocks.length){
-        hardBlocks.slice(0, 10).forEach(x => addRow(blocksList, "BLOCK", fmt(x), "BLOCK"));
-      }
-      if (conditions.length){
-        conditions.slice(0, 12).forEach(x => addRow(blocksList, "CONDITION", fmt(x), "EXECUTE_IF"));
-      }
-      if (!hardBlocks.length && !conditions.length){
-        addRow(blocksList, "Status", "No blocks or conditions returned.", "OK");
-      }
-      if (invalids.length){
-        invalids.slice(0, 10).forEach(x => addRow(blocksList, "INVALIDATION", fmt(x), "WARN"));
-      }
-
-      // Key Checks (structured market context if present)
-      const checksList = document.getElementById("checksList");
-      checksList.innerHTML = "";
-
-      const checks = [];
-      if (mc.structure) checks.push({ label:"Structure", detail: mc.structure, level: "" });
-      if (mc.liquidity) checks.push({ label:"Liquidity", detail: mc.liquidity, level: "" });
-      if (mc.momentum) checks.push({ label:"Momentum", detail: mc.momentum, level: "" });
-      if (mc.timeframe_alignment) checks.push({ label:"Timeframe Alignment", detail: mc.timeframe_alignment, level: "" });
-
-      if (!checks.length){
-        addRow(checksList, "Checks", "No structured checks returned. (Backend can optionally send market_context.* fields.)", "");
+        hardBox.style.display = "block";
+        setBullets(document.getElementById("hardBlocksList"), hardBlocks, "—");
       } else {
-        checks.forEach(it => addRow(checksList, it.label, fmt(it.detail), it.level));
+        hardBox.style.display = "none";
       }
 
-      // Signal
-      document.getElementById("signalBox").textContent = fmt(report.signal_input);
+      if (warnings.length){
+        warnBox.style.display = "block";
+        setBullets(document.getElementById("warningsList"), warnings, "—");
+      } else {
+        warnBox.style.display = "none";
+      }
 
-      // Reasoning text (fallback to desk summary if missing)
+      if (conditions.length){
+        condBox.style.display = "block";
+        setBullets(document.getElementById("conditionsList"), conditions, "—");
+      } else {
+        condBox.style.display = "none";
+      }
+
+      // Reasoning (human-friendly)
       const reasoning =
         (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
         : (typeof a.reasoning === "string" && a.reasoning.trim()) ? a.reasoning.trim()
         : (Array.isArray(a.guidance) && a.guidance.length) ? ("Guidance:\n- " + a.guidance.slice(0, 12).join("\n- "))
         : `${desk.why}\n\nAction:\n- ${desk.action}`;
 
-      document.getElementById("analysisBox").textContent = reasoning || "No reasoning text returned.";
+      document.getElementById("analysisBox").textContent = reasoning || "No reasoning returned.";
 
-      // Save for share building / file naming
+      // Raw JSON (deep details)
+      const rawSafe = report.raw || report;
+      try{
+        document.getElementById("rawJsonBox").textContent = JSON.stringify(rawSafe, null, 2);
+      }catch{
+        document.getElementById("rawJsonBox").textContent = String(rawSafe);
+      }
+
+      // Expose for actions
+      window.__fxco_report = report;
       window.__fxco_copy = {
-        tier: tier,
-        decision: label,
-        score: Number.isFinite(score) ? score : "",
-        confidence: confidence,
-        pair: report.pair_type,
-        timeframe: report.timeframe,
+        tier,
+        label,
+        score,
+        confidence,
+        rr: sc.rr || "",
+        pair: report.pair_type || "",
+        timeframe: report.timeframe || "",
+        chart_tf: deriveChartTf(report) || "",
         direction: (sc.direction || a.bias || ""),
-        rr: (sc.rr || ""),
-        signal: report.signal_input,
-        reasoning: reasoning,
+        ticketText: cleanTicket,
+        reasoning,
         share_id: report.share_id || "",
         share_url: report.share_url || ""
       };
-
-      window.__fxco_report = report;
-    }
-
-    // Backend share loader (existing)
-    async function fetchSharedReport(shareId){
-      const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
-        method: "GET",
-        headers: { "Accept": "application/json" }
-      });
-      if (!r.ok){
-        const j = await r.json().catch(() => ({}));
-        throw new Error(j.error || `Failed to load share report (${r.status})`);
-      }
-      return await r.json();
     }
 
     // -------------------------
-    // Actions (CLEANED)
+    // Actions
     // -------------------------
     document.getElementById("btnBack").addEventListener("click", () => history.back());
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
 
-    // ✅ Share: prefer backend share_id, else generate client payload link (?p=...)
+    function scrollToPlan(){
+      const el = document.getElementById("actionPlanCard");
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    document.getElementById("btnPrimaryAction").addEventListener("click", scrollToPlan);
+
+    async function copyText(txt){
+      try{
+        await navigator.clipboard.writeText(String(txt || ""));
+        toast("Copied ✓");
+      }catch{
+        // fallback
+        const ta = document.createElement("textarea");
+        ta.value = String(txt || "");
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        toast("Copied ✓");
+      }
+    }
+
+    document.getElementById("btnCopyTicket").addEventListener("click", () => {
+      const d = window.__fxco_copy || {};
+      copyText(d.ticketText || "");
+    });
+    document.getElementById("btnCopyTicketMini").addEventListener("click", () => {
+      const d = window.__fxco_copy || {};
+      copyText(d.ticketText || "");
+    });
+
+    document.getElementById("btnCopyJson").addEventListener("click", () => {
+      const el = document.getElementById("rawJsonBox");
+      copyText(el ? el.textContent : "");
+    });
+
+    document.getElementById("btnCopyReasoning").addEventListener("click", () => {
+      const d = window.__fxco_copy || {};
+      copyText(d.reasoning || "");
+    });
+
+    // Share: prefer backend share_id, else generate payload URL
     document.getElementById("btnShare").addEventListener("click", async () => {
       const btn = document.getElementById("btnShare");
       const old = btn.textContent;
 
       try{
-        btn.textContent = "Sharing…";
+        btn.textContent = "Preparing…";
         btn.disabled = true;
 
         const d = window.__fxco_copy || {};
         const report = window.__fxco_report || null;
 
-        // 1) If backend share_id exists -> use /result.html?r=<id>
         const shareId = (d.share_id || "").trim() || getQueryParam("r");
         if (shareId){
           const url = buildShareUrlFromId(shareId);
 
-          // native share on mobile
           if (navigator.share){
             try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
           }
-
-          await navigator.clipboard.writeText(url);
+          await copyText(url);
           toast("Share link copied ✓");
           return;
         }
 
-        // 2) No backend share id -> embed payload in URL (?p=...)
         if (!report){
           alert("No report loaded yet to share.");
           return;
         }
 
-        // Keep payload lean (avoid gigantic raw blobs)
+        // Keep payload lean
         const shareObj = {
           pair_type: report.pair_type || "",
           timeframe: report.timeframe || "",
+          chart_tf: report.chart_tf || "",
           signal_input: report.signal_input || "",
           generated_at: report.generated_at || Date.now(),
           analysis: report.analysis || {}
@@ -1121,14 +1765,13 @@
         const { payload, mode } = await compressToUrlSafe(json);
         const url = buildShareUrlFromPayload(payload, mode);
 
-        // Save latest share payload locally
         try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
 
         if (navigator.share){
           try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
         }
 
-        await navigator.clipboard.writeText(url);
+        await copyText(url);
         toast("Share link copied ✓");
 
       } catch (e){
@@ -1142,7 +1785,7 @@
       }
     });
 
-    // ✅ PDF: reliable lib detection + restore UI even on failures
+    // PDF: resilient lib detection + restore UI
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
@@ -1151,7 +1794,6 @@
       const prevDisplay = actions ? actions.style.display : "";
 
       try{
-        // Wait for libs (robust)
         const html2canvasFn = window.html2canvas;
         const jspdfNS = window.jspdf || window.jsPDF || null;
         const jsPDFClass = jspdfNS?.jsPDF || window.jsPDF || null;
@@ -1161,13 +1803,11 @@
           return;
         }
 
-        btn.textContent = "Saving…";
+        btn.textContent = "Exporting…";
         btn.disabled = true;
 
-        // Hide action buttons temporarily
         if (actions) actions.style.display = "none";
 
-        // Render report to canvas
         const root = document.getElementById("reportRoot");
         const canvas = await html2canvasFn(root, {
           scale: 2,
@@ -1178,9 +1818,7 @@
 
         const imgData = canvas.toDataURL("image/png");
 
-        // A4 portrait
         const pdf = new jsPDFClass({ orientation: "p", unit: "pt", format: "a4" });
-
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
@@ -1201,13 +1839,13 @@
         }
 
         const d = window.__fxco_copy || {};
-        const fname = `FXCO-Pilot_Report_${(d.pair || "PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
+        const fname = `FXCO-Pilot_Report_${String(d.pair||"PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
         pdf.save(fname);
 
-        toast("PDF saved ✓");
+        toast("PDF downloaded ✓");
       } catch (e){
         console.error(e);
-        alert("PDF save failed. If needed, use your browser Print → Save as PDF as a fallback.");
+        alert("PDF export failed. Use browser Print → Save as PDF as a fallback.");
       } finally {
         if (actions) actions.style.display = prevDisplay;
         btn.textContent = old;
@@ -1223,7 +1861,7 @@
       const payload = getQueryParam("p");
       const payloadMode = getQueryParam("pm") || "b64json";
 
-      // 1) ✅ Payload share mode (?p=...)
+      // 1) Payload share mode
       if (payload){
         (async () => {
           try{
@@ -1234,7 +1872,6 @@
           } catch (e){
             console.error(e);
             alert("Failed to load shared report payload.\nIt may be corrupted or too long.");
-            // fallback to storage
             const raw = getStoredReportRaw();
             if (raw){
               try{
@@ -1249,6 +1886,7 @@
             const fallback = {
               pair_type: "—",
               timeframe: "—",
+              chart_tf: "—",
               signal_input: "—",
               generated_at: Date.now(),
               analysis: {
@@ -1256,6 +1894,8 @@
                 strength: 0,
                 clarity: 0,
                 invalidation_warnings: [],
+                hard_blocks: [],
+                conditions: [],
                 signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
                 reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
               }
@@ -1266,23 +1906,20 @@
         return;
       }
 
-      // 2) Backend share id mode (?r=...)
+      // 2) Backend share id mode
       if (shareId){
         (async () => {
           try{
             const shared = await fetchSharedReport(shareId);
             const payload = shared.report || shared.data || shared;
             const parsed = parseReport(payload);
-
             if (!parsed.share_id) parsed.share_id = shareId;
-
             ensureLocalFallback(payload);
             render(parsed);
             toast("Loaded shared report");
           } catch (e){
             console.error(e);
             alert(String(e && e.message ? e.message : e) || "Failed to load shared report.");
-            // fallback to storage
             const raw = getStoredReportRaw();
             if (raw){
               try{
@@ -1296,6 +1933,7 @@
               const fallback = {
                 pair_type: "—",
                 timeframe: "—",
+                chart_tf: "—",
                 signal_input: "—",
                 generated_at: Date.now(),
                 analysis: {
@@ -1303,6 +1941,8 @@
                   strength: 0,
                   clarity: 0,
                   invalidation_warnings: [],
+                  hard_blocks: [],
+                  conditions: [],
                   signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
                   reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
                 }
@@ -1316,11 +1956,11 @@
 
       // 3) Normal mode: use storage
       const raw = getStoredReportRaw();
-
       if (!raw){
         const fallback = {
           pair_type: "—",
           timeframe: "—",
+          chart_tf: "—",
           signal_input: "—",
           generated_at: Date.now(),
           analysis: {
@@ -1328,6 +1968,8 @@
             strength: 0,
             clarity: 0,
             invalidation_warnings: [],
+            hard_blocks: [],
+            conditions: [],
             signal_check: { entry:null, stop_loss:null, targets:[], rr:null },
             reasoning_text: "No validation data was found. Go back and run a validation to generate a report."
           }
@@ -1349,4 +1991,3 @@
   </script>
 </body>
 </html>
-```
