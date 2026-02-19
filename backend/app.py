@@ -2231,6 +2231,7 @@ def analyze():
 }
 """.strip()
 
+
     base_prompt = f"""
 You are FX CO-PILOT — a trade validation engine.
 
@@ -2324,9 +2325,9 @@ Rules:
         structure_text = (mc.get("structure") or "").strip() or "Structure context not provided."
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
         structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
-
+        manual_htf_bias = analysis_obj.get("htf_bias")
         analysis = {
-            "bias": analysis_obj.get("bias") or "Unclear",
+            "bias": manual_htf_bias or analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
             "clarity": analysis_obj.get("clarity") or 0,
             "signal_check": {
