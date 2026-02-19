@@ -1877,6 +1877,14 @@ def _get_payload_fields():
     return pair_type, timeframe, chart_tf, signal_text
 
 
+    signal_text = _pick_first(data, ["signal_input", "signal", "signalText"])
+
+    import re
+    htf_match = re.search(r"HTF\s*Bias\s*:\s*([A-Za-z]+)", signal_text or "", re.IGNORECASE)
+    manual_htf_bias = htf_match.group(1).capitalize() if htf_match else None
+
+
+
 # ==========================
 # Institutional decision system (existing)
 # ==========================
