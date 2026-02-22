@@ -72,6 +72,9 @@ logger = logging.getLogger("fxco-pilot")
 # Upstash Redis (REST):
 #   UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
 #   UPSTASH_REDIS_REST_TOKEN=xxxx
+#
+# PUBLIC BASE URL (INSTITUTIONAL UPGRADE #1):
+#   PUBLIC_BASE_URL=https://yourdomain.com
 # ============================================================
 
 # ==========================
@@ -250,6 +253,29 @@ def _get_client_id_header():
 
 
 # ==========================
+# Public base URL (INSTITUTIONAL UPGRADE #1)
+# - Do NOT trust Origin/Referer for share links.
+# ==========================
+PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
+
+
+def _public_base_url() -> str:
+    # Preferred: configured canonical URL
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+
+    # Safe-ish proxy-derived host (works behind Render/Vercel/etc)
+    xf_host = (request.headers.get("X-Forwarded-Host") or "").strip()
+    xf_proto = (request.headers.get("X-Forwarded-Proto") or "").strip()
+    if xf_host:
+        proto = xf_proto or "https"
+        return f"{proto}://{xf_host}".rstrip("/")
+
+    # Dev fallback
+    return request.host_url.rstrip("/")
+
+
+# ==========================
 # OpenAI client (lazy init)
 # ==========================
 def _get_openai_client():
@@ -409,31 +435,6 @@ def _report_share_ttl_days() -> int:
         return max(1, int((os.getenv("REPORT_SHARE_TTL_DAYS", "30") or "30").strip()))
     except Exception:
         return 30
-
-
-def _origin_base_url() -> str:
-    xf_host = (request.headers.get("X-Forwarded-Host") or "").strip()
-    xf_proto = (request.headers.get("X-Forwarded-Proto") or "").strip()
-    if xf_host:
-        proto = xf_proto or "https"
-        return f"{proto}://{xf_host}".rstrip("/")
-
-    origin = (request.headers.get("Origin") or "").strip()
-    if origin:
-        return origin.rstrip("/")
-
-    ref = (request.headers.get("Referer") or "").strip()
-    if ref:
-        try:
-            u = ref.split("#", 1)[0]
-            u = u.split("?", 1)[0]
-            parts = u.split("/")
-            if len(parts) >= 3:
-                return (parts[0] + "//" + parts[2]).rstrip("/")
-        except Exception:
-            pass
-
-    return request.host_url.rstrip("/")
 
 
 def _is_uuid_like(s: str) -> bool:
@@ -940,6 +941,7 @@ def health():
                 "resend_ok": _resend_ok(),
                 "redis_ok": redis_ok,
                 "require_payment": _require_payment(),
+                "public_base_url_ok": bool(PUBLIC_BASE_URL),
             }
         ),
         200,
@@ -975,7 +977,7 @@ def report_share():
         return jsonify({"ok": False, "error": "Failed to create share report (db insert failed)."}), 502
 
     share_id = created["id"]
-    share_url = f"{_origin_base_url()}/result.html?r={share_id}"
+    share_url = f"{_public_base_url()}/result.html?r={share_id}"
     return jsonify({"ok": True, "share_id": share_id, "share_url": share_url}), 200
 
 
@@ -994,11 +996,11 @@ def report_get(share_id: str):
 
     if isinstance(report_obj, dict):
         report_obj.setdefault("share_id", sid)
-        report_obj.setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
+        report_obj.setdefault("share_url", f"{_public_base_url()}/result.html?r={sid}")
         try:
             if isinstance(report_obj.get("analysis"), dict):
                 report_obj["analysis"].setdefault("share_id", sid)
-                report_obj["analysis"].setdefault("share_url", f"{_origin_base_url()}/result.html?r={sid}")
+                report_obj["analysis"].setdefault("share_url", f"{_public_base_url()}/result.html?r={sid}")
         except Exception:
             pass
 
@@ -1244,6 +1246,91 @@ def paystack_verify():
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ==========================
+# Paystack webhook (INSTITUTIONAL UPGRADE #2)
+# - Server-to-server confirmation + signature verification
+# ==========================
+def _paystack_verify_webhook_signature(raw_body: bytes, signature: str) -> bool:
+    if not PAYSTACK_SECRET_KEY:
+        return False
+    if not raw_body or not signature:
+        return False
+    try:
+        computed = hmac.new(PAYSTACK_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+        return hmac.compare_digest(computed, signature.strip())
+    except Exception:
+        return False
+
+
+@app.post("/api/paystack/webhook")
+def paystack_webhook():
+    # Always respond fast. Do not require CORS/browser.
+    raw = request.get_data(cache=False) or b""
+    sig = (request.headers.get("x-paystack-signature") or request.headers.get("X-Paystack-Signature") or "").strip()
+
+    if not _paystack_verify_webhook_signature(raw, sig):
+        try:
+            logger.warning("Paystack webhook signature invalid rid=%s", getattr(request, "_fxco_req_id", ""))
+        except Exception:
+            pass
+        return jsonify({"ok": False, "error": "Invalid signature"}), 401
+
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+
+    event = (payload.get("event") or "").strip().lower()
+    data = payload.get("data") or {}
+    if not isinstance(data, dict):
+        data = {}
+
+    # Only unlock on successful charge
+    if event not in ("charge.success", "charge.successful", "charge.success "):
+        return jsonify({"ok": True, "ignored": True, "event": event}), 200
+
+    status = (data.get("status") or "").strip().lower()
+    reference = (data.get("reference") or "").strip()
+    currency = (data.get("currency") or "").strip().upper()
+    amount = int(data.get("amount") or 0)
+
+    paid = (status == "success") and reference and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
+
+    meta = data.get("metadata") or {}
+    if not isinstance(meta, dict):
+        meta = {}
+
+    client_id = (meta.get("fxco_client_id") or "").strip()
+    try:
+        access_days = int(meta.get("access_days") or _access_days())
+        access_days = max(1, access_days)
+    except Exception:
+        access_days = _access_days()
+
+    if paid and client_id:
+        paid_until = int(_now() + access_days * 24 * 60 * 60)
+        _set_paid_access(client_id, paid_until, reference)
+        try:
+            logger.info("Paystack webhook unlocked client_id=%s ref=%s until=%s", client_id, reference, paid_until)
+        except Exception:
+            pass
+        return jsonify({"ok": True, "paid": True, "client_id": client_id, "reference": reference, "paid_until": paid_until}), 200
+
+    # If metadata missing, we cannot map the payment to a device unlock safely.
+    try:
+        logger.warning(
+            "Paystack webhook paid=%s but missing mapping client_id=%s ref=%s currency=%s amount=%s",
+            paid,
+            client_id,
+            reference,
+            currency,
+            amount,
+        )
+    except Exception:
+        pass
+    return jsonify({"ok": True, "paid": bool(paid), "unlocked": False, "reference": reference}), 200
 
 
 # ==========================
@@ -2083,6 +2170,8 @@ def institutional_decision_engine(analysis: dict) -> dict:
 # Analyze endpoint (trial OR paid)
 # - INSTITUTIONAL FIX:
 #   Allow GET ONLY for ?test=1 so your browser test does not hit 405.
+# - INSTITUTIONAL UPGRADE #3:
+#   Trial should use privileged rate limits + explicit X-RateLimit-Plan header.
 # ==========================
 @app.route("/api/analyze", methods=["GET", "POST"])
 def analyze():
@@ -2110,7 +2199,19 @@ def analyze():
         return jsonify({"error": "Access locked. Start free trial (verify email) or unlock via Pricing."}), 402
 
     identity_key = f"cid:{client_id}"
-    ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=paid_active)
+
+    # Trial gets privileged limits (same as paid limits by default)
+    is_privileged = bool(paid_active or trial_active)
+    ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=is_privileged)
+
+    # Override plan label so frontend can show "trial" explicitly
+    if paid_active:
+        rl_headers["X-RateLimit-Plan"] = "paid"
+    elif trial_active:
+        rl_headers["X-RateLimit-Plan"] = "trial"
+    else:
+        rl_headers["X-RateLimit-Plan"] = "free"
+
     if not ok:
         resp = jsonify({"error": "Too many requests. Please slow down.", "retry_after_seconds": retry_after})
         resp.status_code = 429
@@ -2140,7 +2241,6 @@ def analyze():
         return resp
 
     pair_type, timeframe, chart_tf_raw, signal_text, manual_htf_bias = _get_payload_fields()
-
 
     missing = []
     if not pair_type:
@@ -2252,7 +2352,6 @@ def analyze():
 }
 """.strip()
 
-
     base_prompt = f"""
 You are FX CO-PILOT — a trade validation engine.
 
@@ -2346,7 +2445,7 @@ Rules:
         structure_text = (mc.get("structure") or "").strip() or "Structure context not provided."
         structure_text += f" | Live({structure_tf}): {struct_info_structure.get('structure')} ({struct_info_structure.get('details')})"
         structure_text += f" | Exec({execution_tf}): {struct_info_exec.get('structure')} ({struct_info_exec.get('details')})"
-        
+
         analysis = {
             "bias": manual_htf_bias or analysis_obj.get("bias") or "Unclear",
             "strength": analysis_obj.get("strength") or 0,
@@ -2398,7 +2497,7 @@ Rules:
             created = _store_share_report(report_payload, client_id=client_id, email=token_email)
             if created:
                 share_id = created["id"]
-                share_url = f"{_origin_base_url()}/result.html?r={share_id}"
+                share_url = f"{_public_base_url()}/result.html?r={share_id}"
                 report_payload["share_id"] = share_id
                 report_payload["share_url"] = share_url
                 analysis["share_id"] = share_id
