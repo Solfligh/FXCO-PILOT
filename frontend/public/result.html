@@ -734,7 +734,7 @@
               <p class="value" id="kpiChartTf">—</p>
             </div>
             <div class="kpi">
-              <p class="label">Direction / Bias</p>
+              <p class="label">Direction</p>
               <p class="value" id="kpiSide">—</p>
             </div>
           </div>
@@ -1622,8 +1622,21 @@
       const rrNum = parseRR(rr);
       addRow(snapshotList, "Risk/Reward", fmt(rr || "—"), rrNum !== null ? (rrNum >= 1.5 ? "OK" : "BLOCK") : "WARN");
 
-      if (a.bias) addRow(snapshotList, "Bias", fmt(a.bias), "OK");
-      if (mc.timeframe_alignment) addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
+      // Explicit Direction
+const direction = sc.direction || "";
+if (direction){
+  addRow(snapshotList, "Direction", safeUpper(direction), "OK");
+}
+
+// Higher Timeframe Bias (from backend)
+if (a.bias){
+  addRow(snapshotList, "HTF Bias", fmt(a.bias), "OK");
+}
+
+// Timeframe alignment
+if (mc.timeframe_alignment){
+  addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
+}
 
       // Action Plan
       const plan = buildActionPlan(report, tier, desk);
