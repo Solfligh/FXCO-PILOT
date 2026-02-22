@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FXCO-Pilot Trade Validation Report</title>
+  <title>FXCO-Pilot — Trade Validation Report</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,19 +88,16 @@
       gap: 10px;
       min-width: 0;
     }
-
-    /* ✅ REAL LOGO (replaces gradient blob) */
-    .logo{
-      width: 38px;
-      height: 38px;
+    .mark{
+      width: 38px; height: 38px;
       border-radius: 12px;
-      object-fit: cover;
-      box-shadow: 0 10px 30px rgba(15,23,42,.14);
-      border: 1px solid rgba(15,23,42,.10);
-      background: #fff;
+      background:
+        radial-gradient(12px 12px at 30% 30%, rgba(255,255,255,.8), transparent 55%),
+        linear-gradient(135deg, rgba(14,165,233,.95), rgba(34,197,94,.90));
+      box-shadow: 0 10px 30px rgba(14,165,233,.18);
+      border: 1px solid rgba(255,255,255,.6);
       flex: 0 0 auto;
     }
-
     .brandText{ min-width: 0; }
     .brand h1{
       font-size: 13px;
@@ -668,6 +665,9 @@
     }
   </style>
 
+  <!-- ✅ Analytics (PostHog) -->
+  <script defer src="/analytics.js"></script>
+
   <!-- ✅ Client-side PDF libraries -->
   <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
@@ -678,17 +678,9 @@
   <div class="topbar">
     <div class="topbarInner">
       <div class="brand">
-        <!-- ✅ REAL LOGO -->
-        <img
-          class="logo"
-          src="/apple-touch-icon.png?v=20260222"
-          alt="FXCO-Pilot"
-          loading="eager"
-          decoding="async"
-          onerror="this.onerror=null; this.src='/favicon.ico';"
-        />
+        <div class="mark"></div>
         <div class="brandText">
-          <h1>FXCO-Pilot Report</h1>
+          <h1>FXCO-Pilot — Report</h1>
           <p id="topMeta">Loading report…</p>
         </div>
       </div>
@@ -706,7 +698,7 @@
     <div class="pageHead">
       <div>
         <h2>Trade Validation Report</h2>
-        <div class="metaLine" id="metaLine">Generated </div>
+        <div class="metaLine" id="metaLine">Generated —</div>
       </div>
     </div>
 
@@ -791,7 +783,7 @@
           <span class="pill info" id="planHint">What to do next</span>
         </div>
         <div class="subtle" id="planIntro">
-          Clear next steps so you’re not staring at analysis text.
+          Clear next steps — so you’re not staring at analysis text.
         </div>
 
         <div class="planGrid">
@@ -843,7 +835,7 @@
               <span class="pill info" id="cleanerPill">Parsed</span>
             </div>
             <div class="subtle" style="margin-bottom:8px;">
-              This shows <b>what was understood</b> from a messy message and what’s missing.
+              This shows <b>what was understood</b> from a messy message — and what’s missing.
             </div>
             <div class="monoBox" id="cleanerBox">—</div>
           </div>
@@ -962,6 +954,15 @@
   <div class="toast" id="toast">—</div>
 
   <script>
+    // --------------------------------------------
+    // Lightweight analytics helpers (safe no-op)
+    // --------------------------------------------
+    function track(event, props){
+      try{
+        if (window.fxTrack) window.fxTrack(event, props || {});
+      }catch{}
+    }
+
     // Storage keys
     const REPORT_KEY = "fxcoReport";
     const REPORT_FALLBACK_KEY = "fxcoReport_last_v1";
@@ -1149,6 +1150,7 @@
       return null;
     }
 
+    // Desk verdict (fallback) + imbalance support
     function computeDeskVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
@@ -1167,15 +1169,17 @@
       const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const invCount = inv.length;
 
+      // Imbalance read
       const imb = deriveImbalance(a);
       const direction = sc.direction || a.bias || "";
-      const align = isBiasAligned(direction, imb.bias);
+      const align = isBiasAligned(direction, imb.bias); // true/false/null
 
       const hardBlocks = [];
       if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
       if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
       if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
       if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
+
       if (align === false && imb.text){
         hardBlocks.push("Imbalance conflicts with direction (wait for fill/confirmation or invalidate).");
       }
@@ -1302,6 +1306,7 @@
       return "";
     }
 
+    // Share helpers (client payload)
     function b64urlEncode(bytesOrString){
       const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
       const b64 = btoa(unescape(encodeURIComponent(str)));
@@ -1362,6 +1367,7 @@
       return u.toString();
     }
 
+    // Try backend share id (existing)
     async function fetchSharedReport(shareId){
       const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
         method: "GET",
@@ -1374,6 +1380,7 @@
       return await r.json();
     }
 
+    // Build clean ticket text (so Ticket/Cleaner always feels “real”)
     function normalizeSymbol(pair){
       const s = String(pair || "").trim();
       if (!s) return "";
@@ -1515,7 +1522,7 @@
       }
 
       if (hard.length){
-        risk.push("Hard blocks exist do not force execution.");
+        risk.push("Hard blocks exist — do not force execution.");
       } else {
         risk.push("Keep risk tight. Use position sizing and respect SL.");
       }
@@ -1530,7 +1537,7 @@
       const mc = a.market_context || {};
       const ah = a.assessment_horizon || {};
 
-      document.getElementById("metaLine").textContent = `Generated ${stampFrom(report.generated_at || Date.now())}`;
+      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
       document.getElementById("topMeta").textContent = deriveTopMeta(report);
 
       const backendTierRaw =
@@ -1613,17 +1620,23 @@
       const rrNum = parseRR(rr);
       addRow(snapshotList, "Risk/Reward", fmt(rr || "—"), rrNum !== null ? (rrNum >= 1.5 ? "OK" : "BLOCK") : "WARN");
 
+      // Explicit Direction
       const direction = sc.direction || "";
       if (direction){
         addRow(snapshotList, "Direction", safeUpper(direction), "OK");
       }
+
+      // Higher Timeframe Bias (from backend)
       if (a.bias){
         addRow(snapshotList, "HTF Bias", fmt(a.bias), "OK");
       }
+
+      // Timeframe alignment
       if (mc.timeframe_alignment){
         addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
       }
 
+      // Action Plan
       const plan = buildActionPlan(report, tier, desk);
       setBullets(document.getElementById("planNow"), plan.now, "—");
       setBullets(document.getElementById("planIf"), plan.onlyIf, "—");
@@ -1636,6 +1649,7 @@
       else if (tier === "EXECUTE_IF") primary.textContent = "Show entry conditions";
       else primary.textContent = "Execution checklist";
 
+      // Ticket + cleaner
       const cleanTicket = buildCleanTicket(report);
       const cleaner = buildCleanerSummary(report);
 
@@ -1668,6 +1682,7 @@
         cleanerPill.className = "pill good";
       }
 
+      // Market Context (simplified)
       const sTF = (ah.structure_tf || "").toString().trim();
       document.getElementById("ctxStructure").textContent = fmt(mc.structure || (sTF ? ("Structure TF " + sTF) : "—"));
       document.getElementById("ctxStructureS").textContent =
@@ -1681,6 +1696,7 @@
       document.getElementById("ctxMomentumS").textContent =
         fmt(a.structure ? ("Structure note: " + a.structure) : (a.volatility ? ("Volatility: " + a.volatility) : "—"));
 
+      // Imbalance tile
       const imbBiasText = imb.bias ? imb.bias : "";
       const imbStateText = imb.state ? imb.state : "";
       document.getElementById("ctxImbalance").textContent = fmt(imb.text || "—");
@@ -1693,6 +1709,7 @@
       document.getElementById("ctxImbalanceS").textContent =
         fmt((extraText ? (extraText + " • ") : "") + alignText);
 
+      // Risks & Flags
       const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : (desk.hardBlocks || []);
       const warnings = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const conditions = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : (desk.conditions || []);
@@ -1736,6 +1753,7 @@
         condBox.style.display = "none";
       }
 
+      // Reasoning (human-friendly)
       const reasoning =
         (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
         : (typeof a.reasoning === "string" && a.reasoning.trim()) ? a.reasoning.trim()
@@ -1767,14 +1785,38 @@
         share_id: report.share_id || "",
         share_url: report.share_url || ""
       };
+
+      // ✅ Analytics: report rendered (core conversion)
+      track("fxco_report_rendered", {
+        pair: window.__fxco_copy.pair || "",
+        timeframe: window.__fxco_copy.timeframe || "",
+        chart_tf: window.__fxco_copy.chart_tf || "",
+        direction: window.__fxco_copy.direction || "",
+        tier: tier || "",
+        score: score,
+        confidence: confidence,
+        has_share_id: !!(window.__fxco_copy.share_id || getQueryParam("r")),
+        loaded_via: getQueryParam("r") ? "share_id" : (getQueryParam("p") ? "payload" : "local")
+      });
     }
 
-    document.getElementById("btnBack").addEventListener("click", () => history.back());
-    document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
+    // -------------------------
+    // Actions
+    // -------------------------
+    document.getElementById("btnBack").addEventListener("click", () => {
+      track("fxco_report_back_click", {});
+      history.back();
+    });
+
+    document.getElementById("btnNew").addEventListener("click", () => {
+      track("fxco_report_new_validation_click", {});
+      window.location.href = "/";
+    });
 
     function scrollToPlan(){
       const el = document.getElementById("actionPlanCard");
       if (!el) return;
+      track("fxco_report_action_plan_open", {});
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     document.getElementById("btnPrimaryAction").addEventListener("click", scrollToPlan);
@@ -1796,23 +1838,36 @@
 
     document.getElementById("btnCopyTicket").addEventListener("click", () => {
       const d = window.__fxco_copy || {};
+      track("fxco_report_ticket_copied", {
+        pair: d.pair || "",
+        tier: d.tier || "",
+        score: d.score
+      });
       copyText(d.ticketText || "");
     });
     document.getElementById("btnCopyTicketMini").addEventListener("click", () => {
       const d = window.__fxco_copy || {};
+      track("fxco_report_ticket_copied", {
+        pair: d.pair || "",
+        tier: d.tier || "",
+        score: d.score
+      });
       copyText(d.ticketText || "");
     });
 
     document.getElementById("btnCopyJson").addEventListener("click", () => {
       const el = document.getElementById("rawJsonBox");
+      track("fxco_report_json_copied", {});
       copyText(el ? el.textContent : "");
     });
 
     document.getElementById("btnCopyReasoning").addEventListener("click", () => {
       const d = window.__fxco_copy || {};
+      track("fxco_report_reasoning_copied", { tier: d.tier || "" });
       copyText(d.reasoning || "");
     });
 
+    // Share: prefer backend share_id, else generate payload URL
     document.getElementById("btnShare").addEventListener("click", async () => {
       const btn = document.getElementById("btnShare");
       const old = btn.textContent;
@@ -1826,15 +1881,19 @@
 
         const shareId = (d.share_id || "").trim() || getQueryParam("r");
         if (shareId){
-          const url = new URL(window.location.href);
-          url.searchParams.set("r", shareId);
-          url.searchParams.delete("p");
-          url.searchParams.delete("pm");
+          const url = buildShareUrlFromId(shareId);
 
           if (navigator.share){
-            try { await navigator.share({ title:"FXCO-Pilot Report", url: url.toString() }); toast("Shared ✓"); return; } catch {}
+            try {
+              await navigator.share({ title:"FXCO-Pilot Report", url });
+              track("fxco_report_shared_native", { method:"share_id" });
+              toast("Shared ✓");
+              return;
+            } catch {}
           }
-          await copyText(url.toString());
+
+          await copyText(url);
+          track("fxco_report_share_link_copied", { method:"share_id" });
           toast("Share link copied ✓");
           return;
         }
@@ -1855,23 +1914,26 @@
 
         const json = JSON.stringify(shareObj);
         const { payload, mode } = await compressToUrlSafe(json);
-        const u = new URL(window.location.href);
-        u.searchParams.delete("r");
-        u.searchParams.set("p", payload);
-        if (mode && mode !== "b64json") u.searchParams.set("pm", mode);
-        else u.searchParams.delete("pm");
+        const url = buildShareUrlFromPayload(payload, mode);
 
         try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
 
         if (navigator.share){
-          try { await navigator.share({ title:"FXCO-Pilot Report", url: u.toString() }); toast("Shared ✓"); return; } catch {}
+          try {
+            await navigator.share({ title:"FXCO-Pilot Report", url });
+            track("fxco_report_shared_native", { method:"payload", mode });
+            toast("Shared ✓");
+            return;
+          } catch {}
         }
 
-        await copyText(u.toString());
+        await copyText(url);
+        track("fxco_report_share_link_copied", { method:"payload", mode });
         toast("Share link copied ✓");
 
       } catch (e){
         console.error(e);
+        track("fxco_report_share_failed", { error: String(e && e.message ? e.message : e) });
         alert(
           "Could not share this report.\n\nIf the report text is very long, the URL may exceed limits.\nUse backend share IDs for long reports."
         );
@@ -1881,6 +1943,7 @@
       }
     });
 
+    // PDF: resilient lib detection + restore UI
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
@@ -1937,9 +2000,16 @@
         const fname = `FXCO-Pilot_Report_${String(d.pair||"PAIR").replace(/\W+/g,"_")}_${Date.now()}.pdf`;
         pdf.save(fname);
 
+        track("fxco_report_pdf_downloaded", {
+          pair: d.pair || "",
+          tier: d.tier || "",
+          score: d.score
+        });
+
         toast("PDF downloaded ✓");
       } catch (e){
         console.error(e);
+        track("fxco_report_pdf_failed", { error: String(e && e.message ? e.message : e) });
         alert("PDF export failed. Use browser Print → Save as PDF as a fallback.");
       } finally {
         if (actions) actions.style.display = prevDisplay;
@@ -1948,10 +2018,20 @@
       }
     });
 
+    // -------------------------
+    // Init
+    // -------------------------
     (function init(){
       const shareId = getQueryParam("r");
       const payload = getQueryParam("p");
       const payloadMode = getQueryParam("pm") || "b64json";
+
+      // page view + routing context
+      track("fxco_report_page_view", {
+        has_r: !!shareId,
+        has_p: !!payload,
+        pm: payloadMode || ""
+      });
 
       if (payload){
         (async () => {
@@ -1962,6 +2042,7 @@
             toast("Loaded shared report");
           } catch (e){
             console.error(e);
+            track("fxco_report_load_failed", { via:"payload", error: String(e && e.message ? e.message : e) });
             alert("Failed to load shared report payload.\nIt may be corrupted or too long.");
             const raw = getStoredReportRaw();
             if (raw){
@@ -2009,6 +2090,7 @@
             toast("Loaded shared report");
           } catch (e){
             console.error(e);
+            track("fxco_report_load_failed", { via:"share_id", error: String(e && e.message ? e.message : e) });
             alert(String(e && e.message ? e.message : e) || "Failed to load shared report.");
             const raw = getStoredReportRaw();
             if (raw){
