@@ -6,7 +6,7 @@
   // ✅ 1) Create a PostHog project and paste your values here:
   // - POSTHOG_KEY: Project API Key
   // - POSTHOG_HOST: usually "https://app.posthog.com" (cloud) or your self-host URL
-  const POSTHOG_KEY = "PASTE_YOUR_POSTHOG_PROJECT_API_KEY_HERE";
+  const POSTHOG_KEY = "phc_qPTx6s4nQRSxDY6bPdZ072hBw7a62uqtSOOCJywP4Oi";
   const POSTHOG_HOST = "https://app.posthog.com";
 
   // Optional: identify user if you have an email/user id stored
