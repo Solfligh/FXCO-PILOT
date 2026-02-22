@@ -3,11 +3,27 @@
 */
 
 (function () {
-  // ✅ 1) Create a PostHog project and paste your values here:
-  // - POSTHOG_KEY: Project API Key
-  // - POSTHOG_HOST: usually "https://app.posthog.com" (cloud) or your self-host URL
+  // Toggle debug logs in console (set to false after confirming)
+  const DEBUG = true;
+
+  // ✅ Your PostHog Project API Key
   const POSTHOG_KEY = "phc_qPTx6s4nQRSxDY6bPdZ072hBw7a62uqtSOOCJywP4Oi";
-  const POSTHOG_HOST = "https://app.posthog.com";
+
+  // ✅ IMPORTANT:
+  // Your dashboard is on us.posthog.com -> ingestion must be US:
+  // api_host: https://us.i.posthog.com
+  const POSTHOG_API_HOST = "https://us.i.posthog.com";
+
+  // ✅ Load script from US assets CDN (reliable for US region)
+  const POSTHOG_ASSET_HOST = "https://us-assets.i.posthog.com";
+
+  function log() {
+    if (!DEBUG) return;
+    try {
+      // eslint-disable-next-line no-console
+      console.log.apply(console, ["[PostHog]", ...arguments]);
+    } catch {}
+  }
 
   // Optional: identify user if you have an email/user id stored
   function getUserId() {
@@ -56,21 +72,40 @@
     }
   }
 
+  // -------------------------
+  // Safe queue (so tracking works even before load completes)
+  // -------------------------
+  const _queue = [];
+  function enqueueCapture(event, props) {
+    _queue.push({ event, props: props || {} });
+  }
+  function flushQueue() {
+    try {
+      if (!window.posthog || !window.posthog.__loaded) return;
+      while (_queue.length) {
+        const item = _queue.shift();
+        window.posthog("capture", item.event, item.props);
+      }
+    } catch {}
+  }
+
   // Load PostHog
   function loadPostHog(cb) {
     if (!POSTHOG_KEY || POSTHOG_KEY.includes("PASTE_")) {
       // Don’t break the app if not configured
       window.fxTrack = function () {};
       window.fxIdentify = function () {};
+      log("Not configured: POSTHOG_KEY missing.");
       return;
     }
 
     if (window.posthog && window.posthog.__loaded) {
+      log("Already loaded.");
       cb && cb();
       return;
     }
 
-    // Minimal PostHog snippet (no autocapture by default)
+    // Minimal PostHog queue function before script loads
     (function (d, w) {
       w.posthog =
         w.posthog ||
@@ -82,22 +117,33 @@
 
       var s = d.createElement("script");
       s.async = true;
-      s.src = POSTHOG_HOST.replace(/\/$/, "") + "/static/array.js";
+      s.src = POSTHOG_ASSET_HOST.replace(/\/$/, "") + "/static/array.js";
       s.onload = function () {
         w.posthog.__loaded = true;
+        log("Script loaded:", s.src);
+        try {
+          flushQueue();
+        } catch {}
         cb && cb();
       };
+      s.onerror = function () {
+        log("Failed to load script:", s.src);
+      };
       d.head.appendChild(s);
+      log("Loading script:", s.src);
     })(document, window);
 
+    // Init
     window.posthog("init", POSTHOG_KEY, {
-      api_host: POSTHOG_HOST,
+      api_host: POSTHOG_API_HOST,
       autocapture: false,
       capture_pageview: true,
       capture_pageleave: true,
       persistence: "localStorage",
       disable_session_recording: true // turn on later if you want
     });
+
+    log("Init called:", { api_host: POSTHOG_API_HOST });
   }
 
   function identifyIfPossible() {
@@ -107,18 +153,28 @@
         window.posthog("identify", uid, {
           tenant: getTenant() || undefined
         });
+        log("Identify:", uid);
       }
     } catch {}
   }
 
   function track(event, props) {
     try {
-      if (!window.posthog || !window.posthog.__loaded) return;
       const base = {
         app: "fxco-pilot",
         tenant: getTenant() || undefined
       };
-      window.posthog("capture", event, Object.assign(base, props || {}));
+      const payload = Object.assign(base, props || {});
+
+      // If not ready yet, queue and flush later
+      if (!window.posthog || !window.posthog.__loaded) {
+        enqueueCapture(event, payload);
+        log("Queued:", event, payload);
+        return;
+      }
+
+      window.posthog("capture", event, payload);
+      log("Captured:", event, payload);
     } catch {}
   }
 
@@ -140,5 +196,11 @@
     if (meta && (meta.pair_type || meta.timeframe || meta.chart_tf)) {
       track("fxco_context_seen", meta);
     }
+
+    // A guaranteed test event (removes "Waiting for events")
+    track("fxco_loaded", {
+      page: location.pathname,
+      title: document.title
+    });
   });
 })();
