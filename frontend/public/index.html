@@ -644,6 +644,7 @@
       opacity: 0.95;
       display:none;
       line-height: 1.5;
+      white-space: pre-wrap;
     }
     .auth-ok { color: #b8ffdd; }
     .auth-danger { color: #ff9aa2; }
@@ -916,16 +917,16 @@
         <option>1D</option>
         <option>1W</option>
       </select>
-        </select>
+      <!-- ✅ FIX: removed stray </select> that was here -->
 
       <label for="htfBias">Higher Timeframe Bias</label>
       <select id="htfBias">
-      <option value="">Select HTF Bias…</option>
-      <option>Bullish</option>
-      <option>Bearish</option>
-      <option>Range</option>
-      <option>Unclear</option>
-     </select>
+        <option value="">Select HTF Bias…</option>
+        <option>Bullish</option>
+        <option>Bearish</option>
+        <option>Range</option>
+        <option>Unclear</option>
+      </select>
 
       <label for="chart">Chart (optional)</label>
       <input type="file" id="chart" accept="image/*" />
@@ -1480,22 +1481,118 @@
       el.className = "auth-status " + (kind || "");
     }
 
+    // ✅ NEW: best-effort server refresh using your saved token (won’t break if endpoint doesn’t exist)
+    async function authRefreshTrialFromServer() {
+      const token = getAuthToken();
+      if (!token || !navigator.onLine) return false;
+
+      const endpoints = [
+        "/api/auth/me",
+        "/api/auth/status",
+        "/api/auth/session"
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(apiUrl(ep), {
+            method: "GET",
+            headers: { "X-FXCO-Auth": token, "X-FXCO-Client": FXCO_CLIENT_ID },
+            cache: "no-store"
+          });
+
+          if (!res.ok) continue;
+
+          const j = await res.json().catch(() => null);
+          if (j && (j.ok || j.active || j.user)) {
+            const trialEnds = j.trial_ends || j.trialEnds || j.trial_end || 0;
+            const email = j.email || j.user?.email || getAuthEmail() || "";
+            if (trialEnds) {
+              try { localStorage.setItem(TRIAL_END_KEY, String(trialEnds)); } catch {}
+            }
+            if (email) {
+              try { localStorage.setItem(AUTH_EMAIL_KEY, String(email)); } catch {}
+            }
+            return true;
+          }
+        } catch {}
+      }
+      return false;
+    }
+
+    // ✅ NEW: if already signed in + trial active, don’t force OTP
+    async function authAutoResume(reason) {
+      const token = getAuthToken();
+      const active = token && isTrialActiveLocal();
+
+      if (active) {
+        updateTrialButton();
+        applyPaymentGateUI();
+        return true;
+      }
+
+      // If token exists but local trial end is missing/expired, try refresh from server
+      if (token) {
+        const refreshed = await authRefreshTrialFromServer();
+        if (refreshed && isTrialActiveLocal()) {
+          updateTrialButton();
+          applyPaymentGateUI();
+          return true;
+        }
+      }
+
+      return false;
+    }
+
     function openAuth() {
       document.getElementById("authBackdrop").style.display = "block";
       document.getElementById("authModal").style.display = "block";
+
       const email = getAuthEmail();
       if (email) document.getElementById("authEmail").value = email;
+
       setAuthStatus("", "");
+
+      // ✅ NEW: auto-resume if already active
+      authAutoResume("openAuth").then((ok) => {
+        if (ok) {
+          setAuthStatus("You’re already signed in ✅ Trial is active.\n(You don’t need to request OTP again.)", "auth-ok");
+          // Optional: close after a moment to feel “automatic”
+          setTimeout(() => {
+            // only close if still open
+            const modal = document.getElementById("authModal");
+            if (modal && modal.style.display === "block") closeAuth();
+          }, 900);
+        } else {
+          // if not active, keep modal open normally
+          const token = getAuthToken();
+          if (token && !isTrialActiveLocal()) {
+            setAuthStatus("Session found, but trial looks expired locally.\nIf you think it’s active, click “Use saved” or try sending a code.", "");
+          }
+        }
+      });
     }
+
     function closeAuth() {
       document.getElementById("authBackdrop").style.display = "none";
       document.getElementById("authModal").style.display = "none";
       setAuthStatus("", "");
     }
 
-    function authPasteSavedEmail() {
+    async function authPasteSavedEmail() {
       const e = getAuthEmail();
       if (e) document.getElementById("authEmail").value = e;
+
+      // ✅ NEW: attempt to resume without sending OTP
+      setAuthStatus("Checking saved session…", "");
+      const ok = await authAutoResume("useSaved");
+      if (ok) {
+        setAuthStatus("Signed in ✅ Trial active.", "auth-ok");
+        updateTrialButton();
+        applyPaymentGateUI();
+        closeAuth();
+      } else {
+        setAuthStatus("No active saved session found.\nUse “Send code” to re-verify.", "");
+      }
     }
 
     async function authSendCode() {
@@ -1504,6 +1601,15 @@
         setAuthStatus("Enter a valid email.", "auth-danger");
         return;
       }
+
+      // ✅ If already active, don’t spam OTP
+      const already = await authAutoResume("sendCodeClick");
+      if (already) {
+        setAuthStatus("Already signed in ✅ No OTP needed.", "auth-ok");
+        closeAuth();
+        return;
+      }
+
       setAuthStatus("Sending code…", "");
       try {
         const res = await fetch(apiUrl("/api/auth/start"), {
@@ -1512,10 +1618,22 @@
           body: JSON.stringify({ email })
         });
         const j = await res.json().catch(() => null);
+
+        // ✅ If backend decides to “auto-activate” (some backends do), accept token here too
+        if (res.ok && j?.ok && j?.token) {
+          setAuth(email, j.token, j.trial_ends || 0);
+          setAuthStatus("Signed in ✅ Trial active. (No OTP required.)", "auth-ok");
+          updateTrialButton();
+          applyPaymentGateUI();
+          closeAuth();
+          return;
+        }
+
         if (!res.ok || !j?.ok) {
           setAuthStatus("Failed: " + (j?.error || "Unable to send OTP."), "auth-danger");
           return;
         }
+
         try { localStorage.setItem(AUTH_EMAIL_KEY, email); } catch {}
         setAuthStatus("Code sent. Check your inbox (and spam).", "auth-ok");
       } catch (e) {
@@ -2066,7 +2184,6 @@
 
     function focusMissingFromSignal(){
       const missing = window.__fxco_signal_missing || [];
-      // We can't auto-fill without guessing — we guide.
       const el = document.getElementById("signal");
       if (el) el.focus();
       if (missing.length) {
@@ -2192,12 +2309,12 @@
     // -------------------------
     // ✅ Field guard helpers (UX)
     // -------------------------
-   function clearFieldWarn(){
-    ["pairType","timeframe","chartTf","htfBias","signal"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.remove("field-warn");
-   });
-  }
+    function clearFieldWarn(){
+      ["pairType","timeframe","chartTf","htfBias","signal"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove("field-warn");
+      });
+    }
 
     function warnField(id){
       const el = document.getElementById(id);
@@ -2249,9 +2366,9 @@
       }
       if (!htfBias) {
         warnField("htfBias");
-      document.getElementById("result").innerHTML =
-     "<b style='color:#ff6b6b'>Missing:</b> Select your <b>Higher Timeframe Bias</b> (Bullish/Bearish/Range/Unclear).";
-    return;
+        document.getElementById("result").innerHTML =
+          "<b style='color:#ff6b6b'>Missing:</b> Select your <b>Higher Timeframe Bias</b> (Bullish/Bearish/Range/Unclear).";
+        return;
       }
 
       if (!signal) { warnField("signal"); return; }
@@ -2550,7 +2667,13 @@
       showRiskModalIfNeeded();
       loadPaystackConfig();
       verifyPaystackIfReturned();
-      updateTrialButton();
+
+      // ✅ NEW: auto-resume session on boot (so verified users are “just logged in”)
+      authAutoResume("boot").finally(() => {
+        updateTrialButton();
+        applyPaymentGateUI();
+      });
+
       renderLocalHistory();
       updateViewReportButton();
 
