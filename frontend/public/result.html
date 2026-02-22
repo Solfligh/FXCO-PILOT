@@ -88,7 +88,21 @@
       gap: 10px;
       min-width: 0;
     }
-    .mark{
+
+    /* ✅ LOGO: use your real file name (public/fxco_icon_base_1024.png) */
+    .markImg{
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      object-fit: contain;
+      flex: 0 0 auto;
+      background: rgba(255,255,255,.55);
+      border: 1px solid rgba(15,23,42,.08);
+      box-shadow: 0 10px 22px rgba(15,23,42,.10);
+      display: block;
+    }
+    /* Fallback mark (only shown if image fails) */
+    .markFallback{
       width: 38px; height: 38px;
       border-radius: 12px;
       background:
@@ -97,7 +111,9 @@
       box-shadow: 0 10px 30px rgba(14,165,233,.18);
       border: 1px solid rgba(255,255,255,.6);
       flex: 0 0 auto;
+      display: none;
     }
+
     .brandText{ min-width: 0; }
     .brand h1{
       font-size: 13px;
@@ -491,6 +507,7 @@
       align-items:center;
       gap: 8px;
       line-height: 1;
+      transition: transform .12s ease, box-shadow .12s ease;
     }
     .miniBtn:hover{ transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15,23,42,.08); }
     .monoBox{
@@ -675,7 +692,18 @@
   <div class="topbar">
     <div class="topbarInner">
       <div class="brand">
-        <div class="mark"></div>
+        <!-- ✅ Uses your real file name in /public -->
+        <img
+          class="markImg"
+          id="brandLogo"
+          src="/fxco_icon_base_1024.png"
+          alt="FXCO-Pilot"
+          loading="eager"
+          decoding="async"
+          onerror="(function(){ try{ document.getElementById('brandLogo').style.display='none'; document.getElementById('brandLogoFallback').style.display='block'; }catch(e){} })()"
+        />
+        <div class="markFallback" id="brandLogoFallback" aria-hidden="true"></div>
+
         <div class="brandText">
           <h1>FXCO-Pilot — Report</h1>
           <p id="topMeta">Loading report…</p>
@@ -1100,11 +1128,6 @@
     // -------------------------
     function deriveImbalance(a){
       const mc = a?.market_context || {};
-      // Accept a few possible shapes so backend can evolve freely.
-      // Examples:
-      // a.imbalance = "Bullish FVG below price"
-      // a.imbalance = { bias:"bullish", state:"present", note:"Unfilled FVG under current price" }
-      // mc.imbalance = ...
       const raw = a?.imbalance ?? mc?.imbalance ?? a?.inefficiency ?? mc?.inefficiency ?? a?.fvg ?? mc?.fvg ?? null;
 
       if (!raw) return { text:"", bias:"", state:"" };
@@ -1162,25 +1185,20 @@
       const inv = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const invCount = inv.length;
 
-      // Imbalance read
       const imb = deriveImbalance(a);
       const direction = sc.direction || a.bias || "";
-      const align = isBiasAligned(direction, imb.bias); // true/false/null
+      const align = isBiasAligned(direction, imb.bias);
 
       const hardBlocks = [];
       if (!hasEntry || !hasSL || !hasTP) hardBlocks.push("Missing trade ticket fields (Entry/SL/TP).");
       if (rr !== null && rr < 1.5) hardBlocks.push("RR < 1.5 (fails minimum expectancy rule).");
       if (conf < 55) hardBlocks.push("Confidence < 55 (edge not proven).");
       if (invCount >= 2) hardBlocks.push("Multiple invalidation warnings (setup fragile).");
-
-      // Imbalance can become a “hard stop” only if it explicitly conflicts (rare, but useful)
-      // Example: you want to buy but there is a stated bearish imbalance overhead that should be filled first.
       if (align === false && imb.text){
         hardBlocks.push("Imbalance conflicts with direction (wait for fill/confirmation or invalidate).");
       }
 
       const hardNo = hardBlocks.length > 0;
-
       const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
       let score =
@@ -1189,11 +1207,9 @@
         (clr * 0.20) +
         (rrScore * 0.10);
 
-      // Add edge if imbalance aligns and is actionable (present/unfilled)
       if (align === true && (imb.state === "UNFILLED" || imb.state === "PRESENT" || imb.state === "")){
         score += 6;
       }
-      // Penalize if imbalance is mentioned but unclear/contradictory
       if (align === null && imb.text){
         score -= 2;
       }
@@ -1245,8 +1261,6 @@
       if (tier === "DO_NOT_TRADE") {
         conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
       }
-
-      // Imbalance-driven conditions (only if we actually have imbalance info)
       if (imb.text){
         if (align === true){
           conditions.push("Use imbalance as a location: prefer entry on retest / fill reaction, not mid-air.");
@@ -1270,8 +1284,6 @@
     }
 
     function parseReport(raw){
-      // Expected storage from index.html:
-      // { pair_type, timeframe, chart_tf, signal_input, analysis: {...}, raw: {...}, generated_at }
       const r = raw || {};
       if (typeof r === "string"){
         return { pair_type:"", timeframe:"", chart_tf:"", signal_input:"", analysis:{ reasoning_text: r }, raw: { }, generated_at: Date.now() };
@@ -1367,7 +1379,6 @@
       return u.toString();
     }
 
-    // Try backend share id (existing)
     async function fetchSharedReport(shareId){
       const r = await fetch(`/api/report/${encodeURIComponent(shareId)}`, {
         method: "GET",
@@ -1380,7 +1391,6 @@
       return await r.json();
     }
 
-    // Build clean ticket text (so Ticket/Cleaner always feels “real”)
     function normalizeSymbol(pair){
       const s = String(pair || "").trim();
       if (!s) return "";
@@ -1500,7 +1510,6 @@
       if (sc.stop_loss == null || String(sc.stop_loss).trim() === "") onlyIf.push("Stop loss is defined (exact level).");
       if (!Array.isArray(sc.targets) || !sc.targets.length) onlyIf.push("At least TP1 is defined.");
 
-      // Imbalance conditions (clean and institutional)
       if (imb.text){
         if (align === true){
           onlyIf.push("Use imbalance as location: prefer entry on retest/fill reaction (not mid-air).");
@@ -1510,7 +1519,6 @@
           onlyIf.push("Clarify imbalance (FVG/inefficiency) location before execution.");
         }
       } else if (tier === "EXECUTE" || tier === "EXECUTE_IF"){
-        // soft suggestion, not a blocker
         onlyIf.push("Optional: mark any nearby imbalance/FVG on chart; avoid entering into it blindly.");
       }
 
@@ -1622,21 +1630,13 @@
       const rrNum = parseRR(rr);
       addRow(snapshotList, "Risk/Reward", fmt(rr || "—"), rrNum !== null ? (rrNum >= 1.5 ? "OK" : "BLOCK") : "WARN");
 
-      // Explicit Direction
-const direction = sc.direction || "";
-if (direction){
-  addRow(snapshotList, "Direction", safeUpper(direction), "OK");
-}
+      // ✅ Snapshot fix: show Direction (signal direction) AND HTF Bias separately
+      const directionOnly = String(sc.direction || "").trim();
+      const biasOnly = String(a.bias || "").trim();
+      if (directionOnly) addRow(snapshotList, "Direction", safeUpper(directionOnly), "OK");
+      if (biasOnly) addRow(snapshotList, "HTF Bias", fmt(biasOnly), "OK");
 
-// Higher Timeframe Bias (from backend)
-if (a.bias){
-  addRow(snapshotList, "HTF Bias", fmt(a.bias), "OK");
-}
-
-// Timeframe alignment
-if (mc.timeframe_alignment){
-  addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
-}
+      if (mc.timeframe_alignment) addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
 
       // Action Plan
       const plan = buildActionPlan(report, tier, desk);
@@ -1647,7 +1647,7 @@ if (mc.timeframe_alignment){
 
       const primary = document.getElementById("btnPrimaryAction");
       if (tier === "DO_NOT_TRADE") primary.textContent = "What would make this valid?";
-      else if (tier === "WAIT") primary.textContent = "No position. Set alerts  Monitor and reassess on structure shift.";
+      else if (tier === "WAIT") primary.textContent = "No position. Set alerts • Monitor and reassess on structure shift.";
       else if (tier === "EXECUTE_IF") primary.textContent = "Show entry conditions";
       else primary.textContent = "Execution checklist";
 
@@ -1898,13 +1898,21 @@ if (mc.timeframe_alignment){
       }
     });
 
-    // PDF: resilient lib detection + restore UI
+    // ✅ PDF snapshot fix: temporarily remove sticky behavior + hide UI + scroll to top
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
 
       const actions = document.querySelector(".topbar .actions");
-      const prevDisplay = actions ? actions.style.display : "";
+      const topbar = document.querySelector(".topbar");
+      const toastEl = document.getElementById("toast");
+
+      const prevActionsDisplay = actions ? actions.style.display : "";
+      const prevTopbarPos = topbar ? topbar.style.position : "";
+      const prevTopbarBoxShadow = topbar ? topbar.style.boxShadow : "";
+      const prevToastDisplay = toastEl ? toastEl.style.display : "";
+
+      const prevScroll = { x: window.scrollX, y: window.scrollY };
 
       try{
         const html2canvasFn = window.html2canvas;
@@ -1920,13 +1928,28 @@ if (mc.timeframe_alignment){
         btn.disabled = true;
 
         if (actions) actions.style.display = "none";
+        if (toastEl) toastEl.style.display = "none";
+
+        // Make header static so canvas capture doesn’t duplicate/clip the sticky bar
+        if (topbar){
+          topbar.style.position = "static";
+          topbar.style.boxShadow = "none";
+        }
+
+        // Go to top for consistent capture
+        window.scrollTo(0, 0);
+        await new Promise(r => setTimeout(r, 80));
 
         const root = document.getElementById("reportRoot");
         const canvas = await html2canvasFn(root, {
           scale: 2,
           useCORS: true,
           backgroundColor: "#ffffff",
-          scrollY: -window.scrollY
+          scrollX: 0,
+          scrollY: 0,
+          ignoreElements: (el) => {
+            return el && (el.id === "toast");
+          }
         });
 
         const imgData = canvas.toDataURL("image/png");
@@ -1960,7 +1983,17 @@ if (mc.timeframe_alignment){
         console.error(e);
         alert("PDF export failed. Use browser Print → Save as PDF as a fallback.");
       } finally {
-        if (actions) actions.style.display = prevDisplay;
+        // Restore UI state
+        if (actions) actions.style.display = prevActionsDisplay;
+        if (topbar){
+          topbar.style.position = prevTopbarPos;
+          topbar.style.boxShadow = prevTopbarBoxShadow;
+        }
+        if (toastEl) toastEl.style.display = prevToastDisplay;
+
+        // Restore scroll
+        window.scrollTo(prevScroll.x, prevScroll.y);
+
         btn.textContent = old;
         btn.disabled = false;
       }
@@ -2022,10 +2055,10 @@ if (mc.timeframe_alignment){
         (async () => {
           try{
             const shared = await fetchSharedReport(shareId);
-            const payload = shared.report || shared.data || shared;
-            const parsed = parseReport(payload);
+            const payloadObj = shared.report || shared.data || shared;
+            const parsed = parseReport(payloadObj);
             if (!parsed.share_id) parsed.share_id = shareId;
-            ensureLocalFallback(payload);
+            ensureLocalFallback(payloadObj);
             render(parsed);
             toast("Loaded shared report");
           } catch (e){
