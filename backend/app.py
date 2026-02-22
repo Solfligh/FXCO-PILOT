@@ -727,6 +727,66 @@ def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
         return None
 
 
+   # ==========================
+# Paystack webhook helpers (IDEMPOTENCY + signature verify)
+# ==========================
+def _paystack_sig_ok(raw_body: bytes, signature: str) -> bool:
+    """
+    Paystack sends X-Paystack-Signature = HMAC SHA512 of raw body using secret key.
+    """
+    try:
+        sig = (signature or "").strip()
+        if not sig or not PAYSTACK_SECRET_KEY:
+            return False
+        mac = hmac.new(PAYSTACK_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
+        return hmac.compare_digest(mac, sig)
+    except Exception:
+        return False
+
+
+def _redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> Optional[bool]:
+    """
+    SET key value NX EX ttl
+    Returns True if set, False if already exists, None if Redis not available.
+    """
+    if not _redis_ok():
+        return None
+    try:
+        res = _redis_cmd(["SET", key, value, "NX", "EX", int(ttl_seconds)])
+        # Upstash returns "OK" if set, None if not set
+        if res is None:
+            return False
+        return (str(res).upper() == "OK")
+    except Exception:
+        return None
+
+
+def _sb_mark_event_once(event_key: str, payload: dict) -> bool:
+    """
+    Durable idempotency fallback: insert a row with UNIQUE(event_key).
+    If it already exists => treat as already processed.
+    Requires a table (SQL provided below).
+    """
+    if not _sb_ok():
+        return False
+
+    row = {
+        "event_key": event_key,
+        "payload": payload,
+        "created_at": _dt_to_iso(_utc_now_dt()),
+    }
+
+    created = _sb_insert_returning("fxco_paystack_events", row)
+    if created:
+        return True
+
+    # If insert failed, it might be duplicate (unique constraint) OR table missing.
+    # We treat it as "not safe to process again" only if we can confirm it exists.
+    existing = _sb_select_one("fxco_paystack_events", {"event_key": event_key})
+    return bool(existing)
+
+
+
 def _redis_ping() -> bool:
     res = _redis_cmd(["PING"])
     return (str(res or "")).upper() == "PONG"
@@ -1164,6 +1224,90 @@ def paystack_config():
             ),
             200,
         )
+
+
+@app.post("/api/paystack/webhook")
+def paystack_webhook():
+    """
+    Paystack will POST events here.
+    This must be:
+      - signature verified
+      - idempotent (process once)
+      - fast (always respond 200 after validation)
+    """
+    # Paystack signature header
+    sig = (request.headers.get("X-Paystack-Signature") or "").strip()
+
+    raw_body = request.get_data(cache=False, as_text=False) or b""
+    if not _paystack_sig_ok(raw_body, sig):
+        # Do NOT leak details; Paystack expects 200/4xx.
+        return jsonify({"ok": False, "error": "Invalid signature"}), 401
+
+    try:
+        event = json.loads(raw_body.decode("utf-8") or "{}")
+    except Exception:
+        return jsonify({"ok": False, "error": "Invalid JSON"}), 400
+
+    # Build an event idempotency key
+    # Prefer Paystack event id if present; otherwise fallback to reference.
+    event_id = str(event.get("id") or "").strip()
+    ev = str(event.get("event") or "").strip()
+
+    data = event.get("data") if isinstance(event, dict) else None
+    if not isinstance(data, dict):
+        data = {}
+
+    reference = str(data.get("reference") or "").strip()
+    event_key = ""
+    if event_id:
+        event_key = f"ps:event:{event_id}"
+    elif reference:
+        event_key = f"ps:ref:{reference}"
+    else:
+        # Worst-case fallback: hash the payload (still idempotent per identical retry)
+        event_key = "ps:hash:" + hashlib.sha256(raw_body).hexdigest()
+
+    # 1) Redis idempotency (fast)
+    # Keep it for 14 days (webhook retries won’t exceed this, and it avoids reprocessing)
+    redis_res = _redis_set_nx_ex(f"fxco:{event_key}", "1", ttl_seconds=14 * 24 * 60 * 60)
+    if redis_res is False:
+        # Already processed
+        return jsonify({"ok": True, "duplicate": True}), 200
+
+    # 2) Supabase durable idempotency fallback
+    # If Redis is unavailable (None), rely on DB uniqueness.
+    if redis_res is None:
+        marked = _sb_mark_event_once(event_key, event)
+        if not marked:
+            # If we cannot safely guarantee idempotency, fail closed (do nothing)
+            return jsonify({"ok": False, "error": "Idempotency store unavailable"}), 503
+
+    # Only act on charge.success
+    if ev != "charge.success":
+        return jsonify({"ok": True, "ignored": True, "event": ev}), 200
+
+    # Validate payment content
+    status = (data.get("status") or "").lower()
+    currency = (data.get("currency") or "").upper()
+    amount = int(data.get("amount") or 0)
+
+    paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
+    if not paid:
+        return jsonify({"ok": True, "paid": False}), 200
+
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    client_id = (meta.get("fxco_client_id") or "").strip() or None
+
+    # If metadata missing, we can’t map to a user/device => don't unlock randomly.
+    if not client_id:
+        return jsonify({"ok": True, "paid": True, "unlocked": False, "reason": "missing_client_id"}), 200
+
+    # Unlock access
+    paid_until = int(_now() + _access_days() * 24 * 60 * 60)
+    _set_paid_access(client_id, paid_until, reference or event_id or "webhook")
+
+    return jsonify({"ok": True, "paid": True, "unlocked": True, "client_id": client_id, "paid_until": paid_until}), 200
+
 
 
 def _safe_json(r: requests.Response) -> dict:
