@@ -644,7 +644,6 @@
       opacity: 0.95;
       display:none;
       line-height: 1.5;
-      white-space: pre-wrap;
     }
     .auth-ok { color: #b8ffdd; }
     .auth-danger { color: #ff9aa2; }
@@ -917,7 +916,6 @@
         <option>1D</option>
         <option>1W</option>
       </select>
-      <!-- ✅ FIX: removed stray </select> that was here -->
 
       <label for="htfBias">Higher Timeframe Bias</label>
       <select id="htfBias">
@@ -1087,7 +1085,7 @@
     </div>
   </div>
 
-  <!-- Auth (OTP) modal -->
+  <!-- Auth (OTP) modal ✅ FIXED: hides OTP UI when token exists -->
   <div id="authBackdrop" class="legal-backdrop"></div>
   <div id="authModal" class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <div class="legal-modal-header">
@@ -1096,7 +1094,7 @@
     </div>
 
     <div class="legal-modal-content">
-      <div class="legal-callout">
+      <div id="authCallout" class="legal-callout">
         <p style="margin:0;">
           <strong>Free Trial:</strong> Verify your email to start your 14-day trial.
         </p>
@@ -1105,18 +1103,25 @@
       <label for="authEmail">Email</label>
       <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
 
-      <div class="auth-row">
+      <div id="authSendRow" class="auth-row">
         <button class="topbtn primary" onclick="authSendCode()" aria-label="Send verification code">Send code</button>
         <button class="topbtn" onclick="authPasteSavedEmail()" aria-label="Use saved email">Use saved</button>
       </div>
 
-      <div style="height:10px"></div>
+      <div id="authCodeWrap" style="height:10px"></div>
 
-      <label for="authCode">6-digit code</label>
-      <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+      <div id="authCodeBlock">
+        <label for="authCode">6-digit code</label>
+        <input type="text" id="authCode" placeholder="123456" inputmode="numeric" maxlength="6" autocomplete="one-time-code" />
+      </div>
 
-      <div class="auth-row">
+      <div id="authVerifyRow" class="auth-row">
         <button class="topbtn primary" onclick="authVerifyCode()" aria-label="Verify code and start trial">Verify & Start Trial</button>
+        <button class="topbtn" onclick="authLogout()" aria-label="Sign out">Sign out</button>
+      </div>
+
+      <div id="authSignedInRow" class="auth-row" style="display:none;">
+        <button class="topbtn primary" onclick="closeAuth()" aria-label="Continue">Continue</button>
         <button class="topbtn" onclick="authLogout()" aria-label="Sign out">Sign out</button>
       </div>
 
@@ -1124,6 +1129,10 @@
 
       <div class="small muted" style="margin-top:12px;">
         Tip: After verifying, you can analyze right away. If your trial ends, you can unlock via Pricing.
+      </div>
+
+      <div id="authResendHint" class="small muted" style="margin-top:10px; display:none;">
+        Not receiving emails? You can still click <b>Send code</b> again (only if needed).
       </div>
     </div>
   </div>
@@ -1481,118 +1490,78 @@
       el.className = "auth-status " + (kind || "");
     }
 
-    // ✅ NEW: best-effort server refresh using your saved token (won’t break if endpoint doesn’t exist)
-    async function authRefreshTrialFromServer() {
-      const token = getAuthToken();
-      if (!token || !navigator.onLine) return false;
-
-      const endpoints = [
-        "/api/auth/me",
-        "/api/auth/status",
-        "/api/auth/session"
-      ];
-
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(apiUrl(ep), {
-            method: "GET",
-            headers: { "X-FXCO-Auth": token, "X-FXCO-Client": FXCO_CLIENT_ID },
-            cache: "no-store"
-          });
-
-          if (!res.ok) continue;
-
-          const j = await res.json().catch(() => null);
-          if (j && (j.ok || j.active || j.user)) {
-            const trialEnds = j.trial_ends || j.trialEnds || j.trial_end || 0;
-            const email = j.email || j.user?.email || getAuthEmail() || "";
-            if (trialEnds) {
-              try { localStorage.setItem(TRIAL_END_KEY, String(trialEnds)); } catch {}
-            }
-            if (email) {
-              try { localStorage.setItem(AUTH_EMAIL_KEY, String(email)); } catch {}
-            }
-            return true;
-          }
-        } catch {}
-      }
-      return false;
+    // ✅ NEW: token-based signed-in UI (hides OTP after verified)
+    function hasAuthTokenLocal() {
+      const t = getAuthToken();
+      return !!(t && String(t).trim().length >= 10);
     }
 
-    // ✅ NEW: if already signed in + trial active, don’t force OTP
-    async function authAutoResume(reason) {
-      const token = getAuthToken();
-      const active = token && isTrialActiveLocal();
+    function renderAuthUI() {
+      const signedIn = hasAuthTokenLocal();
 
-      if (active) {
-        updateTrialButton();
-        applyPaymentGateUI();
-        return true;
-      }
+      const callout = document.getElementById("authCallout");
+      const sendRow = document.getElementById("authSendRow");
+      const codeBlock = document.getElementById("authCodeBlock");
+      const verifyRow = document.getElementById("authVerifyRow");
+      const signedInRow = document.getElementById("authSignedInRow");
+      const resendHint = document.getElementById("authResendHint");
 
-      // If token exists but local trial end is missing/expired, try refresh from server
-      if (token) {
-        const refreshed = await authRefreshTrialFromServer();
-        if (refreshed && isTrialActiveLocal()) {
-          updateTrialButton();
-          applyPaymentGateUI();
-          return true;
+      if (signedIn) {
+        if (callout) {
+          callout.innerHTML = `<p style="margin:0;"><strong>Verified ✅</strong> You’re already signed in on this device.</p>`;
         }
+        if (sendRow) sendRow.style.display = "none";
+        if (codeBlock) codeBlock.style.display = "none";
+        if (verifyRow) verifyRow.style.display = "none";
+        if (signedInRow) signedInRow.style.display = "flex";
+        if (resendHint) resendHint.style.display = "none";
+        setAuthStatus("Signed in ✅ (No OTP needed)", "auth-ok");
+      } else {
+        // normal first-time flow
+        if (callout) {
+          callout.innerHTML = `
+            <p style="margin:0;">
+              <strong>Free Trial:</strong> Verify your email to start your 14-day trial.
+            </p>
+          `;
+        }
+        if (sendRow) sendRow.style.display = "flex";
+        if (codeBlock) codeBlock.style.display = "block";
+        if (verifyRow) verifyRow.style.display = "flex";
+        if (signedInRow) signedInRow.style.display = "none";
+        if (resendHint) resendHint.style.display = "block";
       }
-
-      return false;
     }
 
     function openAuth() {
       document.getElementById("authBackdrop").style.display = "block";
       document.getElementById("authModal").style.display = "block";
-
       const email = getAuthEmail();
       if (email) document.getElementById("authEmail").value = email;
-
       setAuthStatus("", "");
-
-      // ✅ NEW: auto-resume if already active
-      authAutoResume("openAuth").then((ok) => {
-        if (ok) {
-          setAuthStatus("You’re already signed in ✅ Trial is active.\n(You don’t need to request OTP again.)", "auth-ok");
-          // Optional: close after a moment to feel “automatic”
-          setTimeout(() => {
-            // only close if still open
-            const modal = document.getElementById("authModal");
-            if (modal && modal.style.display === "block") closeAuth();
-          }, 900);
-        } else {
-          // if not active, keep modal open normally
-          const token = getAuthToken();
-          if (token && !isTrialActiveLocal()) {
-            setAuthStatus("Session found, but trial looks expired locally.\nIf you think it’s active, click “Use saved” or try sending a code.", "");
-          }
-        }
-      });
+      renderAuthUI();
     }
-
     function closeAuth() {
       document.getElementById("authBackdrop").style.display = "none";
       document.getElementById("authModal").style.display = "none";
       setAuthStatus("", "");
     }
 
-    async function authPasteSavedEmail() {
+    function authPasteSavedEmail() {
       const e = getAuthEmail();
       if (e) document.getElementById("authEmail").value = e;
 
-      // ✅ NEW: attempt to resume without sending OTP
-      setAuthStatus("Checking saved session…", "");
-      const ok = await authAutoResume("useSaved");
-      if (ok) {
-        setAuthStatus("Signed in ✅ Trial active.", "auth-ok");
+      // If token exists, we are signed in on this device → hide OTP UI and close
+      if (hasAuthTokenLocal()) {
         updateTrialButton();
         applyPaymentGateUI();
+        renderAuthUI();
         closeAuth();
-      } else {
-        setAuthStatus("No active saved session found.\nUse “Send code” to re-verify.", "");
+        return;
       }
+
+      setAuthStatus("No saved session found on this device. Use “Send code” to verify.", "auth-danger");
+      renderAuthUI();
     }
 
     async function authSendCode() {
@@ -1601,15 +1570,6 @@
         setAuthStatus("Enter a valid email.", "auth-danger");
         return;
       }
-
-      // ✅ If already active, don’t spam OTP
-      const already = await authAutoResume("sendCodeClick");
-      if (already) {
-        setAuthStatus("Already signed in ✅ No OTP needed.", "auth-ok");
-        closeAuth();
-        return;
-      }
-
       setAuthStatus("Sending code…", "");
       try {
         const res = await fetch(apiUrl("/api/auth/start"), {
@@ -1618,22 +1578,10 @@
           body: JSON.stringify({ email })
         });
         const j = await res.json().catch(() => null);
-
-        // ✅ If backend decides to “auto-activate” (some backends do), accept token here too
-        if (res.ok && j?.ok && j?.token) {
-          setAuth(email, j.token, j.trial_ends || 0);
-          setAuthStatus("Signed in ✅ Trial active. (No OTP required.)", "auth-ok");
-          updateTrialButton();
-          applyPaymentGateUI();
-          closeAuth();
-          return;
-        }
-
         if (!res.ok || !j?.ok) {
           setAuthStatus("Failed: " + (j?.error || "Unable to send OTP."), "auth-danger");
           return;
         }
-
         try { localStorage.setItem(AUTH_EMAIL_KEY, email); } catch {}
         setAuthStatus("Code sent. Check your inbox (and spam).", "auth-ok");
       } catch (e) {
@@ -1666,9 +1614,9 @@
           return;
         }
         setAuth(email, j.token, j.trial_ends || 0);
-        setAuthStatus("Verified ✅ Trial active.", "auth-ok");
         updateTrialButton();
         applyPaymentGateUI();
+        renderAuthUI();
         closeAuth();
       } catch (e) {
         setAuthStatus("Failed: " + (e?.message || "Network error"), "auth-danger");
@@ -1679,6 +1627,7 @@
       clearAuth();
       updateTrialButton();
       applyPaymentGateUI();
+      renderAuthUI();
       setAuthStatus("Signed out.", "auth-ok");
     }
 
@@ -1694,8 +1643,9 @@
         btn.innerText = days ? `Trial Active ✅ (${days}d left)` : "Trial Active ✅";
         btn.className = "topbtn primary";
       } else if (token && !active) {
-        btn.innerText = "Trial Ended • Verify";
-        btn.className = "topbtn warn";
+        // token exists but no trial_end - still show as signed-in (UI will handle modal)
+        btn.innerText = "Signed In ✅";
+        btn.className = "topbtn primary";
       } else {
         btn.innerText = "Start Free Trial";
         btn.className = "topbtn warn";
@@ -2667,13 +2617,7 @@
       showRiskModalIfNeeded();
       loadPaystackConfig();
       verifyPaystackIfReturned();
-
-      // ✅ NEW: auto-resume session on boot (so verified users are “just logged in”)
-      authAutoResume("boot").finally(() => {
-        updateTrialButton();
-        applyPaymentGateUI();
-      });
-
+      updateTrialButton();
       renderLocalHistory();
       updateViewReportButton();
 
@@ -2686,6 +2630,7 @@
       renderSignalCard();
 
       applyPaymentGateUI();
+      renderAuthUI();
     }
 
     // -------------------------
