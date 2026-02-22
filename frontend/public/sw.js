@@ -1,6 +1,6 @@
 /* sw.js — FXCO-PILOT PWA */
 
-const VERSION = "fxco-pwa-v5";
+const VERSION = "fxco-pwa-v6"; // bump version to force refresh
 const CACHE_NAME = `fxco-cache-${VERSION}`;
 
 // Cache essentials only (do NOT cache maintenance.html as a fallback)
@@ -15,7 +15,7 @@ const PRECACHE = [
   "/apple-touch-icon.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
-  "/icons/icon-512-maskable.png"
+  "/icons/icon-512-maskable.png",
 ];
 
 function isAssetPath(pathname) {
@@ -30,20 +30,43 @@ function isAssetPath(pathname) {
   );
 }
 
+function isHtmlResponse(res) {
+  try {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    return ct.includes("text/html");
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE)));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+
+    // Using addAll is fine, but we do it explicitly so failures are clearer.
+    await Promise.all(
+      PRECACHE.map(async (url) => {
+        try {
+          const res = await fetch(url, { cache: "reload" });
+          if (res.ok) await cache.put(url, res);
+        } catch {
+          // If offline on install, just skip — app still works with network later.
+        }
+      })
+    );
+  })());
+
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((k) => (k.startsWith("fxco-cache-") && k !== CACHE_NAME ? caches.delete(k) : null))
-      )
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys.map((k) => (k.startsWith("fxco-cache-") && k !== CACHE_NAME ? caches.delete(k) : null))
+    );
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -55,18 +78,57 @@ self.addEventListener("fetch", (event) => {
   // Don’t SW-hijack API calls
   if (url.pathname.startsWith("/api/")) return;
 
-  // ✅ Assets: network-first (never return HTML fallback)
+  // ✅ Assets: network-first (never return HTML as an "image" / "asset")
   if (isAssetPath(url.pathname)) {
-    event.respondWith(fetch(req).catch(() => caches.match(req)));
+    event.respondWith((async () => {
+      try {
+        const res = await fetch(req);
+
+        // If server returns HTML for an asset request (usually SPA rewrite / missing file),
+        // fall back to a real icon instead of showing index.html.
+        if (res && res.ok && isHtmlResponse(res)) {
+          const fallback =
+            (await caches.match(url.pathname)) ||
+            (await caches.match("/apple-touch-icon.png")) ||
+            (await caches.match("/favicon.ico"));
+
+          return (
+            fallback ||
+            new Response("", { status: 404, statusText: "Asset not found" })
+          );
+        }
+
+        return res;
+      } catch {
+        // Offline: serve cached asset, else icon fallback
+        const cached =
+          (await caches.match(req)) ||
+          (await caches.match(url.pathname)) ||
+          (await caches.match("/apple-touch-icon.png")) ||
+          (await caches.match("/favicon.ico"));
+
+        return cached || new Response("", { status: 504, statusText: "Offline" });
+      }
+    })());
     return;
   }
 
   // ✅ Navigations: network-first; offline fallback to cached index.html
   if (req.mode === "navigate") {
-    event.respondWith(fetch(req).catch(() => caches.match("/index.html")));
+    event.respondWith((async () => {
+      try {
+        return await fetch(req);
+      } catch {
+        return (await caches.match("/index.html")) || new Response("Offline", { status: 503 });
+      }
+    })());
     return;
   }
 
   // Everything else: cache-first
-  event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    if (cached) return cached;
+    return fetch(req);
+  })());
 });
