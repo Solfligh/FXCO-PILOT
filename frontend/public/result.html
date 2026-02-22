@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FXCO-Pilot — Trade Validation Report</title>
+  <title>FXCO-Pilot Trade Validation Report</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -89,29 +89,16 @@
       min-width: 0;
     }
 
-    /* ✅ LOGO: use your real file name (public/fxco_icon_base_1024.png) */
-    .markImg{
+    /* ✅ REAL LOGO (replaces gradient blob) */
+    .logo{
       width: 38px;
       height: 38px;
       border-radius: 12px;
-      object-fit: contain;
+      object-fit: cover;
+      box-shadow: 0 10px 30px rgba(15,23,42,.14);
+      border: 1px solid rgba(15,23,42,.10);
+      background: #fff;
       flex: 0 0 auto;
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(15,23,42,.08);
-      box-shadow: 0 10px 22px rgba(15,23,42,.10);
-      display: block;
-    }
-    /* Fallback mark (only shown if image fails) */
-    .markFallback{
-      width: 38px; height: 38px;
-      border-radius: 12px;
-      background:
-        radial-gradient(12px 12px at 30% 30%, rgba(255,255,255,.8), transparent 55%),
-        linear-gradient(135deg, rgba(14,165,233,.95), rgba(34,197,94,.90));
-      box-shadow: 0 10px 30px rgba(14,165,233,.18);
-      border: 1px solid rgba(255,255,255,.6);
-      flex: 0 0 auto;
-      display: none;
     }
 
     .brandText{ min-width: 0; }
@@ -507,7 +494,6 @@
       align-items:center;
       gap: 8px;
       line-height: 1;
-      transition: transform .12s ease, box-shadow .12s ease;
     }
     .miniBtn:hover{ transform: translateY(-1px); box-shadow: 0 10px 18px rgba(15,23,42,.08); }
     .monoBox{
@@ -692,20 +678,17 @@
   <div class="topbar">
     <div class="topbarInner">
       <div class="brand">
-        <!-- ✅ Uses your real file name in /public -->
+        <!-- ✅ REAL LOGO -->
         <img
-          class="markImg"
-          id="brandLogo"
-          src="/fxco_icon_base_1024.png"
+          class="logo"
+          src="/apple-touch-icon.png?v=20260222"
           alt="FXCO-Pilot"
           loading="eager"
           decoding="async"
-          onerror="(function(){ try{ document.getElementById('brandLogo').style.display='none'; document.getElementById('brandLogoFallback').style.display='block'; }catch(e){} })()"
+          onerror="this.onerror=null; this.src='/favicon.ico';"
         />
-        <div class="markFallback" id="brandLogoFallback" aria-hidden="true"></div>
-
         <div class="brandText">
-          <h1>FXCO-Pilot — Report</h1>
+          <h1>FXCO-Pilot Report</h1>
           <p id="topMeta">Loading report…</p>
         </div>
       </div>
@@ -723,7 +706,7 @@
     <div class="pageHead">
       <div>
         <h2>Trade Validation Report</h2>
-        <div class="metaLine" id="metaLine">Generated —</div>
+        <div class="metaLine" id="metaLine">Generated </div>
       </div>
     </div>
 
@@ -808,7 +791,7 @@
           <span class="pill info" id="planHint">What to do next</span>
         </div>
         <div class="subtle" id="planIntro">
-          Clear next steps — so you’re not staring at analysis text.
+          Clear next steps so you’re not staring at analysis text.
         </div>
 
         <div class="planGrid">
@@ -860,7 +843,7 @@
               <span class="pill info" id="cleanerPill">Parsed</span>
             </div>
             <div class="subtle" style="margin-bottom:8px;">
-              This shows <b>what was understood</b> from a messy message — and what’s missing.
+              This shows <b>what was understood</b> from a messy message and what’s missing.
             </div>
             <div class="monoBox" id="cleanerBox">—</div>
           </div>
@@ -1166,7 +1149,6 @@
       return null;
     }
 
-    // Desk verdict (fallback) + imbalance support
     function computeDeskVerdict(analysis){
       const a = analysis || {};
       const conf = clamp(Number(a.confidence ?? 0) || 0, 0, 100);
@@ -1199,6 +1181,7 @@
       }
 
       const hardNo = hardBlocks.length > 0;
+
       const rrScore = (rr === null) ? 0 : clamp(((rr - 1.0) / 3.0) * 100, 0, 100);
 
       let score =
@@ -1261,6 +1244,7 @@
       if (tier === "DO_NOT_TRADE") {
         conditions.push("Stand down. Only re-evaluate if ticket + context materially improve.");
       }
+
       if (imb.text){
         if (align === true){
           conditions.push("Use imbalance as a location: prefer entry on retest / fill reaction, not mid-air.");
@@ -1318,7 +1302,6 @@
       return "";
     }
 
-    // Share helpers (client payload)
     function b64urlEncode(bytesOrString){
       const str = (typeof bytesOrString === "string") ? bytesOrString : String.fromCharCode.apply(null, bytesOrString);
       const b64 = btoa(unescape(encodeURIComponent(str)));
@@ -1532,7 +1515,7 @@
       }
 
       if (hard.length){
-        risk.push("Hard blocks exist — do not force execution.");
+        risk.push("Hard blocks exist do not force execution.");
       } else {
         risk.push("Keep risk tight. Use position sizing and respect SL.");
       }
@@ -1547,7 +1530,7 @@
       const mc = a.market_context || {};
       const ah = a.assessment_horizon || {};
 
-      document.getElementById("metaLine").textContent = `Generated — ${stampFrom(report.generated_at || Date.now())}`;
+      document.getElementById("metaLine").textContent = `Generated ${stampFrom(report.generated_at || Date.now())}`;
       document.getElementById("topMeta").textContent = deriveTopMeta(report);
 
       const backendTierRaw =
@@ -1630,15 +1613,17 @@
       const rrNum = parseRR(rr);
       addRow(snapshotList, "Risk/Reward", fmt(rr || "—"), rrNum !== null ? (rrNum >= 1.5 ? "OK" : "BLOCK") : "WARN");
 
-      // ✅ Snapshot fix: show Direction (signal direction) AND HTF Bias separately
-      const directionOnly = String(sc.direction || "").trim();
-      const biasOnly = String(a.bias || "").trim();
-      if (directionOnly) addRow(snapshotList, "Direction", safeUpper(directionOnly), "OK");
-      if (biasOnly) addRow(snapshotList, "HTF Bias", fmt(biasOnly), "OK");
+      const direction = sc.direction || "";
+      if (direction){
+        addRow(snapshotList, "Direction", safeUpper(direction), "OK");
+      }
+      if (a.bias){
+        addRow(snapshotList, "HTF Bias", fmt(a.bias), "OK");
+      }
+      if (mc.timeframe_alignment){
+        addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
+      }
 
-      if (mc.timeframe_alignment) addRow(snapshotList, "Alignment", fmt(mc.timeframe_alignment), "WARN");
-
-      // Action Plan
       const plan = buildActionPlan(report, tier, desk);
       setBullets(document.getElementById("planNow"), plan.now, "—");
       setBullets(document.getElementById("planIf"), plan.onlyIf, "—");
@@ -1647,11 +1632,10 @@
 
       const primary = document.getElementById("btnPrimaryAction");
       if (tier === "DO_NOT_TRADE") primary.textContent = "What would make this valid?";
-      else if (tier === "WAIT") primary.textContent = "No position. Set alerts • Monitor and reassess on structure shift.";
+      else if (tier === "WAIT") primary.textContent = "No position. Set alerts  Monitor and reassess on structure shift.";
       else if (tier === "EXECUTE_IF") primary.textContent = "Show entry conditions";
       else primary.textContent = "Execution checklist";
 
-      // Ticket + cleaner
       const cleanTicket = buildCleanTicket(report);
       const cleaner = buildCleanerSummary(report);
 
@@ -1684,7 +1668,6 @@
         cleanerPill.className = "pill good";
       }
 
-      // Market Context (simplified)
       const sTF = (ah.structure_tf || "").toString().trim();
       document.getElementById("ctxStructure").textContent = fmt(mc.structure || (sTF ? ("Structure TF " + sTF) : "—"));
       document.getElementById("ctxStructureS").textContent =
@@ -1698,7 +1681,6 @@
       document.getElementById("ctxMomentumS").textContent =
         fmt(a.structure ? ("Structure note: " + a.structure) : (a.volatility ? ("Volatility: " + a.volatility) : "—"));
 
-      // Imbalance tile
       const imbBiasText = imb.bias ? imb.bias : "";
       const imbStateText = imb.state ? imb.state : "";
       document.getElementById("ctxImbalance").textContent = fmt(imb.text || "—");
@@ -1711,7 +1693,6 @@
       document.getElementById("ctxImbalanceS").textContent =
         fmt((extraText ? (extraText + " • ") : "") + alignText);
 
-      // Risks & Flags
       const hardBlocks = Array.isArray(a.hard_blocks) ? a.hard_blocks.filter(Boolean) : (desk.hardBlocks || []);
       const warnings = Array.isArray(a.invalidation_warnings) ? a.invalidation_warnings.filter(Boolean) : [];
       const conditions = Array.isArray(a.conditions) ? a.conditions.filter(Boolean) : (desk.conditions || []);
@@ -1755,7 +1736,6 @@
         condBox.style.display = "none";
       }
 
-      // Reasoning (human-friendly)
       const reasoning =
         (typeof a.reasoning_text === "string" && a.reasoning_text.trim()) ? a.reasoning_text.trim()
         : (typeof a.reasoning === "string" && a.reasoning.trim()) ? a.reasoning.trim()
@@ -1789,9 +1769,6 @@
       };
     }
 
-    // -------------------------
-    // Actions
-    // -------------------------
     document.getElementById("btnBack").addEventListener("click", () => history.back());
     document.getElementById("btnNew").addEventListener("click", () => window.location.href = "/");
 
@@ -1836,7 +1813,6 @@
       copyText(d.reasoning || "");
     });
 
-    // Share: prefer backend share_id, else generate payload URL
     document.getElementById("btnShare").addEventListener("click", async () => {
       const btn = document.getElementById("btnShare");
       const old = btn.textContent;
@@ -1850,12 +1826,15 @@
 
         const shareId = (d.share_id || "").trim() || getQueryParam("r");
         if (shareId){
-          const url = buildShareUrlFromId(shareId);
+          const url = new URL(window.location.href);
+          url.searchParams.set("r", shareId);
+          url.searchParams.delete("p");
+          url.searchParams.delete("pm");
 
           if (navigator.share){
-            try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
+            try { await navigator.share({ title:"FXCO-Pilot Report", url: url.toString() }); toast("Shared ✓"); return; } catch {}
           }
-          await copyText(url);
+          await copyText(url.toString());
           toast("Share link copied ✓");
           return;
         }
@@ -1876,15 +1855,19 @@
 
         const json = JSON.stringify(shareObj);
         const { payload, mode } = await compressToUrlSafe(json);
-        const url = buildShareUrlFromPayload(payload, mode);
+        const u = new URL(window.location.href);
+        u.searchParams.delete("r");
+        u.searchParams.set("p", payload);
+        if (mode && mode !== "b64json") u.searchParams.set("pm", mode);
+        else u.searchParams.delete("pm");
 
         try { localStorage.setItem(SHARE_LOCAL_KEY, JSON.stringify({ payload, mode, at: Date.now() })); } catch {}
 
         if (navigator.share){
-          try { await navigator.share({ title:"FXCO-Pilot Report", url }); toast("Shared ✓"); return; } catch {}
+          try { await navigator.share({ title:"FXCO-Pilot Report", url: u.toString() }); toast("Shared ✓"); return; } catch {}
         }
 
-        await copyText(url);
+        await copyText(u.toString());
         toast("Share link copied ✓");
 
       } catch (e){
@@ -1898,21 +1881,12 @@
       }
     });
 
-    // ✅ PDF snapshot fix: temporarily remove sticky behavior + hide UI + scroll to top
     document.getElementById("btnPdf").addEventListener("click", async () => {
       const btn = document.getElementById("btnPdf");
       const old = btn.textContent;
 
       const actions = document.querySelector(".topbar .actions");
-      const topbar = document.querySelector(".topbar");
-      const toastEl = document.getElementById("toast");
-
-      const prevActionsDisplay = actions ? actions.style.display : "";
-      const prevTopbarPos = topbar ? topbar.style.position : "";
-      const prevTopbarBoxShadow = topbar ? topbar.style.boxShadow : "";
-      const prevToastDisplay = toastEl ? toastEl.style.display : "";
-
-      const prevScroll = { x: window.scrollX, y: window.scrollY };
+      const prevDisplay = actions ? actions.style.display : "";
 
       try{
         const html2canvasFn = window.html2canvas;
@@ -1928,28 +1902,13 @@
         btn.disabled = true;
 
         if (actions) actions.style.display = "none";
-        if (toastEl) toastEl.style.display = "none";
-
-        // Make header static so canvas capture doesn’t duplicate/clip the sticky bar
-        if (topbar){
-          topbar.style.position = "static";
-          topbar.style.boxShadow = "none";
-        }
-
-        // Go to top for consistent capture
-        window.scrollTo(0, 0);
-        await new Promise(r => setTimeout(r, 80));
 
         const root = document.getElementById("reportRoot");
         const canvas = await html2canvasFn(root, {
           scale: 2,
           useCORS: true,
           backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          ignoreElements: (el) => {
-            return el && (el.id === "toast");
-          }
+          scrollY: -window.scrollY
         });
 
         const imgData = canvas.toDataURL("image/png");
@@ -1983,25 +1942,12 @@
         console.error(e);
         alert("PDF export failed. Use browser Print → Save as PDF as a fallback.");
       } finally {
-        // Restore UI state
-        if (actions) actions.style.display = prevActionsDisplay;
-        if (topbar){
-          topbar.style.position = prevTopbarPos;
-          topbar.style.boxShadow = prevTopbarBoxShadow;
-        }
-        if (toastEl) toastEl.style.display = prevToastDisplay;
-
-        // Restore scroll
-        window.scrollTo(prevScroll.x, prevScroll.y);
-
+        if (actions) actions.style.display = prevDisplay;
         btn.textContent = old;
         btn.disabled = false;
       }
     });
 
-    // -------------------------
-    // Init
-    // -------------------------
     (function init(){
       const shareId = getQueryParam("r");
       const payload = getQueryParam("p");
@@ -2055,10 +2001,10 @@
         (async () => {
           try{
             const shared = await fetchSharedReport(shareId);
-            const payloadObj = shared.report || shared.data || shared;
-            const parsed = parseReport(payloadObj);
+            const payload = shared.report || shared.data || shared;
+            const parsed = parseReport(payload);
             if (!parsed.share_id) parsed.share_id = shareId;
-            ensureLocalFallback(payloadObj);
+            ensureLocalFallback(payload);
             render(parsed);
             toast("Loaded shared report");
           } catch (e){
