@@ -58,7 +58,7 @@ logger = logging.getLogger("fxco-pilot")
 #   TRIAL_DAYS=14
 #
 # Auth signing:
-#   AUTH_SIGNING_SECRET=long_random_string
+#   AUTH_SIGNING_SECRET=long_random_string   (REQUIRED in production)
 #
 # Rate limits:
 #   FREE_LIMIT_60S=5
@@ -73,9 +73,87 @@ logger = logging.getLogger("fxco-pilot")
 #   UPSTASH_REDIS_REST_URL=https://xxxx.upstash.io
 #   UPSTASH_REDIS_REST_TOKEN=xxxx
 #
-# PUBLIC BASE URL (INSTITUTIONAL UPGRADE #1):
+# PUBLIC BASE URL:
 #   PUBLIC_BASE_URL=https://yourdomain.com
 # ============================================================
+
+# ==========================
+# Environment / boot validation
+# ==========================
+def _is_production() -> bool:
+    env = (os.getenv("ENVIRONMENT", "") or os.getenv("FLASK_ENV", "") or os.getenv("APP_ENV", "") or "").strip().lower()
+    if env in ("prod", "production"):
+        return True
+    # Render commonly sets RENDER=1
+    if (os.getenv("RENDER", "") or "").strip() == "1":
+        return True
+    # If DEBUG explicitly enabled, treat as not prod
+    if (os.getenv("DEBUG", "") or "").strip().lower() in ("1", "true", "yes", "on"):
+        return False
+    return False
+
+
+def _validate_boot_config():
+    """
+    Institutional boot-time validation.
+    - In production: fail hard on critical missing secrets.
+    - In dev: log warnings (do not crash).
+    """
+    prod = _is_production()
+
+    def _fail_or_warn(msg: str, critical: bool = False):
+        if prod and critical:
+            raise RuntimeError(msg)
+        if critical:
+            logger.warning("CONFIG WARNING (critical): %s", msg)
+        else:
+            logger.warning("CONFIG WARNING: %s", msg)
+
+    # Auth signing secret is critical for anything auth-related.
+    if not (os.getenv("AUTH_SIGNING_SECRET", "") or "").strip():
+        _fail_or_warn("Missing AUTH_SIGNING_SECRET. Tokens/OTP hashing will be unavailable.", critical=True)
+
+    # OpenAI key is required for /api/analyze to work.
+    if not (os.getenv("OPENAI_API_KEY", "") or "").strip():
+        _fail_or_warn("Missing OPENAI_API_KEY. /api/analyze will fail.", critical=False)
+
+    # Payment gate validation
+    req_pay = (os.getenv("PAYSTACK_REQUIRE_PAYMENT", "") or os.getenv("REQUIRE_PAYMENT", "1") or "1").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    )
+    if req_pay and not (os.getenv("PAYSTACK_SECRET_KEY", "") or "").strip():
+        _fail_or_warn("PAYSTACK_REQUIRE_PAYMENT is enabled but PAYSTACK_SECRET_KEY is missing.", critical=True)
+
+    # Supabase validation (needed for trial/report share/persistence)
+    sb_url = (os.getenv("SUPABASE_URL", "") or "").strip()
+    sb_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
+    if (sb_url and not sb_key) or (sb_key and not sb_url):
+        _fail_or_warn("Supabase partially configured: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must both be set.", critical=True)
+
+    # Resend validation (only required if you use email OTP)
+    resend_key = (os.getenv("RESEND_API_KEY", "") or "").strip()
+    resend_from = (os.getenv("RESEND_FROM_EMAIL", "") or "").strip()
+    if (resend_key and not resend_from) or (resend_from and not resend_key):
+        _fail_or_warn("Resend partially configured: RESEND_API_KEY and RESEND_FROM_EMAIL must both be set.", critical=False)
+
+    # Redis validation (optional)
+    rurl = (os.getenv("UPSTASH_REDIS_REST_URL", "") or "").strip()
+    rtoken = (os.getenv("UPSTASH_REDIS_REST_TOKEN", "") or "").strip()
+    if (rurl and not rtoken) or (rtoken and not rurl):
+        _fail_or_warn("Upstash Redis partially configured: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must both be set.", critical=False)
+
+
+# Run boot validation immediately (institutional)
+try:
+    _validate_boot_config()
+except Exception as e:
+    # In production, this should crash (Render will show it). In dev, it will have warned and not raise.
+    logger.exception("Boot config validation error: %s", str(e))
+    raise
 
 
 # ==========================
@@ -253,9 +331,37 @@ def _get_client_id_header():
     return ""
 
 
+def _user_agent() -> str:
+    return (request.headers.get("User-Agent") or "").strip()[:256]
+
+
+def _client_fingerprint() -> str:
+    """
+    A best-effort fingerprint for unauthenticated requests.
+    Not perfect, but harder to spoof than X-FXCO-Client alone.
+    """
+    ip = _client_ip()
+    ua = _user_agent()
+    raw = f"{ip}|{ua}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def _identity_key(token_email: Optional[str], client_id: str) -> str:
+    """
+    Institutional identity:
+    - Prefer authenticated user identity (email) for rate limiting + access.
+    - Otherwise, use client_id + server-derived fingerprint.
+    """
+    if token_email:
+        return f"email:{token_email.lower().strip()}"
+    fp = _client_fingerprint()
+    if client_id:
+        return f"cid:{client_id}|fp:{fp}"
+    return f"fp:{fp}"
+
+
 # ==========================
-# Public base URL (INSTITUTIONAL UPGRADE #1)
-# - Do NOT trust Origin/Referer for share links.
+# Public base URL
 # ==========================
 PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
 
@@ -490,9 +596,16 @@ def _load_share_report(share_id: str) -> Optional[dict]:
 
 
 # ==========================
-# Auth token (simple HMAC-signed JSON)
+# Auth token (simple HMAC-signed JSON) - NO DEV FALLBACK
 # ==========================
 AUTH_SIGNING_SECRET = (os.getenv("AUTH_SIGNING_SECRET", "") or "").strip()
+
+
+def _auth_secret_bytes() -> Optional[bytes]:
+    s = (AUTH_SIGNING_SECRET or "").strip()
+    if not s:
+        return None
+    return s.encode("utf-8")
 
 
 def _b64url_encode(b: bytes) -> str:
@@ -504,24 +617,38 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
 
 
-def _sign(payload_bytes: bytes) -> str:
-    key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
+def _sign(payload_bytes: bytes) -> Optional[str]:
+    key = _auth_secret_bytes()
+    if not key:
+        return None
     return _b64url_encode(hmac.new(key, payload_bytes, hashlib.sha256).digest())
 
 
 def _make_token(email: str, trial_ends_epoch: int) -> str:
+    key = _auth_secret_bytes()
+    if not key:
+        raise ValueError("Missing AUTH_SIGNING_SECRET.")
     payload = {"email": email, "trial_ends": int(trial_ends_epoch), "iat": int(_now()), "v": 1}
     pb = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return f"{_b64url_encode(pb)}.{_sign(pb)}"
+    sig = _sign(pb)
+    if not sig:
+        raise ValueError("Signing failed (missing AUTH_SIGNING_SECRET).")
+    return f"{_b64url_encode(pb)}.{sig}"
 
 
 def _verify_token(token: str) -> Optional[dict]:
     try:
         if not token or "." not in token:
             return None
+        # If secret missing, treat as invalid (do not crash)
+        if not _auth_secret_bytes():
+            return None
+
         p, sig = token.split(".", 1)
         pb = _b64url_decode(p)
         expected = _sign(pb)
+        if not expected:
+            return None
         if not hmac.compare_digest(expected, sig):
             return None
         payload = json.loads(pb.decode("utf-8"))
@@ -535,7 +662,7 @@ def _verify_token(token: str) -> Optional[dict]:
 
 
 # ==========================
-# OTP helpers (Supabase stored, hashed)
+# OTP helpers (Supabase stored, hashed) - NO DEV FALLBACK
 # ==========================
 def _email_ok(email: str) -> bool:
     if not email:
@@ -552,7 +679,9 @@ def _otp_code() -> str:
 
 
 def _otp_hash(email: str, code: str) -> str:
-    key = (AUTH_SIGNING_SECRET or "dev-secret-change-me").encode("utf-8")
+    key = _auth_secret_bytes()
+    if not key:
+        raise ValueError("Missing AUTH_SIGNING_SECRET.")
     msg = (email.strip().lower() + ":" + code.strip()).encode("utf-8")
     return hashlib.sha256(hmac.new(key, msg, hashlib.sha256).digest()).hexdigest()
 
@@ -577,6 +706,9 @@ def _trial_active(email: str) -> Tuple[bool, int]:
 
 # ==========================
 # Paystack config + state (Supabase persistent)
+# NOTE (Institutional identity lock):
+# - Paid access should be bound to email whenever possible.
+# - We keep client_id as a secondary device key for transition/backward-compat.
 # ==========================
 PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
 PAYSTACK_PUBLIC_KEY = os.getenv("PAYSTACK_PUBLIC_KEY", "").strip()
@@ -639,38 +771,89 @@ def _ensure_paystack_success_param(url: str) -> str:
     return f"{u}{sep}paystack=success"
 
 
-def _get_paid_until(client_id: str) -> int:
-    if not client_id:
+def _parse_paid_until_epoch(pu_val: Any) -> int:
+    if not pu_val:
         return 0
-    row = _sb_select_one("fxco_access", {"client_id": client_id})
-    if not row:
-        return 0
-    pu = row.get("paid_until")
-    if not pu:
-        return 0
-    dt = _parse_iso(str(pu))
+    dt = _parse_iso(str(pu_val))
     if not dt:
         return 0
     return int(dt.timestamp())
 
 
-def _is_client_unlocked(client_id: str) -> bool:
+def _get_paid_until_by_email(email: str) -> int:
+    if not email:
+        return 0
+    row = _sb_select_one("fxco_access", {"email": email.strip().lower()})
+    if not row:
+        return 0
+    return _parse_paid_until_epoch(row.get("paid_until"))
+
+
+def _get_paid_until_by_client_id(client_id: str) -> int:
+    if not client_id:
+        return 0
+    row = _sb_select_one("fxco_access", {"client_id": client_id})
+    if not row:
+        return 0
+    return _parse_paid_until_epoch(row.get("paid_until"))
+
+
+def _is_user_unlocked(email: Optional[str], client_id: str) -> bool:
+    """
+    Identity lock:
+    - If payment gate disabled => unlocked.
+    - Prefer email-based paid access.
+    - Fall back to client_id for backward-compat / first payment before auth.
+    """
     if not _require_payment():
         return True
-    if not client_id:
-        return False
-    return _now() < _get_paid_until(client_id)
+
+    em = (email or "").strip().lower()
+    if em:
+        return _now() < _get_paid_until_by_email(em)
+
+    if client_id:
+        return _now() < _get_paid_until_by_client_id(client_id)
+
+    return False
 
 
-def _set_paid_access(client_id: str, paid_until_epoch: int, ref: str):
-    if not client_id:
+def _set_paid_access(email: Optional[str], client_id: Optional[str], paid_until_epoch: int, ref: str):
+    """
+    Upsert paid access. Prefer binding to email.
+    Requires fxco_access to have UNIQUE(email) and/or UNIQUE(client_id).
+    Recommended table columns:
+      - email text UNIQUE
+      - client_id text UNIQUE
+      - paid_until timestamptz
+      - last_ref text
+      - updated_at timestamptz
+    """
+    if not _sb_ok():
         return
+
     dt = datetime.fromtimestamp(int(paid_until_epoch), tz=timezone.utc)
-    _sb_upsert(
-        "fxco_access",
-        {"client_id": client_id, "paid_until": _dt_to_iso(dt), "last_ref": ref or None, "updated_at": _dt_to_iso(_utc_now_dt())},
-        conflict="client_id",
-    )
+    em = (email or "").strip().lower() or None
+    cid = (client_id or "").strip() or None
+
+    row = {
+        "email": em,
+        "client_id": cid,
+        "paid_until": _dt_to_iso(dt),
+        "last_ref": ref or None,
+        "updated_at": _dt_to_iso(_utc_now_dt()),
+    }
+
+    # Prefer upsert by email if available; else client_id.
+    if em:
+        _sb_upsert("fxco_access", row, conflict="email")
+        # Also attempt to merge by client_id if present (helps device mapping)
+        if cid:
+            _sb_upsert("fxco_access", row, conflict="client_id")
+        return
+
+    if cid:
+        _sb_upsert("fxco_access", row, conflict="client_id")
 
 
 # ==========================
@@ -981,6 +1164,7 @@ def health():
                 "redis_ok": redis_ok,
                 "require_payment": _require_payment(),
                 "public_base_url_ok": bool(PUBLIC_BASE_URL),
+                "auth_signing_secret_ok": bool((os.getenv("AUTH_SIGNING_SECRET", "") or "").strip()),
             }
         ),
         200,
@@ -1065,9 +1249,6 @@ def auth_start():
 
     active, trial_ends = _trial_active(email)
     if active:
-        # ✅ IMPORTANT FIX:
-        # If trial is already active, return a fresh token so frontend can "Use saved"
-        # and hide OTP UI even on a new browser/device.
         token = _make_token(email, trial_ends)
         return jsonify({"ok": True, "already_active": True, "trial_active": True, "trial_ends": trial_ends, "token": token}), 200
 
@@ -1078,7 +1259,11 @@ def auth_start():
             return jsonify({"ok": True, "cooldown": 60}), 200
 
     code = _otp_code()
-    code_hash = _otp_hash(email, code)
+    try:
+        code_hash = _otp_hash(email, code)
+    except Exception:
+        return jsonify({"ok": False, "error": "Server auth configuration error."}), 500
+
     expires = _utc_now_dt() + timedelta(minutes=10)
 
     _sb_upsert(
@@ -1135,7 +1320,10 @@ def auth_verify():
         return jsonify({"ok": False, "error": "Too many attempts. Please request a new code."}), 429
 
     expected_hash = str(otp_row.get("code_hash") or "")
-    got_hash = _otp_hash(email, code)
+    try:
+        got_hash = _otp_hash(email, code)
+    except Exception:
+        return jsonify({"ok": False, "error": "Server auth configuration error."}), 500
 
     if not expected_hash or not hmac.compare_digest(expected_hash, got_hash):
         _sb_update("fxco_otps", {"email": email}, {"attempts": attempts + 1})
@@ -1165,11 +1353,6 @@ def auth_verify():
 
 @app.get("/api/auth/status")
 def auth_status():
-    """
-    ✅ Optional but VERY useful for frontend:
-    - If token exists: confirm trial_active and trial_ends
-    - If token missing/invalid: return trial_active false
-    """
     token = (request.headers.get("X-FXCO-Auth") or "").strip()
     payload = _verify_token(token) if token else None
     if not payload:
@@ -1181,7 +1364,7 @@ def auth_status():
 
 
 # ==========================
-# Paystack endpoints (hardened)
+# Paystack endpoints (hardened + identity locked)
 # ==========================
 @app.get("/api/paystack/config")
 def paystack_config():
@@ -1282,14 +1465,16 @@ def paystack_webhook():
 
     meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     client_id = (meta.get("fxco_client_id") or "").strip() or None
+    email = (meta.get("fxco_email") or data.get("customer", {}).get("email") or data.get("customer_email") or "").strip().lower() or None
 
-    if not client_id:
-        return jsonify({"ok": True, "paid": True, "unlocked": False, "reason": "missing_client_id"}), 200
+    # If no email, we can still unlock by client_id (backward-compat), but email is preferred.
+    if not email and not client_id:
+        return jsonify({"ok": True, "paid": True, "unlocked": False, "reason": "missing_identity"}), 200
 
     paid_until = int(_now() + _access_days() * 24 * 60 * 60)
-    _set_paid_access(client_id, paid_until, reference or event_id or "webhook")
+    _set_paid_access(email=email, client_id=client_id, paid_until_epoch=paid_until, ref=reference or event_id or "webhook")
 
-    return jsonify({"ok": True, "paid": True, "unlocked": True, "client_id": client_id, "paid_until": paid_until}), 200
+    return jsonify({"ok": True, "paid": True, "unlocked": True, "email": email, "client_id": client_id, "paid_until": paid_until}), 200
 
 
 def _safe_json(r: requests.Response) -> dict:
@@ -1312,6 +1497,7 @@ def paystack_init():
     if not _email_ok(email):
         return jsonify({"ok": False, "error": "Invalid email."}), 400
 
+    # We still accept client_id header for device continuity, but paid access is bound to email.
     client_id = _get_client_id_header() or ("ip:" + _client_ip())
     callback_url = _ensure_paystack_success_param(_callback_url())
 
@@ -1320,7 +1506,12 @@ def paystack_init():
         "amount": int(_paystack_amount_minor()),
         "currency": PAYSTACK_CURRENCY,
         "callback_url": callback_url,
-        "metadata": {"fxco_client_id": client_id, "product": "FXCO-PILOT", "access_days": _access_days()},
+        "metadata": {
+            "fxco_email": email,  # ✅ identity locked
+            "fxco_client_id": client_id,  # secondary / device mapping
+            "product": "FXCO-PILOT",
+            "access_days": _access_days(),
+        },
     }
 
     try:
@@ -1360,13 +1551,14 @@ def paystack_verify():
 
         paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
 
-        meta = data.get("metadata") or {}
+        meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        email = (meta.get("fxco_email") or data.get("customer", {}).get("email") or "").strip().lower() or None
         client_id = (meta.get("fxco_client_id") or "").strip() or (_get_client_id_header() or ("ip:" + _client_ip()))
 
-        if paid and client_id:
+        if paid and (email or client_id):
             paid_until = int(_now() + _access_days() * 24 * 60 * 60)
-            _set_paid_access(client_id, paid_until, reference)
-            return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": paid_until}), 200
+            _set_paid_access(email=email, client_id=client_id, paid_until_epoch=paid_until, ref=reference)
+            return jsonify({"ok": True, "paid": True, "reference": reference, "paid_until": paid_until, "email": email}), 200
 
         return jsonify({"ok": True, "paid": False, "reference": reference}), 200
 
@@ -1883,7 +2075,7 @@ def build_execution_plan(analysis: dict) -> dict:
 
 
 # ==========================
-# JSON reliability (UPGRADE #1): extract + retry + repair
+# JSON reliability: extract + retry + repair
 # ==========================
 def _extract_first_json_object(text: str) -> Optional[dict]:
     if not text:
@@ -2200,12 +2392,12 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
 
 # ==========================
-# Analyze endpoint (trial OR paid)
+# Analyze endpoint (trial OR paid) - IDENTITY LOCKED
 # ==========================
 @app.route("/api/analyze", methods=["GET", "POST"])
 def analyze():
     ip = _client_ip()
-    client_id = _get_client_id_header() or ("ip:" + ip)
+    client_id = _get_client_id_header()
 
     token = (request.headers.get("X-FXCO-Auth") or "").strip()
     token_payload = _verify_token(token) if token else None
@@ -2222,12 +2414,13 @@ def analyze():
         trial_active = active
         trial_ends_epoch = te or trial_ends_epoch
 
-    paid_active = _is_client_unlocked(client_id)
+    # ✅ Paid access is now bound to email whenever possible
+    paid_active = _is_user_unlocked(token_email, client_id or ("ip:" + ip))
 
     if _require_payment() and not paid_active and not trial_active:
         return jsonify({"error": "Access locked. Start free trial (verify email) or unlock via Pricing."}), 402
 
-    identity_key = f"cid:{client_id}"
+    identity_key = _identity_key(token_email, client_id)
 
     is_privileged = bool(paid_active or trial_active)
     ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=is_privileged)
@@ -2517,7 +2710,7 @@ Rules:
         share_id = None
         share_url = None
         if _sb_ok():
-            created = _store_share_report(report_payload, client_id=client_id, email=token_email)
+            created = _store_share_report(report_payload, client_id=(client_id or ("ip:" + ip)), email=token_email)
             if created:
                 share_id = created["id"]
                 share_url = f"{_public_base_url()}/result.html?r={share_id}"
