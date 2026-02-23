@@ -77,6 +77,7 @@ logger = logging.getLogger("fxco-pilot")
 #   PUBLIC_BASE_URL=https://yourdomain.com
 # ============================================================
 
+
 # ==========================
 # Request lifecycle helpers
 # ==========================
@@ -260,18 +261,15 @@ PUBLIC_BASE_URL = (os.getenv("PUBLIC_BASE_URL", "") or "").strip().rstrip("/")
 
 
 def _public_base_url() -> str:
-    # Preferred: configured canonical URL
     if PUBLIC_BASE_URL:
         return PUBLIC_BASE_URL
 
-    # Safe-ish proxy-derived host (works behind Render/Vercel/etc)
     xf_host = (request.headers.get("X-Forwarded-Host") or "").strip()
     xf_proto = (request.headers.get("X-Forwarded-Proto") or "").strip()
     if xf_host:
         proto = xf_proto or "https"
         return f"{proto}://{xf_host}".rstrip("/")
 
-    # Dev fallback
     return request.host_url.rstrip("/")
 
 
@@ -727,7 +725,7 @@ def _redis_cmd(command: List[Any], timeout: int = 8) -> Optional[Any]:
         return None
 
 
-   # ==========================
+# ==========================
 # Paystack webhook helpers (IDEMPOTENCY + signature verify)
 # ==========================
 def _paystack_sig_ok(raw_body: bytes, signature: str) -> bool:
@@ -753,7 +751,6 @@ def _redis_set_nx_ex(key: str, value: str, ttl_seconds: int) -> Optional[bool]:
         return None
     try:
         res = _redis_cmd(["SET", key, value, "NX", "EX", int(ttl_seconds)])
-        # Upstash returns "OK" if set, None if not set
         if res is None:
             return False
         return (str(res).upper() == "OK")
@@ -765,7 +762,7 @@ def _sb_mark_event_once(event_key: str, payload: dict) -> bool:
     """
     Durable idempotency fallback: insert a row with UNIQUE(event_key).
     If it already exists => treat as already processed.
-    Requires a table (SQL provided below).
+    Requires fxco_paystack_events table.
     """
     if not _sb_ok():
         return False
@@ -780,11 +777,8 @@ def _sb_mark_event_once(event_key: str, payload: dict) -> bool:
     if created:
         return True
 
-    # If insert failed, it might be duplicate (unique constraint) OR table missing.
-    # We treat it as "not safe to process again" only if we can confirm it exists.
     existing = _sb_select_one("fxco_paystack_events", {"event_key": event_key})
     return bool(existing)
-
 
 
 def _redis_ping() -> bool:
@@ -825,9 +819,6 @@ def _redis_ttl(key: str) -> Optional[int]:
         iv = int(v)
     except Exception:
         return None
-    # Redis TTL:
-    #  -2 = key does not exist
-    #  -1 = key exists but has no associated expire
     if iv < 0:
         return None
     return iv
@@ -851,7 +842,6 @@ PAID_LIMIT_24H = _env_int("PAID_LIMIT_24H", 2000)
 _SHORT_WINDOW_SECONDS = 60
 _DAY_WINDOW_SECONDS = 24 * 60 * 60
 
-# in-memory fallback (works even if Redis is down)
 _RATE_SHORT = {}
 _RATE_DAY = {}
 
@@ -909,15 +899,9 @@ def _rate_check_inmemory(identity_key: str, is_paid: bool):
 
 
 def _rate_check(identity_key: str, is_paid: bool):
-    """
-    Institutional upgrade A:
-    - Use Redis (Upstash) counters so limits work across multiple instances/restarts.
-    - Fall back to in-memory queues if Redis is unavailable or errors.
-    """
     short_limit = PAID_LIMIT_60S if is_paid else FREE_LIMIT_60S
     day_limit = PAID_LIMIT_24H if is_paid else FREE_LIMIT_24H
 
-    # Redis path
     if _redis_ok():
         try:
             key60 = f"fxco:rl:60s:{identity_key}"
@@ -926,14 +910,12 @@ def _rate_check(identity_key: str, is_paid: bool):
             c60 = _redis_incr_with_ttl(key60, _SHORT_WINDOW_SECONDS)
             c24 = _redis_incr_with_ttl(key24, _DAY_WINDOW_SECONDS)
 
-            # If Redis failed mid-way, fall back safely
             if c60 is None or c24 is None:
                 return _rate_check_inmemory(identity_key, is_paid)
 
             short_remaining = max(0, short_limit - int(c60))
             day_remaining = max(0, day_limit - int(c24))
 
-            # Block if exceeded
             if int(c60) > short_limit or int(c24) > day_limit:
                 retry_after = 1
 
@@ -967,10 +949,8 @@ def _rate_check(identity_key: str, is_paid: bool):
             return True, 0, headers
 
         except Exception:
-            # Always keep production alive
             return _rate_check_inmemory(identity_key, is_paid)
 
-    # Fallback path
     return _rate_check_inmemory(identity_key, is_paid)
 
 
@@ -984,7 +964,6 @@ def index():
 
 @app.get("/health")
 def health():
-    # lightweight ping check (safe)
     redis_ok = False
     try:
         redis_ok = _redis_ping() if _redis_ok() else False
@@ -1086,7 +1065,11 @@ def auth_start():
 
     active, trial_ends = _trial_active(email)
     if active:
-        return jsonify({"ok": True, "already_active": True, "trial_ends": trial_ends}), 200
+        # ✅ IMPORTANT FIX:
+        # If trial is already active, return a fresh token so frontend can "Use saved"
+        # and hide OTP UI even on a new browser/device.
+        token = _make_token(email, trial_ends)
+        return jsonify({"ok": True, "already_active": True, "trial_active": True, "trial_ends": trial_ends, "token": token}), 200
 
     otp_row = _sb_select_one("fxco_otps", {"email": email})
     if otp_row:
@@ -1180,6 +1163,23 @@ def auth_verify():
     return jsonify({"ok": True, "token": token, "trial_ends": trial_ends_epoch}), 200
 
 
+@app.get("/api/auth/status")
+def auth_status():
+    """
+    ✅ Optional but VERY useful for frontend:
+    - If token exists: confirm trial_active and trial_ends
+    - If token missing/invalid: return trial_active false
+    """
+    token = (request.headers.get("X-FXCO-Auth") or "").strip()
+    payload = _verify_token(token) if token else None
+    if not payload:
+        return jsonify({"ok": True, "authenticated": False, "trial_active": False}), 200
+
+    email = str(payload.get("email") or "").strip().lower()
+    active, trial_ends = _trial_active(email)
+    return jsonify({"ok": True, "authenticated": True, "trial_active": bool(active), "trial_ends": int(trial_ends or 0), "email": email}), 200
+
+
 # ==========================
 # Paystack endpoints (hardened)
 # ==========================
@@ -1233,14 +1233,11 @@ def paystack_webhook():
     This must be:
       - signature verified
       - idempotent (process once)
-      - fast (always respond 200 after validation)
+      - fast
     """
-    # Paystack signature header
     sig = (request.headers.get("X-Paystack-Signature") or "").strip()
-
     raw_body = request.get_data(cache=False, as_text=False) or b""
     if not _paystack_sig_ok(raw_body, sig):
-        # Do NOT leak details; Paystack expects 200/4xx.
         return jsonify({"ok": False, "error": "Invalid signature"}), 401
 
     try:
@@ -1248,8 +1245,6 @@ def paystack_webhook():
     except Exception:
         return jsonify({"ok": False, "error": "Invalid JSON"}), 400
 
-    # Build an event idempotency key
-    # Prefer Paystack event id if present; otherwise fallback to reference.
     event_id = str(event.get("id") or "").strip()
     ev = str(event.get("event") or "").strip()
 
@@ -1258,35 +1253,25 @@ def paystack_webhook():
         data = {}
 
     reference = str(data.get("reference") or "").strip()
-    event_key = ""
     if event_id:
         event_key = f"ps:event:{event_id}"
     elif reference:
         event_key = f"ps:ref:{reference}"
     else:
-        # Worst-case fallback: hash the payload (still idempotent per identical retry)
         event_key = "ps:hash:" + hashlib.sha256(raw_body).hexdigest()
 
-    # 1) Redis idempotency (fast)
-    # Keep it for 14 days (webhook retries won’t exceed this, and it avoids reprocessing)
     redis_res = _redis_set_nx_ex(f"fxco:{event_key}", "1", ttl_seconds=14 * 24 * 60 * 60)
     if redis_res is False:
-        # Already processed
         return jsonify({"ok": True, "duplicate": True}), 200
 
-    # 2) Supabase durable idempotency fallback
-    # If Redis is unavailable (None), rely on DB uniqueness.
     if redis_res is None:
         marked = _sb_mark_event_once(event_key, event)
         if not marked:
-            # If we cannot safely guarantee idempotency, fail closed (do nothing)
             return jsonify({"ok": False, "error": "Idempotency store unavailable"}), 503
 
-    # Only act on charge.success
     if ev != "charge.success":
         return jsonify({"ok": True, "ignored": True, "event": ev}), 200
 
-    # Validate payment content
     status = (data.get("status") or "").lower()
     currency = (data.get("currency") or "").upper()
     amount = int(data.get("amount") or 0)
@@ -1298,16 +1283,13 @@ def paystack_webhook():
     meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     client_id = (meta.get("fxco_client_id") or "").strip() or None
 
-    # If metadata missing, we can’t map to a user/device => don't unlock randomly.
     if not client_id:
         return jsonify({"ok": True, "paid": True, "unlocked": False, "reason": "missing_client_id"}), 200
 
-    # Unlock access
     paid_until = int(_now() + _access_days() * 24 * 60 * 60)
     _set_paid_access(client_id, paid_until, reference or event_id or "webhook")
 
     return jsonify({"ok": True, "paid": True, "unlocked": True, "client_id": client_id, "paid_until": paid_until}), 200
-
 
 
 def _safe_json(r: requests.Response) -> dict:
@@ -1390,91 +1372,6 @@ def paystack_verify():
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# ==========================
-# Paystack webhook (INSTITUTIONAL UPGRADE #2)
-# - Server-to-server confirmation + signature verification
-# ==========================
-def _paystack_verify_webhook_signature(raw_body: bytes, signature: str) -> bool:
-    if not PAYSTACK_SECRET_KEY:
-        return False
-    if not raw_body or not signature:
-        return False
-    try:
-        computed = hmac.new(PAYSTACK_SECRET_KEY.encode("utf-8"), raw_body, hashlib.sha512).hexdigest()
-        return hmac.compare_digest(computed, signature.strip())
-    except Exception:
-        return False
-
-
-@app.post("/api/paystack/webhook")
-def paystack_webhook():
-    # Always respond fast. Do not require CORS/browser.
-    raw = request.get_data(cache=False) or b""
-    sig = (request.headers.get("x-paystack-signature") or request.headers.get("X-Paystack-Signature") or "").strip()
-
-    if not _paystack_verify_webhook_signature(raw, sig):
-        try:
-            logger.warning("Paystack webhook signature invalid rid=%s", getattr(request, "_fxco_req_id", ""))
-        except Exception:
-            pass
-        return jsonify({"ok": False, "error": "Invalid signature"}), 401
-
-    try:
-        payload = request.get_json(silent=True) or {}
-    except Exception:
-        payload = {}
-
-    event = (payload.get("event") or "").strip().lower()
-    data = payload.get("data") or {}
-    if not isinstance(data, dict):
-        data = {}
-
-    # Only unlock on successful charge
-    if event not in ("charge.success", "charge.successful", "charge.success "):
-        return jsonify({"ok": True, "ignored": True, "event": event}), 200
-
-    status = (data.get("status") or "").strip().lower()
-    reference = (data.get("reference") or "").strip()
-    currency = (data.get("currency") or "").strip().upper()
-    amount = int(data.get("amount") or 0)
-
-    paid = (status == "success") and reference and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
-
-    meta = data.get("metadata") or {}
-    if not isinstance(meta, dict):
-        meta = {}
-
-    client_id = (meta.get("fxco_client_id") or "").strip()
-    try:
-        access_days = int(meta.get("access_days") or _access_days())
-        access_days = max(1, access_days)
-    except Exception:
-        access_days = _access_days()
-
-    if paid and client_id:
-        paid_until = int(_now() + access_days * 24 * 60 * 60)
-        _set_paid_access(client_id, paid_until, reference)
-        try:
-            logger.info("Paystack webhook unlocked client_id=%s ref=%s until=%s", client_id, reference, paid_until)
-        except Exception:
-            pass
-        return jsonify({"ok": True, "paid": True, "client_id": client_id, "reference": reference, "paid_until": paid_until}), 200
-
-    # If metadata missing, we cannot map the payment to a device unlock safely.
-    try:
-        logger.warning(
-            "Paystack webhook paid=%s but missing mapping client_id=%s ref=%s currency=%s amount=%s",
-            paid,
-            client_id,
-            reference,
-            currency,
-            amount,
-        )
-    except Exception:
-        pass
-    return jsonify({"ok": True, "paid": bool(paid), "unlocked": False, "reference": reference}), 200
 
 
 # ==========================
@@ -1634,10 +1531,6 @@ _TD_INTERVALS = ["1min", "5min", "15min", "30min", "1h", "4h", "1day"]
 
 
 def _normalize_chart_tf(chart_tf: str) -> str:
-    """
-    Accepts: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1day, 15min, etc.
-    Returns one of TwelveData supported intervals in _TD_INTERVALS, else "".
-    """
     s = (chart_tf or "").strip().lower()
     if not s:
         return ""
@@ -1645,7 +1538,6 @@ def _normalize_chart_tf(chart_tf: str) -> str:
     s = s.replace(" ", "")
     s = s.replace("minutes", "min").replace("minute", "min")
     s = s.replace("hours", "h").replace("hour", "h")
-    s = s.replace("days", "day").replace("d", "day") if re.fullmatch(r"\d+d", s) else s
 
     if s in ("1m", "1min"):
         return "1min"
@@ -1666,9 +1558,6 @@ def _normalize_chart_tf(chart_tf: str) -> str:
 
 
 def _pick_execution_tf(structure_tf: str) -> str:
-    """
-    Pick one lower TF for execution.
-    """
     try:
         i = _TD_INTERVALS.index(structure_tf)
     except Exception:
@@ -2312,10 +2201,6 @@ def institutional_decision_engine(analysis: dict) -> dict:
 
 # ==========================
 # Analyze endpoint (trial OR paid)
-# - INSTITUTIONAL FIX:
-#   Allow GET ONLY for ?test=1 so your browser test does not hit 405.
-# - INSTITUTIONAL UPGRADE #3:
-#   Trial should use privileged rate limits + explicit X-RateLimit-Plan header.
 # ==========================
 @app.route("/api/analyze", methods=["GET", "POST"])
 def analyze():
@@ -2344,11 +2229,9 @@ def analyze():
 
     identity_key = f"cid:{client_id}"
 
-    # Trial gets privileged limits (same as paid limits by default)
     is_privileged = bool(paid_active or trial_active)
     ok, retry_after, rl_headers = _rate_check(identity_key, is_paid=is_privileged)
 
-    # Override plan label so frontend can show "trial" explicitly
     if paid_active:
         rl_headers["X-RateLimit-Plan"] = "paid"
     elif trial_active:
@@ -2365,7 +2248,6 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp
 
-    # ✅ Allow your browser test via GET /api/analyze?test=1
     if request.args.get("test") == "1":
         resp = jsonify({"ok": True, "mode": "rate_limit_test", "redis_ok": _redis_ping() if _redis_ok() else False})
         for k, v in rl_headers.items():
@@ -2374,7 +2256,6 @@ def analyze():
             resp.headers["X-FXCO-Trial-Ends"] = str(trial_ends_epoch)
         return resp, 200
 
-    # If GET without test=1, return a clear 405 JSON (not a 500)
     if request.method == "GET":
         resp = jsonify({"ok": False, "error": "Method not allowed. Use POST for analysis, or GET with ?test=1 for Redis/rate-limit test."})
         resp.status_code = 405
@@ -2401,7 +2282,6 @@ def analyze():
                 "missing": missing,
                 "expected_any_of": {
                     "pair_type": ["pair_type", "pairType"],
-                    # ✅ Permanent: style included here too
                     "timeframe (style)": ["timeframe", "style", "timeframe_mode", "timeframeMode"],
                     "chart_tf (optional)": ["chart_tf", "chartTF", "chart_timeframe", "chartTimeframe"],
                     "signal_input": ["signal_input", "signal", "signalText"],
@@ -2619,7 +2499,6 @@ Rules:
         analysis["invalidation_warnings"] = build_invalidation_warnings(analysis, live_snapshot=live_snapshot)
 
         analysis["execution_plan"] = build_execution_plan(analysis)
-
         analysis = institutional_decision_engine(analysis)
 
         decision_tier = str(analysis.get("decision_tier") or "").strip().upper()
