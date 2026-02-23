@@ -617,22 +617,22 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
 
 
-def _sign(payload_bytes: bytes) -> Optional[str]:
+def _sign(payload_bytes: bytes) -> str:
+    """
+    Institutional: do not silently "return None" when secret missing.
+    - In prod, boot validation should already fail.
+    - In dev, this makes the failure obvious at call site.
+    """
     key = _auth_secret_bytes()
     if not key:
-        return None
+        raise RuntimeError("Missing AUTH_SIGNING_SECRET")
     return _b64url_encode(hmac.new(key, payload_bytes, hashlib.sha256).digest())
 
 
 def _make_token(email: str, trial_ends_epoch: int) -> str:
-    key = _auth_secret_bytes()
-    if not key:
-        raise ValueError("Missing AUTH_SIGNING_SECRET.")
     payload = {"email": email, "trial_ends": int(trial_ends_epoch), "iat": int(_now()), "v": 1}
     pb = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     sig = _sign(pb)
-    if not sig:
-        raise ValueError("Signing failed (missing AUTH_SIGNING_SECRET).")
     return f"{_b64url_encode(pb)}.{sig}"
 
 
@@ -640,17 +640,17 @@ def _verify_token(token: str) -> Optional[dict]:
     try:
         if not token or "." not in token:
             return None
-        # If secret missing, treat as invalid (do not crash)
+        # If secret missing, treat as invalid (do not crash analyze).
         if not _auth_secret_bytes():
             return None
 
         p, sig = token.split(".", 1)
         pb = _b64url_decode(p)
+
         expected = _sign(pb)
-        if not expected:
-            return None
         if not hmac.compare_digest(expected, sig):
             return None
+
         payload = json.loads(pb.decode("utf-8"))
         if not isinstance(payload, dict):
             return None
@@ -1465,7 +1465,12 @@ def paystack_webhook():
 
     meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     client_id = (meta.get("fxco_client_id") or "").strip() or None
-    email = (meta.get("fxco_email") or data.get("customer", {}).get("email") or data.get("customer_email") or "").strip().lower() or None
+
+    customer = data.get("customer")
+    if not isinstance(customer, dict):
+        customer = {}
+
+    email = (meta.get("fxco_email") or customer.get("email") or data.get("customer_email") or "").strip().lower() or None
 
     # If no email, we can still unlock by client_id (backward-compat), but email is preferred.
     if not email and not client_id:
@@ -1552,7 +1557,12 @@ def paystack_verify():
         paid = (status == "success") and (currency == PAYSTACK_CURRENCY) and (amount >= int(_paystack_amount_minor()))
 
         meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-        email = (meta.get("fxco_email") or data.get("customer", {}).get("email") or "").strip().lower() or None
+
+        customer = data.get("customer")
+        if not isinstance(customer, dict):
+            customer = {}
+
+        email = (meta.get("fxco_email") or customer.get("email") or "").strip().lower() or None
         client_id = (meta.get("fxco_client_id") or "").strip() or (_get_client_id_header() or ("ip:" + _client_ip()))
 
         if paid and (email or client_id):
